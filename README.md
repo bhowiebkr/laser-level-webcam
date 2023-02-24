@@ -1,9 +1,7 @@
-# laser-level-webcam
-
-based of the work from here:
-https://github.com/betzuka/laserlevel
-
 # LaserVision: Real-time Laser Measurement with Webcam
+
+Based of the work from here:
+https://github.com/betzuka/laserlevel
 
 This Python application uses PyQt5 and OpenCV to capture live video from a webcam and display it in a window. It can be used to measure distances using lasers.
 
