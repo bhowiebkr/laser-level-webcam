@@ -1,51 +1,78 @@
 import sys
 import cv2
-from PyQt5.QtCore import QTimer
-from PyQt5.QtGui import QImage, QPixmap
-from PyQt5.QtWidgets import QApplication, QMainWindow, QLabel
+import numpy as np
+from PyQt5 import QtCore, QtGui, QtWidgets
+import pyqtgraph as pg
 
-class MainWindow(QMainWindow):
+
+class VideoPlayer(QtWidgets.QWidget):
     def __init__(self):
         super().__init__()
 
-        # Set the window title
-        self.setWindowTitle("LaserVision: Real-time Laser Measurement with Webcam")
+        # initialize the camera
+        self.cam = cv2.VideoCapture(0)
+        self.width = 1280
+        self.height = 720
+        self.cam.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
+        self.cam.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
 
-        # Create a label widget and add it to the window
-        self.label = QLabel(self)
-        self.label.setGeometry(50, 50, 640, 480)
+        # create the layout for the window
+        self.layout = QtWidgets.QHBoxLayout()
+        self.setLayout(self.layout)
 
-        # Create a timer to update the video feed
-        self.timer = QTimer()
-        self.timer.timeout.connect(self.update_frame)
-        self.timer.start(30) # 30 ms delay between updates
+        # create the widget for displaying the video
+        self.video_widget = QtWidgets.QLabel(self)
+        self.video_widget.setMinimumSize(QtCore.QSize(self.width, self.height))
+        self.video_widget.setMaximumSize(QtCore.QSize(self.width, self.height))
+        self.layout.addWidget(self.video_widget)
 
-        # Create a VideoCapture object to read from the webcam
-        self.cap = cv2.VideoCapture(0)
+        # create the widget for displaying the histogram
+        self.hist_widget = pg.PlotWidget()
+        self.hist_widget.setYRange(0, 1000)
+        self.hist_item = pg.PlotCurveItem()
+        self.hist_widget.addItem(self.hist_item)
+        self.layout.addWidget(self.hist_widget)
 
-    def update_frame(self):
-        # Read a frame from the webcam
-        ret, frame = self.cap.read()
+        # initialize the histogram data
+        self.hist_data = np.zeros((256,))
 
-        # Convert the frame to a QImage
-        if ret:
-            img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            h, w, c = img.shape
-            qimg = QImage(img.data, w, h, w * c, QImage.Format_RGB888)
-            pixmap = QPixmap.fromImage(qimg)
+        # create the timer for updating the video
+        self.timer = QtCore.QTimer(self)
+        self.timer.timeout.connect(self._update)
+        self.timer.start(50)
 
-            # Display the pixmap in the label widget
-            self.label.setPixmap(pixmap)
+        # show the window
+        self.show()
+
+    def _update(self):
+        # read a frame from the camera
+        ret, frame = self.cam.read()
+        if not ret:
+            return
+
+        # convert the frame to grayscale
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+        # calculate the histogram of the grayscale frame
+        hist = cv2.calcHist([gray], [0], None, [256], [0, 256])
+        self.hist_data = np.squeeze(hist)
+
+        # update the histogram widget
+        self.hist_item.setData(self.hist_data)
+
+        # convert the frame to a Qt image
+        height, width = gray.shape
+        bytes_per_line = width
+        qt_image = QtGui.QImage(gray.data, width, height, bytes_per_line, QtGui.QImage.Format_Grayscale8)
+
+        # create a pixmap from the Qt image
+        pixmap = QtGui.QPixmap.fromImage(qt_image)
+
+        # scale the pixmap to fit the video widget
+        self.video_widget.setPixmap(pixmap.scaled(self.width, self.height, QtCore.Qt.KeepAspectRatio))
+
 
 if __name__ == '__main__':
-    # Create the QApplication instance
-    app = QApplication(sys.argv)
-
-    # Create the main window instance
-    window = MainWindow()
-
-    # Show the main window
-    window.show()
-
-    # Run the event loop
+    app = QtWidgets.QApplication(sys.argv)
+    player = VideoPlayer()
     sys.exit(app.exec_())
