@@ -23,3 +23,14 @@ This command will install all the required packages listed in the `requirements.
 
 5. Once the packages are installed, run the application by running the following command:
 
+`python main.py`
+
+This will launch the application and start capturing video from your webcam.
+
+## Usage
+
+The application will display the live video feed from your webcam in a window. You can use lasers to measure distances in the video feed.
+
+## License
+
+This project is licensed under the GNU Public License 3.0. See the `LICENSE` file for details.
