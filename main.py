@@ -1,78 +1,98 @@
-import sys
-import cv2
+import threading
+import imageio
 import numpy as np
-from PyQt5 import QtCore, QtGui, QtWidgets
-import pyqtgraph as pg
+from PyQt5 import QtWidgets, QtGui, QtCore
 
-
-class VideoPlayer(QtWidgets.QWidget):
+# Define the main window
+class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
 
-        # initialize the camera
-        self.cam = cv2.VideoCapture(0)
-        self.width = 1280
-        self.height = 720
-        self.cam.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
-        self.cam.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+        # Create the left and right widgets
+        self.left_widget = LeftWidget(self)
+        self.right_widget = RightWidget(self)
 
-        # create the layout for the window
-        self.layout = QtWidgets.QHBoxLayout()
-        self.setLayout(self.layout)
+        # Set the main window layout
+        central_widget = QtWidgets.QWidget()
+        layout = QtWidgets.QHBoxLayout(central_widget)
+        layout.addWidget(self.left_widget)
+        layout.addWidget(self.right_widget)
+        self.setCentralWidget(central_widget)
 
-        # create the widget for displaying the video
-        self.video_widget = QtWidgets.QLabel(self)
-        self.video_widget.setMinimumSize(QtCore.QSize(self.width, self.height))
-        self.video_widget.setMaximumSize(QtCore.QSize(self.width, self.height))
-        self.layout.addWidget(self.video_widget)
+        # Start the webcam thread
+        self.webcam_thread = WebcamThread(self)
+        self.webcam_thread.start()
 
-        # create the widget for displaying the histogram
-        self.hist_widget = pg.PlotWidget()
-        self.hist_widget.setYRange(0, 1000)
-        self.hist_item = pg.PlotCurveItem()
-        self.hist_widget.addItem(self.hist_item)
-        self.layout.addWidget(self.hist_widget)
+# Define the left widget to display the grayscale webcam feed
+class LeftWidget(QtWidgets.QWidget):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.image = None
 
-        # initialize the histogram data
-        self.hist_data = np.zeros((256,))
+    def paintEvent(self, event):
+        painter = QtGui.QPainter(self)
+        if self.image is not None:
+            qimage = QtGui.QImage(self.image.data, self.image.shape[1], self.image.shape[0], QtGui.QImage.Format_Grayscale8)
+            pixmap = QtGui.QPixmap.fromImage(qimage)
+            scaled_pixmap = pixmap.scaled(self.width(), self.height(), QtCore.Qt.KeepAspectRatio)          
+            painter.drawPixmap(self.rect(), scaled_pixmap)
 
-        # create the timer for updating the video
-        self.timer = QtCore.QTimer(self)
-        self.timer.timeout.connect(self._update)
-        self.timer.start(50)
+    def setImage(self, image):
+        self.image = image
+        self.update()
 
-        # show the window
-        self.show()
+# Define the right widget to display the histogram of luminosity
+class RightWidget(QtWidgets.QWidget):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.histogram = None
 
-    def _update(self):
-        # read a frame from the camera
-        ret, frame = self.cam.read()
-        if not ret:
-            return
+    def paintEvent(self, event):
+        painter = QtGui.QPainter(self)
+        if self.histogram is not None:
+            painter.setPen(QtCore.Qt.black)
+            painter.setBrush(QtGui.QColor(255, 0, 0, 127))
+            for i, count in enumerate(self.histogram):
+                painter.drawRect(i, self.height() - int(count), 1, int(count))
 
-        # convert the frame to grayscale
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    def setHistogram(self, histogram):
+        self.histogram = histogram
+        self.update()
 
-        # calculate the histogram of the grayscale frame
-        hist = cv2.calcHist([gray], [0], None, [256], [0, 256])
-        self.hist_data = np.squeeze(hist)
+# Define the webcam thread to capture frames from the webcam and update the widgets
+class WebcamThread(threading.Thread):
+    def __init__(self, parent):
+        super().__init__()
+        self.parent = parent
+        self.stop_event = threading.Event()
 
-        # update the histogram widget
-        self.hist_item.setData(self.hist_data)
+    def run(self):
+        with imageio.get_reader('<video1>', size=(640, 480)) as webcam:
+            while not self.stop_event.is_set():
+                # Read a frame from the webcam
+                frame = webcam.get_next_data()
+                # Convert the RGB image to grayscale using the luminosity method
+                gray = np.dot(frame[...,:3], [0.2126, 0.7152, 0.0722]).astype(np.uint8)
 
-        # convert the frame to a Qt image
-        height, width = gray.shape
-        bytes_per_line = width
-        qt_image = QtGui.QImage(gray.data, width, height, bytes_per_line, QtGui.QImage.Format_Grayscale8)
+                intensity_values = np.mean(gray, axis=1)
 
-        # create a pixmap from the Qt image
-        pixmap = QtGui.QPixmap.fromImage(qt_image)
 
-        # scale the pixmap to fit the video widget
-        self.video_widget.setPixmap(pixmap.scaled(self.width, self.height, QtCore.Qt.KeepAspectRatio))
+                # Update the left and right widgets
+                self.parent.left_widget.setImage(gray)
+                self.parent.right_widget.setHistogram(intensity_values)
+                # Wait for a short time to avoid overloading the CPU
+                self.stop_event.wait(0.01)
 
+    def stop(self):
+        self.stop_event.set()
+        self.join()
+
+# Define the main function to create and run the app
+def main():
+    app = QtWidgets.QApplication([])
+    window = MainWindow()
+    window.show()
+    app.exec_()
 
 if __name__ == '__main__':
-    app = QtWidgets.QApplication(sys.argv)
-    player = VideoPlayer()
-    sys.exit(app.exec_())
+    main()
