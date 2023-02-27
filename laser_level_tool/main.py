@@ -10,9 +10,9 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt
 
-from GUI.palette import palette
+import qdarktheme
 from GUI.analyser import Analyser
-from GUI.sensor_feed import SensorFeed, WebcamThread
+from GUI.sensor_feed import SensorFeed
 
 
 # Define the main window
@@ -35,6 +35,10 @@ class MainWindow(QMainWindow):
         self.sensor_feed = SensorFeed(self)
         self.analyser = Analyser(self)
 
+        self.sensor_feed.webcam_thread.setAnalyser(self.analyser)
+        self.sensor_feed.webcam_thread.setSensorFeed(self.sensor_feed)
+        self.sensor_feed.webcam_thread.start()
+
         # Widgets
         self.smoothingSlider = QSlider(Qt.Horizontal, self)
         self.smoothingSlider.setMinimum(0)
@@ -46,21 +50,17 @@ class MainWindow(QMainWindow):
         self.layout.addWidget(self.sensor_feed)
         self.layout.addWidget(self.analyser)
 
-        # Start the webcam thread
-        self.webcam_thread = WebcamThread(self)
-        self.webcam_thread.start()
-
         self.layout.addLayout(buttonLayout)
         buttonLayout.addRow("Smoothing", self.smoothingSlider)
 
     def closeEvent(self, event):
-        self.webcam_thread.stop()
+        self.sensor_feed.webcam_thread.stop()
         self.deleteLater()
 
 
 if __name__ == "__main__":
     app = QApplication([])
-    app.setPalette(palette)
+    qdarktheme.setup_theme()
     window = MainWindow()
     window.show()
     sys.exit(app.exec_())
