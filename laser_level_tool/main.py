@@ -1,20 +1,22 @@
-import threading
 import sys
-import imageio
-import numpy as np
-from PyQt5 import QtWidgets, QtGui
-from PyQt5.QtWidgets import QSlider, QSizePolicy
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QPen
-from GUI.palette import palette
 
-from GUI.parameters import ParametersWidget
+from PyQt5.QtWidgets import (
+    QSlider,
+    QMainWindow,
+    QWidget,
+    QHBoxLayout,
+    QFormLayout,
+    QApplication,
+)
+from PyQt5.QtCore import Qt
+
+from GUI.palette import palette
 from GUI.analyser import Analyser
 from GUI.sensor_feed import SensorFeed, WebcamThread
 
 
 # Define the main window
-class MainWindow(QtWidgets.QMainWindow):
+class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
@@ -22,12 +24,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setWindowTitle("Laser Level Webcam Tool")
 
         # Set the main window layout
-        central_widget = QtWidgets.QWidget()
+        central_widget = QWidget()
         self.setCentralWidget(central_widget)
-        self.layout = QtWidgets.QHBoxLayout(central_widget)
+        self.layout = QHBoxLayout(central_widget)
 
         # Layouts
-        buttonLayout = QtWidgets.QFormLayout()
+        buttonLayout = QFormLayout()
 
         # Create the left and right widgets
         self.sensor_feed = SensorFeed(self)
@@ -57,7 +59,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
 
 if __name__ == "__main__":
-    app = QtWidgets.QApplication([])
+    app = QApplication([])
     app.setPalette(palette)
     window = MainWindow()
     window.show()
