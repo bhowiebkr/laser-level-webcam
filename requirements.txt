@@ -2,3 +2,4 @@ numpy
 imageio
 PyQt5
 scipy
+pyqtdarktheme
