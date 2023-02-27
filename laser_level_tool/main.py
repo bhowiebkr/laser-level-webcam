@@ -6,9 +6,9 @@ from PyQt5 import QtWidgets, QtGui, QtCore
 from PyQt5.QtWidgets import QSlider, QSizePolicy
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPainter, QPen
-from palette import palette
+from GUI.palette import palette
 
-from curves import fit_gaussian
+from utils.curves import fit_gaussian
 
 
 SIZE = [640, 480]
