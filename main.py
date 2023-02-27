@@ -1,11 +1,12 @@
 import threading
-import subprocess
+import sys
 import imageio
 import numpy as np
 from PyQt5 import QtWidgets, QtGui, QtCore
 from PyQt5.QtWidgets import QSlider, QSizePolicy
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPainter, QPen
+from palette import palette
 
 from curves import fit_gaussian
 
@@ -57,7 +58,7 @@ class RightWidget(QtWidgets.QWidget):
                 if np.isnan(intensity):
                     intensity = 0
 
-                scopeData[i, : int(intensity)] = 255
+                scopeData[i, : int(intensity)] = 128
 
             qimage = QtGui.QImage(
                 scopeData,
@@ -183,9 +184,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.layout.addLayout(buttonLayout)
         buttonLayout.addRow("Smoothing", self.smoothingSlider)
 
+    def closeEvent(self, event):
+        self.webcam_thread.stop()
+        self.deleteLater()
+
 
 if __name__ == "__main__":
     app = QtWidgets.QApplication([])
+    app.setPalette(palette)
     window = MainWindow()
     window.show()
-    app.exec_()
+    sys.exit(app.exec_())
