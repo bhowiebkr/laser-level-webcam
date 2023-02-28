@@ -1,5 +1,6 @@
 import numpy as np
-import imageio
+
+from PySide6.QtMultimedia import QMediaDevices
 
 
 def adjust_image(image, brightness=0, contrast=1, gamma=1):
@@ -28,22 +29,22 @@ def adjust_image(image, brightness=0, contrast=1, gamma=1):
     return adjusted_image
 
 
-def get_webcam_max_res():
-    # Create a reader object for the webcam
-    reader = imageio.get_reader("<video1>")
+def get_webcam_max_res(index=0):
+    available_cameras = QMediaDevices.videoInputs()
+    if not available_cameras:
+        return None
 
-    # Get the max resolution
-    max_width = 0
-    max_height = 0
-    for frame in reader:
-        height, width, shape = frame.shape
-        if width > max_width:
-            max_width = width
-        if height > max_height:
-            max_height = height
-        break
+    camera_info = available_cameras[index]
+    supported_resolutions = camera_info.photoResolutions()
+    max_resolution = None
+    for resolution in supported_resolutions:
+        if max_resolution is None or (resolution.width() * resolution.height()) > (
+            max_resolution.width() * max_resolution.height()
+        ):
+            max_resolution = resolution
 
-    # Close the reader object
-    reader.close()
+    return [max_resolution.width(), max_resolution.height()]
 
-    return [max_width, max_height]
+
+if __name__ == "__main__":
+    print(get_webcam_max_res(1))
