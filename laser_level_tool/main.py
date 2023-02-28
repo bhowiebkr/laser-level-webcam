@@ -28,9 +28,6 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central_widget)
         self.layout = QHBoxLayout(central_widget)
 
-        # Layouts
-        buttonLayout = QFormLayout()
-
         # Create the left and right widgets
         self.sensor_feed = SensorFeed(self)
         self.analyser = Analyser(self)
@@ -39,19 +36,9 @@ class MainWindow(QMainWindow):
         self.sensor_feed.webcam_thread.setSensorFeed(self.sensor_feed)
         self.sensor_feed.webcam_thread.start()
 
-        # Widgets
-        self.smoothingSlider = QSlider(Qt.Horizontal, self)
-        self.smoothingSlider.setMinimum(0)
-        self.smoothingSlider.setMaximum(100)
-        self.smoothingSlider.setValue(0)
-        self.smoothingSlider.setTickInterval(1)
-
         # Add to layouts
         self.layout.addWidget(self.sensor_feed)
         self.layout.addWidget(self.analyser)
-
-        self.layout.addLayout(buttonLayout)
-        buttonLayout.addRow("Smoothing", self.smoothingSlider)
 
     def closeEvent(self, event):
         self.sensor_feed.webcam_thread.stop()
