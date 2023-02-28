@@ -1,5 +1,7 @@
 # LaserVision: Real-time Laser Measurement with Webcam
 
+A tool for measuring height in microns of arbitrary sized objects using a webcam and a laser level. 
+
 Based of the work from here:
 https://github.com/betzuka/laserlevel
 
