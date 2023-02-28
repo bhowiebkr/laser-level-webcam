@@ -10,7 +10,7 @@ from PyQt5.QtWidgets import (
     QSlider,
     QPushButton,
 )
-from PyQt5.QtGui import QPainter, QImage, QPixmap, QTransform, QPen
+from PyQt5.QtGui import QPainter, QImage, QPixmap, QTransform, QPen, QFont
 
 from utils.curves import fit_gaussian
 
@@ -59,6 +59,7 @@ class AnalyserWidget(QWidget):
             y_pos = fit_gaussian(
                 self.LuminosityScope
             )  # Specify the y position of the line
+            y_pos_float = y_pos
             if y_pos:
                 dataHeight = self.LuminosityScope.shape[0]
                 pen = QPen(Qt.green, 4, Qt.SolidLine)
@@ -69,6 +70,18 @@ class AnalyserWidget(QWidget):
                     + 0
                 )
                 painter.drawLine(0, y_pos, self.width(), y_pos)
+
+            # Draw the value
+            painter.setFont(QFont("Arial", 12))
+            painter.setPen(Qt.green)
+            text = "{:.3f}".format(y_pos_float)
+            textWidth = painter.fontMetrics().width(text)
+            textHeight = painter.fontMetrics().height()
+
+            x = (self.width() - textWidth) / 2
+            y = y_pos - (textHeight / 2)
+
+            painter.drawText(int(x), int(y), text)
 
     def setLuminosityScope(self, LuminosityScope):
         self.LuminosityScope = LuminosityScope
@@ -101,7 +114,7 @@ class AnalyserWidget(QWidget):
 
 
 class Analyser(QGroupBox):
-    def __init__(self, parent):
+    def __init__(self, parent=None):
         super().__init__(parent)
 
         self.setTitle("Analyser")
