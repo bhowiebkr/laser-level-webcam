@@ -20,8 +20,8 @@ class ResolutionInputWidget(QWidget):
             self._heightInput.setText(str(height))
 
         # Create the labels
-        widthLabel = QLabel("Width:")
-        heightLabel = QLabel("Height:")
+        widthLabel = QLabel("w:")
+        heightLabel = QLabel("h:")
 
         # Create the layout
         layout = QHBoxLayout()

@@ -142,7 +142,7 @@ class SensorFeed(QGroupBox):
         params.addRow("Brightness", self.brightness)
         params.addRow("Contrast", self.contrast)
         params.addRow("Gamma", self.gamma)
-        params.addRow("Resolution", sensor_res)
+        params.addRow("Feed Res", sensor_res)
 
         main_layout.addWidget(self.widget)
         main_layout.addLayout(params)

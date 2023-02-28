@@ -72,7 +72,7 @@ class Sampler(QGroupBox):
         params_left.addRow("Number of Samples", self.num_samples)
         params_left.addRow("Sensor Res (px)", self.sensor_res)
         params_right.addRow("Sample removal (%)", self.sample_filter)
-        params_right.addRow("Pixel Size (μm)", self.pixel_size)
+        params_right.addRow("Sensor Width (μm)", self.pixel_size)
 
         top_layout.addLayout(params_left, 0, 0)
         top_layout.addLayout(params_right, 0, 1)

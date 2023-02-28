@@ -32,8 +32,10 @@ class MainWindow(QMainWindow):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         self.layout = QHBoxLayout(central_widget)
+        self.layout.setContentsMargins(0, 0, 0, 0)
 
         splitter = QSplitter()
+        left_splitter = QSplitter()
         left_widget = QWidget()
         left_layout = QHBoxLayout()
         left_layout.setContentsMargins(0, 0, 0, 0)
@@ -64,10 +66,10 @@ class MainWindow(QMainWindow):
 
         # Add to layouts
 
-        left_layout.addWidget(self.sensor_feed)
-        left_layout.addWidget(self.analyser)
+        left_splitter.addWidget(self.sensor_feed)
+        left_splitter.addWidget(self.analyser)
 
-        splitter.addWidget(left_widget)
+        splitter.addWidget(left_splitter)
         splitter.addWidget(self.sampler)
         self.layout.addWidget(splitter)
 
