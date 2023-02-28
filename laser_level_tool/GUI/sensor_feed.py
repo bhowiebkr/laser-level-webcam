@@ -16,6 +16,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt
 
 from PyQt5.QtGui import QPainter, QImage, QPixmap, QTransform
+from utils.misc import adjust_image
 
 SIZE = [640, 480]
 
@@ -40,11 +41,19 @@ class WebcamThread(threading.Thread):
             while not self.stop_event.is_set():
                 # Read a frame from the webcam
                 frame = webcam.get_next_data()
+
+                # Brightness, contrast, gamma
+                brightness = self.sensor_feed.brightness.value() / 100
+                contrast = self.sensor_feed.contrast.value() / 100
+                gamma = self.sensor_feed.gamma.value() / 100
+
                 # Convert the RGB image to grayscale using the luminosity method
                 gray = np.dot(frame[..., :3], [0.2126, 0.7152, 0.0722]).astype(np.uint8)
+                gray = adjust_image(gray, brightness, contrast, gamma)
+
                 intensity_values = np.mean(gray, axis=0)
 
-                # Smoothing
+                # Smoothing TODO This needs to be moved to the analyser
                 try:
                     # compute the moving average with nearest neighbour
                     smoothingFactor = self.parent.smoothingSlider.value()
@@ -54,21 +63,21 @@ class WebcamThread(threading.Thread):
                     intensity_values = np.convolve(
                         intensity_values, kernel, mode="valid"
                     )
-                except Exception:
+                except Exception as e:
+                    # print(e)
                     pass
 
                 # Find the min and max values
                 min_value = np.min(intensity_values)
                 max_value = np.max(intensity_values)
 
-                # Scale the intensity values (Keep this as the last step)
-                try:
-                    intensity_values = (intensity_values - min_value) * (
-                        255 / (max_value - min_value)
-                    )
-                except Exception as e:
-                    print(e)
-                    pass
+                # Ensure max_value and min_value are not equal to avoid division by zero
+                if max_value == min_value:
+                    max_value += 1
+                # Rescale the intensity values to have a range between 0 and 255
+                intensity_values = (intensity_values - min_value) * (
+                    255 / (max_value - min_value)
+                )
 
                 # Update the left and right widgets
                 self.sensor_feed.widget.setImage(gray)
@@ -120,9 +129,22 @@ class SensorFeed(QGroupBox):
 
         # Widgets
         self.widget = SensorFeedWidget()
+
         self.brightness = QSlider(Qt.Horizontal)
+        self.brightness.setMinimum(-200)
+        self.brightness.setMaximum(200)
+        self.brightness.setValue(0)
+
         self.contrast = QSlider(Qt.Horizontal)
+        self.contrast.setMinimum(1)
+        self.contrast.setMaximum(200)
+        self.contrast.setValue(100)
+        self.contrast.setTickInterval(1)
         self.gamma = QSlider(Qt.Horizontal)
+        self.gamma.setMinimum(1)
+        self.gamma.setMaximum(200)
+        self.gamma.setValue(100)
+
         extra_btn = QPushButton("Camera Device Controls")
         extra_btn.setFixedHeight(40)
 
