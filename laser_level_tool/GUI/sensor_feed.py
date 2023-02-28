@@ -1,5 +1,4 @@
 import imageio
-import threading
 import subprocess
 import numpy as np
 
@@ -12,7 +11,7 @@ from PyQt5.QtWidgets import (
     QSlider,
     QPushButton,
 )
-from PyQt5.QtCore import Qt, QThread
+from PyQt5.QtCore import Qt, QThread, pyqtSignal
 
 from PyQt5.QtGui import QPainter, QImage, QPixmap, QTransform
 from utils.misc import adjust_image
@@ -21,10 +20,14 @@ SIZE = [640, 480]
 
 
 # Define the webcam thread to capture frames from the webcam and update the widgets
-class WebcamThread(threading.Thread):
+class WebcamThread(QThread):
+    image_ready = pyqtSignal(np.ndarray)
+    intensity_values_ready = pyqtSignal(np.ndarray)
+    stop_signal = pyqtSignal()
+
     def __init__(self):
         super().__init__()
-        self.stop_event = threading.Event()
+        self._is_running = True
 
         self.analyser = None
         self.sensor_feed = None
@@ -37,7 +40,7 @@ class WebcamThread(threading.Thread):
 
     def run(self):
         with imageio.get_reader("<video1>", size=(SIZE[0], SIZE[1])) as webcam:
-            while not self.stop_event.is_set():
+            while self._is_running:
                 # Read a frame from the webcam
                 frame = webcam.get_next_data()
 
@@ -47,10 +50,14 @@ class WebcamThread(threading.Thread):
                 gamma = self.sensor_feed.gamma.value() / 100
 
                 # Convert the RGB image to grayscale using the luminosity method
-                gray = np.dot(frame[..., :3], [0.2126, 0.7152, 0.0722]).astype(np.uint8)
-                gray = adjust_image(gray, brightness, contrast, gamma)
+                image = np.dot(frame[..., :3], [0.2126, 0.7152, 0.0722]).astype(
+                    np.uint8
+                )
+                image = adjust_image(image, brightness, contrast, gamma)
 
-                intensity_values = np.mean(gray, axis=0)
+                self.image_ready.emit(image)
+
+                intensity_values = np.mean(image, axis=0)
 
                 # Find the min and max values
                 min_value = np.min(intensity_values)
@@ -64,26 +71,24 @@ class WebcamThread(threading.Thread):
                     255 / (max_value - min_value)
                 )
 
-                # Update the left and right widgets
-                self.sensor_feed.widget.setImage(gray)
-                self.analyser.widget.setLuminosityScope(intensity_values)
-                self.analyser.widget.setFixedHeight(self.sensor_feed.widget.height())
-                # Wait for a short time to avoid overloading the CPU
-                self.stop_event.wait(0.001)
+                self.intensity_values_ready.emit(intensity_values)
 
     def stop(self):
-        self.stop_event.set()
-        self.join()
+        self._is_running = False
+        self.wait()
 
 
 # Define the left widget to display the grayscale webcam feed
 class SensorFeedWidget(QWidget):
+    height_changed = pyqtSignal(int)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.image = None
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
     def paintEvent(self, event):
+        super().paintEvent(event)
         painter = QPainter(self)
         if self.image is not None:
             qimage = QImage(
@@ -99,6 +104,11 @@ class SensorFeedWidget(QWidget):
     def setImage(self, image):
         self.image = image
         self.update()
+
+    def resizeEvent(self, event):
+        new_height = event.size().height()
+        self.height_changed.emit(new_height)
+        super().resizeEvent(event)
 
 
 class SensorFeed(QGroupBox):
