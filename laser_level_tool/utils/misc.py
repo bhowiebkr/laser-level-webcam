@@ -1,4 +1,5 @@
 import numpy as np
+import imageio
 
 
 def adjust_image(image, brightness=0, contrast=1, gamma=1):
@@ -25,3 +26,24 @@ def adjust_image(image, brightness=0, contrast=1, gamma=1):
     adjusted_image = np.clip(adjusted_image, 0, 255).astype(np.uint8)
 
     return adjusted_image
+
+
+def get_webcam_max_res():
+    # Create a reader object for the webcam
+    reader = imageio.get_reader("<video1>")
+
+    # Get the max resolution
+    max_width = 0
+    max_height = 0
+    for frame in reader:
+        height, width, shape = frame.shape
+        if width > max_width:
+            max_width = width
+        if height > max_height:
+            max_height = height
+        break
+
+    # Close the reader object
+    reader.close()
+
+    return [max_width, max_height]
