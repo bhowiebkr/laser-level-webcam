@@ -23,7 +23,11 @@ class AnalyserWidget(QWidget):
         self.parent = parent
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
+    def cam_updated(self):
+        print("cam updated")
+
     def paintEvent(self, event):
+        super().paintEvent(event)
         painter = QPainter(self)
         if self.LuminosityScope is not None:
             # Defind the scope image data as the width (long side) of the image x 256 for pixels
@@ -37,7 +41,6 @@ class AnalyserWidget(QWidget):
                     scopeData[i, : int(intensity)] = 128
                 except IndexError as e:
                     print(e)
-                    pass
 
             qimage = QImage(
                 scopeData,
@@ -80,7 +83,6 @@ class AnalyserWidget(QWidget):
             )
         except Exception as e:
             print(e)
-            pass
 
         self.update()
 
