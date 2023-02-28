@@ -81,6 +81,19 @@ class AnalyserWidget(QWidget):
             self.LuminosityScope = np.convolve(
                 self.LuminosityScope, kernel, mode="valid"
             )
+
+            # Find the min and max values
+            min_value = np.min(self.LuminosityScope)
+            max_value = np.max(self.LuminosityScope)
+
+            # Ensure max_value and min_value are not equal to avoid division by zero
+            if max_value == min_value:
+                max_value += 1
+            # Rescale the intensity values to have a range between 0 and 255
+            self.LuminosityScope = (self.LuminosityScope - min_value) * (
+                255 / (max_value - min_value)
+            )
+
         except Exception as e:
             print(e)
 

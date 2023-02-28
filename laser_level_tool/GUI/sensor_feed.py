@@ -59,18 +59,6 @@ class WebcamThread(QThread):
 
                 intensity_values = np.mean(image, axis=0)
 
-                # Find the min and max values
-                min_value = np.min(intensity_values)
-                max_value = np.max(intensity_values)
-
-                # Ensure max_value and min_value are not equal to avoid division by zero
-                if max_value == min_value:
-                    max_value += 1
-                # Rescale the intensity values to have a range between 0 and 255
-                intensity_values = (intensity_values - min_value) * (
-                    255 / (max_value - min_value)
-                )
-
                 self.intensity_values_ready.emit(intensity_values)
 
     def stop(self):
