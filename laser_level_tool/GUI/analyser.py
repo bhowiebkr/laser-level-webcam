@@ -1,17 +1,26 @@
 import numpy as np
 
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QWidget, QSizePolicy
+from PyQt5.QtWidgets import (
+    QWidget,
+    QSizePolicy,
+    QGroupBox,
+    QVBoxLayout,
+    QFormLayout,
+    QSlider,
+    QPushButton,
+)
 from PyQt5.QtGui import QPainter, QImage, QPixmap, QTransform, QPen
 
 from utils.curves import fit_gaussian
 
 
 # Define the right widget to display the LuminosityScope of luminosity
-class Analyser(QWidget):
-    def __init__(self, parent):
+class AnalyserWidget(QWidget):
+    def __init__(self, parent=None):
         super().__init__(parent)
         self.LuminosityScope = None
+        self.parent = parent
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
     def paintEvent(self, event):
@@ -24,8 +33,11 @@ class Analyser(QWidget):
             for i, intensity in enumerate(self.LuminosityScope):
                 if np.isnan(intensity):
                     intensity = 0
-
-                scopeData[i, : int(intensity)] = 128
+                try:
+                    scopeData[i, : int(intensity)] = 128
+                except IndexError as e:
+                    print(e)
+                    pass
 
             qimage = QImage(
                 scopeData,
@@ -57,4 +69,44 @@ class Analyser(QWidget):
 
     def setLuminosityScope(self, LuminosityScope):
         self.LuminosityScope = LuminosityScope
+
+        # Smoothing
+        try:
+            # compute the moving average with nearest neighbour
+            smoothingFactor = self.parent.smoothing.value()
+            kernel = np.ones(2 * smoothingFactor + 1) / (2 * smoothingFactor + 1)
+            self.LuminosityScope = np.convolve(
+                self.LuminosityScope, kernel, mode="valid"
+            )
+        except Exception as e:
+            print(e)
+            pass
+
         self.update()
+
+
+class Analyser(QGroupBox):
+    def __init__(self, parent):
+        super().__init__(parent)
+
+        self.setTitle("Analyser")
+
+        # Layouts
+        main_layout = QVBoxLayout()
+        self.setLayout(main_layout)
+
+        params = QFormLayout()
+
+        # Widgets
+        self.widget = AnalyserWidget(self)
+
+        self.smoothing = QSlider(Qt.Horizontal)
+        self.smoothing.setMinimum(0)
+        self.smoothing.setMaximum(100)
+        self.smoothing.setValue(0)
+        self.smoothing.setTickInterval(1)
+
+        params.addRow("Smoothness", self.smoothing)
+
+        main_layout.addWidget(self.widget)
+        main_layout.addLayout(params)
