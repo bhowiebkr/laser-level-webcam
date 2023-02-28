@@ -128,3 +128,8 @@ dmypy.json
 # Pyre type checker
 .pyre/
 .vscode/settings.json
+
+*.build
+*.dist
+*.onefile-build
+*.exe
