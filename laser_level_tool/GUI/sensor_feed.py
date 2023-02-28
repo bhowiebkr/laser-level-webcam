@@ -7,13 +7,12 @@ from PyQt5.QtWidgets import (
     QWidget,
     QSizePolicy,
     QGroupBox,
-    QHBoxLayout,
     QVBoxLayout,
     QFormLayout,
     QSlider,
     QPushButton,
 )
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QThread
 
 from PyQt5.QtGui import QPainter, QImage, QPixmap, QTransform
 from utils.misc import adjust_image
@@ -53,20 +52,6 @@ class WebcamThread(threading.Thread):
 
                 intensity_values = np.mean(gray, axis=0)
 
-                # Smoothing TODO This needs to be moved to the analyser
-                try:
-                    # compute the moving average with nearest neighbour
-                    smoothingFactor = self.parent.smoothingSlider.value()
-                    kernel = np.ones(2 * smoothingFactor + 1) / (
-                        2 * smoothingFactor + 1
-                    )
-                    intensity_values = np.convolve(
-                        intensity_values, kernel, mode="valid"
-                    )
-                except Exception as e:
-                    # print(e)
-                    pass
-
                 # Find the min and max values
                 min_value = np.min(intensity_values)
                 max_value = np.max(intensity_values)
@@ -81,9 +66,10 @@ class WebcamThread(threading.Thread):
 
                 # Update the left and right widgets
                 self.sensor_feed.widget.setImage(gray)
-                self.analyser.setLuminosityScope(intensity_values)
+                self.analyser.widget.setLuminosityScope(intensity_values)
+                self.analyser.widget.setFixedHeight(self.sensor_feed.widget.height())
                 # Wait for a short time to avoid overloading the CPU
-                self.stop_event.wait(0.01)
+                self.stop_event.wait(0.001)
 
     def stop(self):
         self.stop_event.set()
