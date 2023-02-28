@@ -34,6 +34,19 @@ class MainWindow(QMainWindow):
 
         self.sensor_feed.webcam_thread.setAnalyser(self.analyser)
         self.sensor_feed.webcam_thread.setSensorFeed(self.sensor_feed)
+
+        self.sensor_feed.webcam_thread.image_ready.connect(
+            self.sensor_feed.widget.setImage
+        )
+
+        self.sensor_feed.webcam_thread.intensity_values_ready.connect(
+            self.analyser.widget.setLuminosityScope
+        )
+
+        self.sensor_feed.widget.height_changed.connect(
+            self.analyser.widget.setFixedHeight
+        )
+
         self.sensor_feed.webcam_thread.start()
 
         # Add to layouts
