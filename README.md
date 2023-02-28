@@ -1,9 +1,11 @@
 # LaserVision: Real-time Laser Measurement with Webcam
 
+A tool for measuring height in microns of arbitrary sized objects using a webcam and a laser level. 
+
 Based of the work from here:
 https://github.com/betzuka/laserlevel
 
-This Python application uses PyQt5 and OpenCV to capture live video from a webcam and display it in a window. It can be used to measure distances using lasers.
+This Python application uses PyQt5 and imageio to capture live video from a webcam and display it in a window. It can be used to measure distances using lasers.
 
 ## Installation
 
