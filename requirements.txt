@@ -1,8 +1,7 @@
 numpy
-imageio
-imageio-ffmpeg
 PySide6
 scipy
 pyqtdarktheme
 nuitka
 ordered-set
+zstandard
