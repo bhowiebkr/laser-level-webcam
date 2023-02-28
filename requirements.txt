@@ -1,5 +1,8 @@
 numpy
 imageio
-PyQt5
+imageio-ffmpeg
+PySide6
 scipy
 pyqtdarktheme
+nuitka
+ordered-set
