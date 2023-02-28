@@ -15,8 +15,11 @@ from PyQt5.QtCore import Qt, QThread, pyqtSignal
 
 from PyQt5.QtGui import QPainter, QImage, QPixmap, QTransform
 from utils.misc import adjust_image
+from GUI.widgets import ResolutionInputWidget
+
 
 SIZE = [640, 480]
+SIZE = [800, 600]
 
 
 # Define the webcam thread to capture frames from the webcam and update the widgets
@@ -100,7 +103,7 @@ class SensorFeedWidget(QWidget):
 
 
 class SensorFeed(QGroupBox):
-    def __init__(self, parent):
+    def __init__(self, parent=None):
         super().__init__(parent)
 
         self.setTitle("Sensor Feed")
@@ -129,6 +132,9 @@ class SensorFeed(QGroupBox):
         self.gamma.setMaximum(200)
         self.gamma.setValue(100)
 
+        sensor_res = ResolutionInputWidget(None, SIZE[0], SIZE[1])
+        sensor_res.lock()
+
         extra_btn = QPushButton("Camera Device Controls")
         extra_btn.setFixedHeight(40)
 
@@ -136,6 +142,7 @@ class SensorFeed(QGroupBox):
         params.addRow("Brightness", self.brightness)
         params.addRow("Contrast", self.contrast)
         params.addRow("Gamma", self.gamma)
+        params.addRow("Resolution", sensor_res)
 
         main_layout.addWidget(self.widget)
         main_layout.addLayout(params)
