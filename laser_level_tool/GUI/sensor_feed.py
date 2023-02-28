@@ -2,7 +2,7 @@ import imageio
 import subprocess
 import numpy as np
 
-from PyQt5.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget,
     QSizePolicy,
     QGroupBox,
@@ -11,9 +11,9 @@ from PyQt5.QtWidgets import (
     QSlider,
     QPushButton,
 )
-from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from PySide6.QtCore import Qt, QThread, Signal
 
-from PyQt5.QtGui import QPainter, QImage, QPixmap, QTransform
+from PySide6.QtGui import QPainter, QImage, QPixmap, QTransform
 from utils.misc import adjust_image
 from GUI.widgets import ResolutionInputWidget
 
@@ -24,9 +24,9 @@ SIZE = [800, 600]
 
 # Define the webcam thread to capture frames from the webcam and update the widgets
 class WebcamThread(QThread):
-    image_ready = pyqtSignal(np.ndarray)
-    intensity_values_ready = pyqtSignal(np.ndarray)
-    stop_signal = pyqtSignal()
+    image_ready = Signal(np.ndarray)
+    intensity_values_ready = Signal(np.ndarray)
+    stop_signal = Signal()
 
     def __init__(self):
         super().__init__()
@@ -71,7 +71,7 @@ class WebcamThread(QThread):
 
 # Define the left widget to display the grayscale webcam feed
 class SensorFeedWidget(QWidget):
-    height_changed = pyqtSignal(int)
+    height_changed = Signal(int)
 
     def __init__(self, parent=None):
         super().__init__(parent)

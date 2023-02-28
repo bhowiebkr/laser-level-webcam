@@ -1,6 +1,6 @@
 import sys
 
-from PyQt5.QtWidgets import (
+from PySide6.QtWidgets import (
     QSlider,
     QMainWindow,
     QWidget,
@@ -8,7 +8,7 @@ from PyQt5.QtWidgets import (
     QSplitter,
     QApplication,
 )
-from PyQt5.QtCore import Qt
+from PySide6.QtCore import Qt
 
 import qdarktheme
 from GUI.analyser import Analyser

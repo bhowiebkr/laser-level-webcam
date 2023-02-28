@@ -1,6 +1,6 @@
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QIntValidator
-from PyQt5.QtWidgets import QWidget, QHBoxLayout, QLabel, QLineEdit
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QIntValidator
+from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel, QLineEdit
 
 
 class ResolutionInputWidget(QWidget):

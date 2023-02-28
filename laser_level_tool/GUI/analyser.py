@@ -1,7 +1,7 @@
 import numpy as np
 
-from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import (
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (
     QWidget,
     QSizePolicy,
     QGroupBox,
@@ -10,7 +10,7 @@ from PyQt5.QtWidgets import (
     QSlider,
     QPushButton,
 )
-from PyQt5.QtGui import QPainter, QImage, QPixmap, QTransform, QPen, QFont
+from PySide6.QtGui import QPainter, QImage, QPixmap, QTransform, QPen, QFont
 
 from utils.curves import fit_gaussian
 
@@ -75,7 +75,7 @@ class AnalyserWidget(QWidget):
             painter.setFont(QFont("Arial", 12))
             painter.setPen(Qt.green)
             text = "{:.3f}".format(y_pos_float)
-            textWidth = painter.fontMetrics().width(text)
+            textWidth = painter.fontMetrics().horizontalAdvance(text)
             textHeight = painter.fontMetrics().height()
 
             x = (self.width() - textWidth) / 2

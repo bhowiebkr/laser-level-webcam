@@ -1,4 +1,4 @@
-from PyQt5.QtWidgets import (
+from PySide6.QtWidgets import (
     QSizePolicy,
     QGroupBox,
     QVBoxLayout,
@@ -13,7 +13,7 @@ from PyQt5.QtWidgets import (
     QLineEdit,
 )
 
-from PyQt5.QtGui import QIntValidator, QDoubleValidator
+from PySide6.QtGui import QIntValidator, QDoubleValidator
 
 
 from GUI.widgets import ResolutionInputWidget
