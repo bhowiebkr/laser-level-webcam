@@ -47,22 +47,13 @@ class MainWindow(QMainWindow):
         self.sampler = Sampler()
         self.sampler.set_sensor_res(self.max_res)
 
-        self.sensor_feed.webcam_thread.setAnalyser(self.analyser)
-        self.sensor_feed.webcam_thread.setSensorFeed(self.sensor_feed)
-
-        self.sensor_feed.webcam_thread.image_ready.connect(
-            self.sensor_feed.widget.setImage
-        )
-
-        self.sensor_feed.webcam_thread.intensity_values_ready.connect(
+        self.sensor_feed.widget.frameWorker.intensityValuesChanged.connect(
             self.analyser.widget.setLuminosityScope
         )
 
         self.sensor_feed.widget.height_changed.connect(
             self.analyser.widget.setFixedHeight
         )
-
-        self.sensor_feed.webcam_thread.start()
 
         # Add to layouts
 
@@ -74,7 +65,8 @@ class MainWindow(QMainWindow):
         self.layout.addWidget(splitter)
 
     def closeEvent(self, event):
-        self.sensor_feed.webcam_thread.stop()
+        self.sensor_feed.widget.workerThread.quit()
+        self.sensor_feed.widget.workerThread.wait()
         self.deleteLater()
 
 

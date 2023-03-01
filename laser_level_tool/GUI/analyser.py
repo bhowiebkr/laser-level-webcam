@@ -71,17 +71,18 @@ class AnalyserWidget(QWidget):
                 )
                 painter.drawLine(0, y_pos, self.width(), y_pos)
 
-            # Draw the value
-            painter.setFont(QFont("Arial", 12))
-            painter.setPen(Qt.green)
-            text = "{:.3f}".format(y_pos_float)
-            textWidth = painter.fontMetrics().horizontalAdvance(text)
-            textHeight = painter.fontMetrics().height()
+            if y_pos_float:
+                # Draw the value
+                painter.setFont(QFont("Arial", 12))
+                painter.setPen(Qt.green)
+                text = "{:.3f}".format(y_pos_float)
+                textWidth = painter.fontMetrics().horizontalAdvance(text)
+                textHeight = painter.fontMetrics().height()
 
-            x = (self.width() - textWidth) / 2
-            y = y_pos - (textHeight / 2)
+                x = (self.width() - textWidth) / 2
+                y = y_pos - (textHeight / 2)
 
-            painter.drawText(int(x), int(y), text)
+                painter.drawText(int(x), int(y), text)
 
     def setLuminosityScope(self, LuminosityScope):
         self.LuminosityScope = LuminosityScope

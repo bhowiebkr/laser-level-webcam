@@ -1,72 +1,64 @@
-import imageio
 import subprocess
 import numpy as np
 
 from PySide6.QtWidgets import (
-    QWidget,
     QSizePolicy,
     QGroupBox,
     QVBoxLayout,
     QFormLayout,
     QSlider,
     QPushButton,
+    QWidget,
 )
-from PySide6.QtCore import Qt, QThread, Signal
+
+from PySide6.QtMultimedia import (
+    QCamera,
+    QMediaCaptureSession,
+    QMediaDevices,
+)
+
+
+from PySide6.QtCore import Qt, QThread, Signal, QObject, Slot
 
 from PySide6.QtGui import QPainter, QImage, QPixmap, QTransform
-from utils.misc import adjust_image
+
+from PySide6.QtMultimedia import (
+    QMediaCaptureSession,
+    QVideoSink,
+    QVideoFrame,
+    QCamera,
+    QMediaDevices,
+)
+import qimage2ndarray
 from GUI.widgets import ResolutionInputWidget
 
 
-SIZE = [640, 480]
-SIZE = [800, 600]
+class FrameWorker(QObject):
+    pixmapChanged = Signal(QPixmap)
+    intensityValuesChanged = Signal(np.ndarray)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.ready = True
+
+    @Slot(QVideoFrame)
+    def setVideoFrame(self, frame: QVideoFrame):
+        self.ready = False
+
+        # Get the frame as a gray scale image
+        image = frame.toImage().convertToFormat(QImage.Format_Grayscale8)
+
+        np_image = qimage2ndarray.raw_view(image)
+        self.intensityValuesChanged.emit(np.mean(np_image, axis=0))
+
+        # Get a pixmap rotated -90
+        pixmap = QPixmap.fromImage(image).transformed(QTransform().rotate(-90))
+        self.pixmapChanged.emit(pixmap)
+        self.ready = True
 
 
-# Define the webcam thread to capture frames from the webcam and update the widgets
-class WebcamThread(QThread):
-    image_ready = Signal(np.ndarray)
-    intensity_values_ready = Signal(np.ndarray)
-    stop_signal = Signal()
-
-    def __init__(self):
-        super().__init__()
-        self._is_running = True
-
-        self.analyser = None
-        self.sensor_feed = None
-
-    def setAnalyser(self, analyser):
-        self.analyser = analyser
-
-    def setSensorFeed(self, sensor_feed):
-        self.sensor_feed = sensor_feed
-
-    def run(self):
-        with imageio.get_reader("<video1>", size=(SIZE[0], SIZE[1])) as webcam:
-            while self._is_running:
-                # Read a frame from the webcam
-                frame = webcam.get_next_data()
-
-                # Brightness, contrast, gamma
-                brightness = self.sensor_feed.brightness.value() / 100
-                contrast = self.sensor_feed.contrast.value() / 100
-                gamma = self.sensor_feed.gamma.value() / 100
-
-                # Convert the RGB image to grayscale using the luminosity method
-                image = np.dot(frame[..., :3], [0.2126, 0.7152, 0.0722]).astype(
-                    np.uint8
-                )
-                image = adjust_image(image, brightness, contrast, gamma)
-
-                self.image_ready.emit(image)
-
-                intensity_values = np.mean(image, axis=0)
-
-                self.intensity_values_ready.emit(intensity_values)
-
-    def stop(self):
-        self._is_running = False
-        self.wait()
+class FrameSender(QObject):
+    frameChanged = Signal(QVideoFrame)
 
 
 # Define the left widget to display the grayscale webcam feed
@@ -76,30 +68,59 @@ class SensorFeedWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.image = None
+        self.pixmap = None
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+        self.workerThread = QThread()
+        self.captureSession = QMediaCaptureSession()
+        self.frameSender = FrameSender()
+        self.frameWorker = FrameWorker()
+
+        self.frameWorker.moveToThread(self.workerThread)
+        self.workerThread.start()
+
+        self.captureSession.setVideoSink(QVideoSink(self))
+        self.captureSession.videoSink().videoFrameChanged.connect(
+            self.onFramePassedFromCamera
+        )
+        self.frameSender.frameChanged.connect(self.frameWorker.setVideoFrame)
+        self.frameWorker.pixmapChanged.connect(self.setPixmap)
+
+        available_cameras = QMediaDevices.videoInputs()
+        camera_info = available_cameras[1]
+
+        camera = QCamera(cameraDevice=camera_info, parent=self)
+        self.captureSession.setCamera(camera)
+        camera.start()
+
+    @Slot(QVideoFrame)
+    def onFramePassedFromCamera(self, frame: QVideoFrame):
+        if self.frameWorker.ready:
+            self.frameSender.frameChanged.emit(frame)
 
     def paintEvent(self, event):
         super().paintEvent(event)
-        painter = QPainter(self)
-        if self.image is not None:
-            qimage = QImage(
-                self.image.data,
-                self.image.shape[1],
-                self.image.shape[0],
-                QImage.Format_Grayscale8,
-            )
-            pixmap = QPixmap.fromImage(qimage)
-            pixmap = pixmap.transformed(QTransform().rotate(-90))
-            painter.drawPixmap(self.rect(), pixmap)
 
-    def setImage(self, image):
-        self.image = image
+        if not self.pixmap:
+            return
+
+        painter = QPainter(self)
+        painter.drawPixmap(self.rect(), self.pixmap)
+
+    def setPixmap(self, pixmap):
+        self.pixmap = pixmap
         self.update()
+        # super().setPixmap(
+        #     pixmap.scaled(self.width(), self.height(), Qt.IgnoreAspectRatio)
+        # )
 
     def resizeEvent(self, event):
         new_height = event.size().height()
         self.height_changed.emit(new_height)
         super().resizeEvent(event)
+
+    def closeEvent(self, event):
+        super().closeEvent(event)
 
 
 class SensorFeed(QGroupBox):
@@ -127,12 +148,13 @@ class SensorFeed(QGroupBox):
         self.contrast.setMaximum(200)
         self.contrast.setValue(100)
         self.contrast.setTickInterval(1)
+
         self.gamma = QSlider(Qt.Horizontal)
         self.gamma.setMinimum(1)
         self.gamma.setMaximum(200)
         self.gamma.setValue(100)
 
-        sensor_res = ResolutionInputWidget(None, SIZE[0], SIZE[1])
+        sensor_res = ResolutionInputWidget(None, 0, 0)
         sensor_res.lock()
 
         extra_btn = QPushButton("Camera Device Controls")
@@ -147,9 +169,6 @@ class SensorFeed(QGroupBox):
         main_layout.addWidget(self.widget)
         main_layout.addLayout(params)
         main_layout.addWidget(extra_btn)
-
-        # Start the webcam thread
-        self.webcam_thread = WebcamThread()
 
         # Logic
         extra_btn.clicked.connect(self.extra_controls)
