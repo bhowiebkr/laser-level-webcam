@@ -133,3 +133,5 @@ dmypy.json
 *.dist
 *.onefile-build
 *.exe
+
+temp
