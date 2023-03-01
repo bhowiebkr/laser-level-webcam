@@ -1,0 +1,1 @@
+nuitka --enable-plugin=pyside6 --follow-imports --onefile --include-qt-plugins=sensible,multimedia  .\laser_level_tool\main.py 
