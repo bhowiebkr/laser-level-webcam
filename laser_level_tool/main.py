@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 
 import qdarktheme
+
 from GUI.analyser import Analyser
 from GUI.sensor_feed import SensorFeed
 from GUI.sampler import Sampler
@@ -23,10 +24,11 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
+        self.setWindowTitle("Laser Level Webcam Tool")
+
         self.max_res = get_webcam_max_res()
 
         self.resize(800, 600)
-        self.setWindowTitle("Laser Level Webcam Tool")
 
         # Set the main window layout
         central_widget = QWidget()
@@ -71,7 +73,7 @@ class MainWindow(QMainWindow):
 
 
 if __name__ == "__main__":
-    app = QApplication([])
+    app = QApplication(sys.argv)
     qdarktheme.setup_theme()
     window = MainWindow()
     window.show()
