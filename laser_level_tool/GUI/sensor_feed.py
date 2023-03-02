@@ -1,29 +1,11 @@
 import subprocess
 import numpy as np
 
-from PySide6.QtWidgets import (
-    QSizePolicy,
-    QGroupBox,
-    QVBoxLayout,
-    QFormLayout,
-    QSlider,
-    QPushButton,
-    QWidget,
-    QComboBox,
-)
-
-
+from PySide6.QtWidgets import QSizePolicy, QGroupBox, QVBoxLayout, QFormLayout, QSlider, QPushButton, QWidget, QComboBox
 from PySide6.QtCore import Qt, QThread, Signal, QObject, Slot
-
 from PySide6.QtGui import QPainter, QImage, QPixmap, QTransform
+from PySide6.QtMultimedia import QMediaCaptureSession, QVideoSink, QVideoFrame, QCamera, QMediaDevices
 
-from PySide6.QtMultimedia import (
-    QMediaCaptureSession,
-    QVideoSink,
-    QVideoFrame,
-    QCamera,
-    QMediaDevices,
-)
 import qimage2ndarray
 from GUI.widgets import ResolutionInputWidget
 
@@ -78,18 +60,9 @@ class SensorFeedWidget(QWidget):
         self.workerThread.start()
 
         self.captureSession.setVideoSink(QVideoSink(self))
-        self.captureSession.videoSink().videoFrameChanged.connect(
-            self.onFramePassedFromCamera
-        )
+        self.captureSession.videoSink().videoFrameChanged.connect(self.onFramePassedFromCamera)
         self.frameSender.frameChanged.connect(self.frameWorker.setVideoFrame)
         self.frameWorker.pixmapChanged.connect(self.setPixmap)
-
-        # available_cameras = QMediaDevices.videoInputs()
-        # camera_info = available_cameras[0]
-
-        # self.camera = QCamera(cameraDevice=camera_info, parent=self)
-        # self.captureSession.setCamera(self.camera)
-        # self.camera.start()
 
     @Slot(QVideoFrame)
     def onFramePassedFromCamera(self, frame: QVideoFrame):
@@ -108,9 +81,6 @@ class SensorFeedWidget(QWidget):
     def setPixmap(self, pixmap):
         self.pixmap = pixmap
         self.update()
-        # super().setPixmap(
-        #     pixmap.scaled(self.width(), self.height(), Qt.IgnoreAspectRatio)
-        # )
 
     def resizeEvent(self, event):
         new_height = event.size().height()
@@ -125,8 +95,11 @@ class SensorFeedWidget(QWidget):
         camera_info = available_cameras[index]
 
         self.camera = QCamera(cameraDevice=camera_info, parent=self)
+
         self.captureSession.setCamera(self.camera)
         self.camera.start()
+        self.camera.setExposureMode(QCamera.ExposureManual)
+        print(self.camera.exposureMode())
 
     def closeEvent(self, event):
         super().closeEvent(event)
@@ -154,10 +127,10 @@ class SensorFeed(QGroupBox):
             self.cameraPicker.currentIndexChanged.connect(self.widget.set_camera)
             self.widget.set_camera(0)
 
-        self.brightness = QSlider(Qt.Horizontal)
-        self.brightness.setMinimum(-200)
-        self.brightness.setMaximum(200)
-        self.brightness.setValue(0)
+        self.exposure = QSlider(Qt.Horizontal)
+        self.exposure.setMinimum(-200)
+        self.exposure.setMaximum(200)
+        self.exposure.setValue(0)
 
         self.contrast = QSlider(Qt.Horizontal)
         self.contrast.setMinimum(1)
@@ -178,7 +151,7 @@ class SensorFeed(QGroupBox):
 
         # add widgets
         params.addRow("Camera", self.cameraPicker)
-        # params.addRow("Brightness", self.brightness)
+        # params.addRow("Exposure", self.exposure)
         # params.addRow("Contrast", self.contrast)
         # params.addRow("Gamma", self.gamma)
         # params.addRow("Feed Res", sensor_res)
@@ -196,5 +169,5 @@ class SensorFeed(QGroupBox):
             self.cameraPicker.addItem(name)
 
     def extra_controls(self):
-        cmd = 'ffmpeg -f dshow -show_video_device_dialog true -i video="USB Camera"'
+        cmd = f'ffmpeg -f dshow -show_video_device_dialog true -i video="{self.cameraPicker.currentText()}"'
         subprocess.Popen(cmd, shell=True)
