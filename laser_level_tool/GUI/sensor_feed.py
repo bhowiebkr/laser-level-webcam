@@ -99,7 +99,6 @@ class SensorFeedWidget(QWidget):
         self.captureSession.setCamera(self.camera)
         self.camera.start()
         self.camera.setExposureMode(QCamera.ExposureManual)
-        print(self.camera.exposureMode())
 
     def closeEvent(self, event):
         super().closeEvent(event)
