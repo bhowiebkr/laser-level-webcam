@@ -30,25 +30,16 @@ class SampleWorker(QObject):
 
         self.subsample_recieved.emit(self.running_total)
 
-        # print(f"Sample {self.running_total}/{self.total_samples}")
-
         if self.running_total == self.total_samples:
-            # Calculate current mean and standard deviation
-            mean = np.mean(self.sample_array)
-            std_dev = np.std(self.sample_array)
+            # Calculate the number of outliers to remove
+            n_outliers = int(len(self.sample_array) * self.outlier_percent / 2.0)
 
-            # Calculate threshold for outlier removal
-            threshold = mean + std_dev * self.outlier_percent
-
-            # Remove outliers above threshold
-            print(self.sample_array, "\n")
-            self.sample_array = self.sample_array[self.sample_array <= threshold]
-            print(self.sample_array)
+            # Sort and remove the outliers
+            self.sample_array = self.sample_array[self.sample_array.argsort()][n_outliers:-n_outliers]
 
             # Calculate new mean as float
             mean = np.mean(self.sample_array).astype(float)
 
-            # average = self.acclimated_samples / self.total_samples
             self.sample_ready.emit(mean)
 
             # reset
@@ -99,8 +90,6 @@ class Sampler(QGroupBox):
         self.sample_filter.setMaximum(99)
         self.sample_filter.setValue(20)
 
-        # self.sensor_res = ResolutionInputWidget()
-
         self.pixel_size = QLineEdit("3")
         self.pixel_size.setValidator(QDoubleValidator())  # Only allow integer values
 
@@ -110,8 +99,6 @@ class Sampler(QGroupBox):
         self.zero_btn = QPushButton("Zero")
         self.take_sample_btn = QPushButton("Take Sample")
         self.take_sample_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-
-        # self.sub_sample_label = QLabel("0/0")
 
         self.sample_table = QTableWidget()
         # Set the table headers
@@ -123,10 +110,8 @@ class Sampler(QGroupBox):
 
         sampling_cmd_layout.addWidget(self.zero_btn)
         sampling_cmd_layout.addWidget(self.take_sample_btn)
-        # sampling_cmd_layout.addWidget(self.sub_sample_label)
 
         params_left.addRow("Sub Sample #", self.num_samples)
-        # params_left.addRow("Threshold (μm)", self.threshold)
         params_right.addRow("Outlier Removal (%)", self.sample_filter)
         params_right.addRow("Sensor Width (μm)", self.pixel_size)
 
@@ -145,7 +130,7 @@ class Sampler(QGroupBox):
 
     def take_sample(self):
         subsamples = int(self.num_samples.text())
-        outlier_percent = int(self.threshold.text())
+        outlier_percent = int(self.sample_filter.value())
         self.sample_worker.start(subsamples, outlier_percent)
 
     def subsample_progress_update(self, num):
