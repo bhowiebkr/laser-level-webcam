@@ -1,14 +1,6 @@
 import sys
 
-from PySide6.QtWidgets import (
-    QSlider,
-    QMainWindow,
-    QWidget,
-    QHBoxLayout,
-    QSplitter,
-    QApplication,
-)
-from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QSplitter, QApplication
 
 import qdarktheme
 
@@ -47,15 +39,15 @@ class MainWindow(QMainWindow):
         self.sensor_feed = SensorFeed()
         self.analyser = Analyser()
         self.sampler = Sampler()
-        self.sampler.set_sensor_res(self.max_res)
 
-        self.sensor_feed.widget.frameWorker.intensityValuesChanged.connect(
-            self.analyser.widget.setLuminosityScope
-        )
+        self.sensor_feed.widget.frameWorker.intensityValuesChanged.connect(self.analyser.widget.setLuminosityScope)
 
-        self.sensor_feed.widget.height_changed.connect(
-            self.analyser.widget.setFixedHeight
-        )
+        self.sensor_feed.widget.height_changed.connect(self.analyser.widget.setFixedHeight)
+
+        self.sampler.zero_btn.clicked.connect(self.analyser.widget.set_zero)
+
+        self.analyser.widget.zero_point_changed.connect(self.sampler.set_zero_point)
+        self.analyser.widget.center_point_changed.connect(self.sampler.sample_worker.sample_in)
 
         # Add to layouts
 
@@ -69,6 +61,10 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         self.sensor_feed.widget.workerThread.quit()
         self.sensor_feed.widget.workerThread.wait()
+
+        self.sampler.workerThread.quit()
+        self.sampler.workerThread.wait()
+
         self.deleteLater()
 
 
