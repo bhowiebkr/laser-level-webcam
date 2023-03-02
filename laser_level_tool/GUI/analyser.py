@@ -1,15 +1,7 @@
 import numpy as np
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (
-    QWidget,
-    QSizePolicy,
-    QGroupBox,
-    QVBoxLayout,
-    QFormLayout,
-    QSlider,
-    QPushButton,
-)
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import QWidget, QSizePolicy, QGroupBox, QVBoxLayout, QFormLayout, QSlider, QPushButton
 from PySide6.QtGui import QPainter, QImage, QPixmap, QTransform, QPen, QFont
 
 from utils.curves import fit_gaussian
@@ -17,10 +9,15 @@ from utils.curves import fit_gaussian
 
 # Define the right widget to display the LuminosityScope of luminosity
 class AnalyserWidget(QWidget):
+    zero_point_changed = Signal(float)
+    center_point_changed = Signal(float)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.LuminosityScope = None
         self.parent = parent
+        self.center_point = None
+        self.zero_point = None
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
     def cam_updated(self):
@@ -56,33 +53,41 @@ class AnalyserWidget(QWidget):
             pixmap = pixmap.transformed(transform)
             painter.drawPixmap(self.rect(), pixmap)
 
-            y_pos = fit_gaussian(
-                self.LuminosityScope
-            )  # Specify the y position of the line
-            y_pos_float = y_pos
-            if y_pos:
-                dataHeight = self.LuminosityScope.shape[0]
-                pen = QPen(Qt.green, 4, Qt.SolidLine)
+            self.center_point = fit_gaussian(self.LuminosityScope)  # Specify the y position of the line
+
+            self.center_point_changed.emit(self.center_point)
+            # y_pos_float = y_pos
+            if self.center_point:
+                pen = QPen(Qt.green, 0, Qt.SolidLine)
                 painter.setPen(pen)
-                y_pos = int(
-                    self.height()
-                    - (y_pos - 0) * (self.height() - 0) / (dataHeight - 0)
-                    + 0
-                )
+                y_pos = int(self.height() - (self.center_point - 0) * (self.height() - 0) / (self.LuminosityScope.shape[0] - 0) + 0)
                 painter.drawLine(0, y_pos, self.width(), y_pos)
 
-            if y_pos_float:
                 # Draw the value
                 painter.setFont(QFont("Arial", 12))
                 painter.setPen(Qt.green)
-                text = "{:.3f}".format(y_pos_float)
+                text = "{:.3f}".format(self.center_point)
                 textWidth = painter.fontMetrics().horizontalAdvance(text)
                 textHeight = painter.fontMetrics().height()
 
                 x = (self.width() - textWidth) / 2
                 y = y_pos - (textHeight / 2)
 
+            if self.zero_point:
+                painter.setPen(Qt.red)
+
+                zero_pos = int(self.height() - (self.zero_point - 0) * (self.height() - 0) / (self.LuminosityScope.shape[0] - 0) + 0)
+
+                painter.drawLine(0, zero_pos, self.width(), zero_pos)
+
+            # We draw text last to it's not under the zero point line
+            if self.center_point:
+                painter.setPen(Qt.green)
                 painter.drawText(int(x), int(y), text)
+
+    def set_zero(self):
+        self.zero_point = self.center_point
+        self.zero_point_changed.emit(self.zero_point)
 
     def setLuminosityScope(self, LuminosityScope):
         self.LuminosityScope = LuminosityScope
@@ -92,9 +97,7 @@ class AnalyserWidget(QWidget):
             # compute the moving average with nearest neighbour
             smoothingFactor = self.parent.smoothing.value()
             kernel = np.ones(2 * smoothingFactor + 1) / (2 * smoothingFactor + 1)
-            self.LuminosityScope = np.convolve(
-                self.LuminosityScope, kernel, mode="valid"
-            )
+            self.LuminosityScope = np.convolve(self.LuminosityScope, kernel, mode="valid")
 
             # Find the min and max values
             min_value = np.min(self.LuminosityScope)
@@ -104,9 +107,7 @@ class AnalyserWidget(QWidget):
             if max_value == min_value:
                 max_value += 1
             # Rescale the intensity values to have a range between 0 and 255
-            self.LuminosityScope = (self.LuminosityScope - min_value) * (
-                255 / (max_value - min_value)
-            )
+            self.LuminosityScope = (self.LuminosityScope - min_value) * (255 / (max_value - min_value))
 
         except Exception as e:
             print(e)
