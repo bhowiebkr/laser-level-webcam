@@ -1,4 +1,4 @@
-# LaserVision: Real-time Laser Measurement with Webcam
+# LaserVision: Real-time Laser Measurement with a Webcam
 
 This is the software component in building a highly accurate measurement device primarily used in a similar way to a surface plate. Sofar measurements are attainable between 0.5um - 2um in repeated measurements. 
 
