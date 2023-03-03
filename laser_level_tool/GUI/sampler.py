@@ -1,6 +1,6 @@
-from PySide6.QtWidgets import QSizePolicy, QGroupBox, QVBoxLayout, QHBoxLayout, QGridLayout, QFormLayout, QSpinBox, QLabel, QPushButton, QTableWidget, QHeaderView, QLineEdit
+from PySide6.QtWidgets import QSizePolicy, QGroupBox, QComboBox, QVBoxLayout, QTableWidgetItem, QHBoxLayout, QGridLayout, QFormLayout, QSpinBox, QLabel, QPushButton, QTableWidget, QHeaderView, QLineEdit
 from PySide6.QtGui import QDoubleValidator
-from PySide6.QtCore import QThread, QObject, Signal
+from PySide6.QtCore import QThread, QObject, Signal, Qt
 
 import numpy as np
 
@@ -55,6 +55,8 @@ class SampleWorker(QObject):
 
 
 class Sampler(QGroupBox):
+    # set_zero = Signal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
 
@@ -83,26 +85,29 @@ class Sampler(QGroupBox):
         self.num_samples = QSpinBox()
         self.num_samples.setMinimum(0)
         self.num_samples.setMaximum(9999)
-        self.num_samples.setValue(60)
+        self.num_samples.setValue(10)
 
         self.sample_filter = QSpinBox()
         self.sample_filter.setMinimum(0)
         self.sample_filter.setMaximum(99)
         self.sample_filter.setValue(20)
 
-        self.pixel_size = QLineEdit("3")
-        self.pixel_size.setValidator(QDoubleValidator())  # Only allow integer values
+        self.units = QComboBox()
 
-        self.threshold = QLineEdit("6")
-        self.pixel_size.setValidator(QDoubleValidator())  # Only allow integer values
+        self.sensor_width = QLineEdit("3")
+        self.sensor_width.setValidator(QDoubleValidator())  # Only allow integer values
+
+        # self.threshold = QLineEdit("6")
+        # self.sensor_width.setValidator(QDoubleValidator())  # Only allow integer values
 
         self.zero_btn = QPushButton("Zero")
         self.take_sample_btn = QPushButton("Take Sample")
+        self.take_sample_btn.setDisabled(True)
         self.take_sample_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
         self.sample_table = QTableWidget()
         # Set the table headers
-        header_names = ["Sample #", "Measured", "Residual", "Scrape", "Shim"]
+        header_names = ["Measured (μm)", "Residual (μm)", "Scrape (μm)", "Shim (μm)"]
         self.sample_table.setColumnCount(len(header_names))
         self.sample_table.setHorizontalHeaderLabels(header_names)
         header = self.sample_table.horizontalHeader()
@@ -112,8 +117,9 @@ class Sampler(QGroupBox):
         sampling_cmd_layout.addWidget(self.take_sample_btn)
 
         params_left.addRow("Sub Sample #", self.num_samples)
+        params_left.addRow("Units", self.units)
         params_right.addRow("Outlier Removal (%)", self.sample_filter)
-        params_right.addRow("Sensor Width (μm)", self.pixel_size)
+        params_right.addRow("Sensor Width (mm)", self.sensor_width)
 
         top_layout.addLayout(params_left, 0, 0)
         top_layout.addLayout(params_right, 0, 1)
@@ -125,8 +131,10 @@ class Sampler(QGroupBox):
         # Logic
         self.take_sample_btn.clicked.connect(self.take_sample)
 
-    def set_zero_point(self, zero_point):
+    def receive_zero_point(self, zero_point):
         self.zero_point = zero_point
+        self.sample_table.setRowCount(0)
+        self.take_sample_btn.setEnabled(True)
 
     def take_sample(self):
         subsamples = int(self.num_samples.text())
@@ -140,4 +148,16 @@ class Sampler(QGroupBox):
     def add_sample(self, sample):
         self.take_sample_btn.setEnabled(True)
         self.take_sample_btn.setText("Take Sample")
-        print(f"Adding smaple: {sample}")
+
+        self.sample_table.insertRow(self.sample_table.rowCount())
+
+        row_count = self.sample_table.rowCount()
+
+        value = float(self.sensor_width.text()) / 1080 * (self.zero_point - sample) * 1000
+        new_data = [value, 0, 0, 0]
+
+        for index, data in enumerate(new_data):
+            cell = QTableWidgetItem()
+            cell.setTextAlignment(Qt.AlignCenter)  # center-align the text
+            cell.setData(Qt.DisplayRole, data)
+            self.sample_table.setItem(row_count - 1, index, cell)
