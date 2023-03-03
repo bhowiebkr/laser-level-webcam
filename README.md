@@ -16,7 +16,7 @@ This tool is based on the hard work of this original [Java tool](https://github.
 
 
 ## Running the compiled binary
-Currently please see the [zipped binary file builds folder](builds\Laser_Level_Webcam.zip) for pre compiled binaries using the nuitka
+Currently please see the [zipped binary file builds folder](builds/) for pre compiled binaries using the nuitka
 Python to C compiler. In the future I’ll setup a Releases. 
 
 ## Running from Python source
