@@ -1,13 +1,24 @@
 # LaserVision: Real-time Laser Measurement with Webcam
 
-A tool for measuring height in microns of arbitrary sized objects using a webcam and a laser level. 
+This is the software component in building a highly accurate measurement device primarily used in a similar way to a surface plate. Sofar measurements are attainable between 0.5um - 2um in repeated measurements. 
 
-Based of the work from here:
-https://github.com/betzuka/laserlevel
+Because of how image sensor technology has progressed, we can use that  as the basis of a highly accurate measurement device. This tool works by reading the laser sensor’s intensity values on a webcam with its camera lens taken off.  An image sensor off a typical $15 webcam is about 3mm wide and has a resolution of FHD (1920x1080). This means that each light sensor is in the range of 1-5 microns in size. 
 
-This Python application uses PyQt5 and imageio to capture live video from a webcam and display it in a window. It can be used to measure distances using lasers.
+The camera sensor is mounted at 90 degree angle so the wide direction is vertical. This gives a high coverage to sense the beam and also rescues power source based noise like PWM noise in switching power supplies. 
 
-## Installation
+The laser beam can be a point or a preferred horizontal line (like in a self leveling laser that I am using). We take the mean of each row (ex 1080 pixels wide) reshaping the 2D image into a 1D array. We then take this 1D array and fit a gaussian curve to it to find the center point. Finally converting the pixel position into physical height from calculations based on the physical size of the sensor to its resolution.
+
+Further improvements reaching sub-pixel noise can be done by multisampling the results, smoothing out the luminosity noise in the 1D array, and removal of outliers by percentage. 
+
+This tool is based on the hard work of this original [Java tool](https://github.com/betzuka/laserlevel) but using a different base language Python and further changes to improve its accuracy and usability, and sample speed. 
+
+![alt text](images/sub-sample.png)
+
+## Running the compiled binary
+Currently please see the builds folder for pre compiled binaries using the nuitka
+Python to C compiler. In the future I’ll setup a Releases. 
+
+## Running from Python source
 
 1. Install Python on your computer. You can download the latest version of Python from the official website: https://www.python.org/downloads/
 
@@ -23,13 +34,21 @@ This command will install all the required packages listed in the `requirements.
 
 5. Once the packages are installed, run the application by running the following command:
 
-`python main.py`
+`python main.py` from the **laser_level_tool** folder.
 
 This will launch the application and start capturing video from your webcam.
 
 ## Usage
 
-The application will display the live video feed from your webcam in a window. You can use lasers to measure distances in the video feed.
+I’ll make a video explaining this tool and the workflow in greater detail, but in the meantime, work from the left to the right of the tool. Some helpful tips:
+
+- About 100 sub-samples. I tried up to 1000 sub-samples and didn’t find much more of a difference.
+- remove 50% of the outliers 
+- crank the smoothing way up
+- let the tool stay on for at least 5 minutes so the webcam sensor stays at a consistent temp. It will drift while getting up to temp. It might be best to test this on your own sensor by taking the same measurement from a cold start and time how long it takes before the samples stop drifting.
+- Make sure nobody is walking around.
+- Don’t stand when taking a sample because it’ll pick up your leg muscles. Sit and don’t move.
+- Disable auto exposure and auto color temp. Disable anything that says auto in the device config with the extra attribute button (bottom left)
 
 ## License
 
