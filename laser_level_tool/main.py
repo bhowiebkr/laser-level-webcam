@@ -20,7 +20,7 @@ class MainWindow(QMainWindow):
 
         self.max_res = get_webcam_max_res()
 
-        self.resize(800, 600)
+        self.resize(1280 + 70, 720 + 39)
 
         # Set the main window layout
         central_widget = QWidget()
@@ -46,7 +46,7 @@ class MainWindow(QMainWindow):
 
         self.sampler.zero_btn.clicked.connect(self.analyser.widget.set_zero)
 
-        self.analyser.widget.zero_point_changed.connect(self.sampler.set_zero_point)
+        self.analyser.widget.zero_point_changed.connect(self.sampler.receive_zero_point)
         self.analyser.widget.center_point_changed.connect(self.sampler.sample_worker.sample_in)
 
         # Add to layouts
