@@ -50,6 +50,8 @@ I’ll make a video explaining this tool and the workflow in greater detail, but
 - Make sure nobody is walking around.
 - Don’t stand when taking a sample because it’ll pick up your leg muscles. Sit and don’t move.
 - Disable auto exposure and auto color temp. Disable anything that says auto in the device config with the extra attribute button (bottom left)
+- If using a self leveling laser level. Anything will make the beam wobble. Look out for sources like people, computers/electronics with fans, HVAC systems, etc. 
+
 
 ## License
 
