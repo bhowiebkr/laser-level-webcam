@@ -10,8 +10,8 @@ import qimage2ndarray
 
 
 class FrameWorker(QObject):
-    pixmapChanged = Signal(QPixmap)
-    intensityValuesChanged = Signal(np.ndarray)
+    OnPixmapChanged = Signal(QPixmap)
+    OnIntensityValuesChanged = Signal(np.ndarray)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -25,21 +25,21 @@ class FrameWorker(QObject):
         image = frame.toImage().convertToFormat(QImage.Format_Grayscale8)
 
         np_image = qimage2ndarray.raw_view(image)
-        self.intensityValuesChanged.emit(np.mean(np_image, axis=0))
+        self.OnIntensityValuesChanged.emit(np.mean(np_image, axis=0))
 
         # Get a pixmap rotated -90
         pixmap = QPixmap.fromImage(image).transformed(QTransform().rotate(-90))
-        self.pixmapChanged.emit(pixmap)
+        self.OnPixmapChanged.emit(pixmap)
         self.ready = True
 
 
 class FrameSender(QObject):
-    frameChanged = Signal(QVideoFrame)
+    OnFrameChanged = Signal(QVideoFrame)
 
 
 # Define the left widget to display the grayscale webcam feed
 class SensorFeedWidget(QWidget):
-    height_changed = Signal(int)
+    OnHeightChanged = Signal(int)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -60,13 +60,13 @@ class SensorFeedWidget(QWidget):
 
         self.captureSession.setVideoSink(QVideoSink(self))
         self.captureSession.videoSink().videoFrameChanged.connect(self.onFramePassedFromCamera)
-        self.frameSender.frameChanged.connect(self.frameWorker.setVideoFrame)
-        self.frameWorker.pixmapChanged.connect(self.setPixmap)
+        self.frameSender.OnFrameChanged.connect(self.frameWorker.setVideoFrame)
+        self.frameWorker.OnPixmapChanged.connect(self.setPixmap)
 
     @Slot(QVideoFrame)
     def onFramePassedFromCamera(self, frame: QVideoFrame):
         if self.frameWorker.ready:
-            self.frameSender.frameChanged.emit(frame)
+            self.frameSender.OnFrameChanged.emit(frame)
 
     def paintEvent(self, event):
         super().paintEvent(event)
@@ -83,7 +83,7 @@ class SensorFeedWidget(QWidget):
 
     def resizeEvent(self, event):
         new_height = event.size().height()
-        self.height_changed.emit(new_height)
+        self.OnHeightChanged.emit(new_height)
         super().resizeEvent(event)
 
     def set_camera(self, index):
@@ -146,10 +146,6 @@ class SensorFeed(QGroupBox):
 
         # add widgets
         params.addRow("Camera", self.cameraPicker)
-        # params.addRow("Exposure", self.exposure)
-        # params.addRow("Contrast", self.contrast)
-        # params.addRow("Gamma", self.gamma)
-        # params.addRow("Feed Res", sensor_res)
 
         main_layout.addWidget(self.widget)
         main_layout.addLayout(params)

@@ -6,8 +6,8 @@ import numpy as np
 
 
 class SampleWorker(QObject):
-    sample_ready = Signal(float)
-    subsample_recieved = Signal(int)
+    OnSampleReady = Signal(float)
+    OnSubsampleRecieved = Signal(int)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -28,7 +28,7 @@ class SampleWorker(QObject):
         # self.acclimated_samples += sample
         self.running_total += 1
 
-        self.subsample_recieved.emit(self.running_total)
+        self.OnSubsampleRecieved.emit(self.running_total)
 
         if self.running_total == self.total_samples:
             # Calculate the number of outliers to remove
@@ -40,7 +40,7 @@ class SampleWorker(QObject):
             # Calculate new mean as float
             mean = np.mean(self.sample_array).astype(float)
 
-            self.sample_ready.emit(mean)
+            self.OnSampleReady.emit(mean)
 
             # reset
             self.sample_array = np.empty((0,))
@@ -55,16 +55,17 @@ class SampleWorker(QObject):
 
 
 class Sampler(QGroupBox):
-    # set_zero = Signal()
+    OnSetZero = Signal(float)
 
     def __init__(self, parent=None):
         super().__init__(parent)
 
         self.zero_point = None
+        self.setting_zero = False
 
         self.sample_worker = SampleWorker()
-        self.sample_worker.sample_ready.connect(self.add_sample)
-        self.sample_worker.subsample_recieved.connect(self.subsample_progress_update)
+        self.sample_worker.OnSampleReady.connect(self.received_sample)
+        self.sample_worker.OnSubsampleRecieved.connect(self.subsample_progress_update)
         self.workerThread = QThread()
         self.sample_worker.moveToThread(self.workerThread)
         self.workerThread.start()
@@ -97,9 +98,6 @@ class Sampler(QGroupBox):
         self.sensor_width = QLineEdit("3")
         self.sensor_width.setValidator(QDoubleValidator())  # Only allow integer values
 
-        # self.threshold = QLineEdit("6")
-        # self.sensor_width.setValidator(QDoubleValidator())  # Only allow integer values
-
         self.zero_btn = QPushButton("Zero")
         self.take_sample_btn = QPushButton("Take Sample")
         self.take_sample_btn.setDisabled(True)
@@ -129,35 +127,50 @@ class Sampler(QGroupBox):
         main_layout.addWidget(self.sample_table)
 
         # Logic
-        self.take_sample_btn.clicked.connect(self.take_sample)
+        self.take_sample_btn.clicked.connect(self.take_sample_btn_cmd)
+        self.zero_btn.clicked.connect(self.zero_btn_cmd)
+
+    def zero_btn_cmd(self):
+        self.setting_zero = True
+        self.take_sample_btn_cmd()
 
     def receive_zero_point(self, zero_point):
         self.zero_point = zero_point
         self.sample_table.setRowCount(0)
         self.take_sample_btn.setEnabled(True)
 
-    def take_sample(self):
+    def take_sample_btn_cmd(self):
         subsamples = int(self.num_samples.text())
         outlier_percent = int(self.sample_filter.value())
         self.sample_worker.start(subsamples, outlier_percent)
 
     def subsample_progress_update(self, num):
-        self.take_sample_btn.setDisabled(True)
-        self.take_sample_btn.setText(f"{num}/{self.num_samples.text()}")
+        if self.setting_zero == True:
+            self.zero_btn.setDisabled(True)
+            self.zero_btn.setText(f"{num}/{self.num_samples.text()}")
+        else:
+            self.take_sample_btn.setDisabled(True)
+            self.take_sample_btn.setText(f"{num}/{self.num_samples.text()}")
 
-    def add_sample(self, sample):
-        self.take_sample_btn.setEnabled(True)
-        self.take_sample_btn.setText("Take Sample")
+    def received_sample(self, sample):
+        if self.setting_zero == True:
+            self.zero_btn.setEnabled(True)
+            self.zero_btn.setText("Zero")
+            self.OnSetZero.emit(sample)
+            self.setting_zero = False
+        else:
+            self.take_sample_btn.setEnabled(True)
+            self.take_sample_btn.setText("Take Sample")
 
-        self.sample_table.insertRow(self.sample_table.rowCount())
+            self.sample_table.insertRow(self.sample_table.rowCount())
 
-        row_count = self.sample_table.rowCount()
+            row_count = self.sample_table.rowCount()
 
-        value = float(self.sensor_width.text()) / 1080 * (self.zero_point - sample) * 1000
-        new_data = [value, 0, 0, 0]
+            value = float(self.sensor_width.text()) / 1080 * (self.zero_point - sample) * 1000
+            new_data = [value, 0, 0, 0]
 
-        for index, data in enumerate(new_data):
-            cell = QTableWidgetItem()
-            cell.setTextAlignment(Qt.AlignCenter)  # center-align the text
-            cell.setData(Qt.DisplayRole, data)
-            self.sample_table.setItem(row_count - 1, index, cell)
+            for index, data in enumerate(new_data):
+                cell = QTableWidgetItem()
+                cell.setTextAlignment(Qt.AlignCenter)  # center-align the text
+                cell.setData(Qt.DisplayRole, data)
+                self.sample_table.setItem(row_count - 1, index, cell)

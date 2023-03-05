@@ -9,8 +9,8 @@ from utils.curves import fit_gaussian
 
 # Define the right widget to display the LuminosityScope of luminosity
 class AnalyserWidget(QWidget):
-    zero_point_changed = Signal(float)
-    center_point_changed = Signal(float)
+    OnZeroPointChanged = Signal(float)
+    OnCenterPointChanged = Signal(float)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -20,8 +20,8 @@ class AnalyserWidget(QWidget):
         self.zero_point = None
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
-    def cam_updated(self):
-        print("cam updated")
+    def get_data_width(self):
+        return int(self.LuminosityScope.shape[0])
 
     def paintEvent(self, event):
         super().paintEvent(event)
@@ -55,7 +55,7 @@ class AnalyserWidget(QWidget):
 
             self.center_point = fit_gaussian(self.LuminosityScope)  # Specify the y position of the line
 
-            self.center_point_changed.emit(self.center_point)
+            self.OnCenterPointChanged.emit(self.center_point)
             # y_pos_float = y_pos
             if self.center_point:
                 pen = QPen(Qt.green, 0, Qt.SolidLine)
@@ -85,9 +85,9 @@ class AnalyserWidget(QWidget):
                 painter.setPen(Qt.green)
                 painter.drawText(int(x), int(y), text)
 
-    def set_zero(self):
-        self.zero_point = self.center_point
-        self.zero_point_changed.emit(self.zero_point)
+    def set_zero(self, value):
+        self.zero_point = value
+        self.OnZeroPointChanged.emit(self.zero_point)
 
     def setLuminosityScope(self, LuminosityScope):
         self.LuminosityScope = LuminosityScope

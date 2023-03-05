@@ -40,17 +40,18 @@ class MainWindow(QMainWindow):
         self.analyser = Analyser()
         self.sampler = Sampler()
 
-        self.sensor_feed.widget.frameWorker.intensityValuesChanged.connect(self.analyser.widget.setLuminosityScope)
+        # Sensor Feed
+        self.sensor_feed.widget.frameWorker.OnIntensityValuesChanged.connect(self.analyser.widget.setLuminosityScope)
+        self.sensor_feed.widget.OnHeightChanged.connect(self.analyser.widget.setFixedHeight)
 
-        self.sensor_feed.widget.height_changed.connect(self.analyser.widget.setFixedHeight)
+        # Analyser
+        self.analyser.widget.OnZeroPointChanged.connect(self.sampler.receive_zero_point)
+        self.analyser.widget.OnCenterPointChanged.connect(self.sampler.sample_worker.sample_in)
 
-        self.sampler.zero_btn.clicked.connect(self.analyser.widget.set_zero)
-
-        self.analyser.widget.zero_point_changed.connect(self.sampler.receive_zero_point)
-        self.analyser.widget.center_point_changed.connect(self.sampler.sample_worker.sample_in)
+        # Sampler
+        self.sampler.OnSetZero.connect(self.analyser.widget.set_zero)
 
         # Add to layouts
-
         left_splitter.addWidget(self.sensor_feed)
         left_splitter.addWidget(self.analyser)
 
