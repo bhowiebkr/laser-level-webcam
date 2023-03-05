@@ -40,6 +40,8 @@ class FrameSender(QObject):
 # Define the left widget to display the grayscale webcam feed
 class SensorFeedWidget(QWidget):
     OnHeightChanged = Signal(int)
+    OnSensorPixelWidthChanged = Signal(int)
+    OnCameraChanged = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -93,11 +95,14 @@ class SensorFeedWidget(QWidget):
         available_cameras = QMediaDevices.videoInputs()
         camera_info = available_cameras[index]
 
+        width = camera_info.photoResolutions()[0].width()
+        self.OnSensorPixelWidthChanged.emit(width)
+
         self.camera = QCamera(cameraDevice=camera_info, parent=self)
 
         self.captureSession.setCamera(self.camera)
         self.camera.start()
-        self.camera.setExposureMode(QCamera.ExposureManual)
+        self.OnCameraChanged.emit()
 
     def closeEvent(self, event):
         super().closeEvent(event)

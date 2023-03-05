@@ -43,6 +43,10 @@ class MainWindow(QMainWindow):
         # Sensor Feed
         self.sensor_feed.widget.frameWorker.OnIntensityValuesChanged.connect(self.analyser.widget.setLuminosityScope)
         self.sensor_feed.widget.OnHeightChanged.connect(self.analyser.widget.setFixedHeight)
+        self.sensor_feed.widget.OnSensorPixelWidthChanged.connect(self.sampler.set_sensor_pixel_width)
+        self.sensor_feed.widget.set_camera(0)
+        self.sensor_feed.widget.OnCameraChanged.connect(self.analyser.widget.reset_zero_point)
+        self.sensor_feed.widget.OnCameraChanged.connect(self.sampler.reset_zero_point)
 
         # Analyser
         self.analyser.widget.OnZeroPointChanged.connect(self.sampler.receive_zero_point)
@@ -50,6 +54,8 @@ class MainWindow(QMainWindow):
 
         # Sampler
         self.sampler.OnSetZero.connect(self.analyser.widget.set_zero)
+        self.sampler.OnSensorWidthChange.connect(self.analyser.widget.set_sensor_width)
+        self.sampler.sensor_width_changed()
 
         # Add to layouts
         left_splitter.addWidget(self.sensor_feed)

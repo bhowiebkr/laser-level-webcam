@@ -56,12 +56,14 @@ class SampleWorker(QObject):
 
 class Sampler(QGroupBox):
     OnSetZero = Signal(float)
+    OnSensorWidthChange = Signal(float)
 
     def __init__(self, parent=None):
         super().__init__(parent)
 
         self.zero_point = None
         self.setting_zero = False
+        self.sensor_pixel_width = None
 
         self.sample_worker = SampleWorker()
         self.sample_worker.OnSampleReady.connect(self.received_sample)
@@ -129,15 +131,26 @@ class Sampler(QGroupBox):
         # Logic
         self.take_sample_btn.clicked.connect(self.take_sample_btn_cmd)
         self.zero_btn.clicked.connect(self.zero_btn_cmd)
+        self.sensor_width.textChanged.connect(self.sensor_width_changed)
+        self.sensor_width.textChanged.connect(self.reset_zero_point)
+        self.sample_filter.valueChanged.connect(self.reset_zero_point)
+        self.num_samples.valueChanged.connect(self.reset_zero_point)
 
     def zero_btn_cmd(self):
         self.setting_zero = True
         self.take_sample_btn_cmd()
 
+    def sensor_width_changed(self):
+        self.OnSensorWidthChange.emit(float(self.sensor_width.text()))
+
     def receive_zero_point(self, zero_point):
         self.zero_point = zero_point
         self.sample_table.setRowCount(0)
         self.take_sample_btn.setEnabled(True)
+
+    def reset_zero_point(self):
+        self.zero_point = None
+        self.take_sample_btn.setDisabled(True)
 
     def take_sample_btn_cmd(self):
         subsamples = int(self.num_samples.text())
@@ -151,6 +164,9 @@ class Sampler(QGroupBox):
         else:
             self.take_sample_btn.setDisabled(True)
             self.take_sample_btn.setText(f"{num}/{self.num_samples.text()}")
+
+    def set_sensor_pixel_width(self, sensor_pixel_width):
+        self.sensor_pixel_width = sensor_pixel_width
 
     def received_sample(self, sample):
         if self.setting_zero == True:
@@ -166,7 +182,7 @@ class Sampler(QGroupBox):
 
             row_count = self.sample_table.rowCount()
 
-            value = float(self.sensor_width.text()) / 1080 * (self.zero_point - sample) * 1000
+            value = float(self.sensor_width.text()) / self.sensor_pixel_width * (sample - self.zero_point) * 1000
             new_data = [value, 0, 0, 0]
 
             for index, data in enumerate(new_data):
