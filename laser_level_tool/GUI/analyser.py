@@ -5,12 +5,15 @@ from PySide6.QtWidgets import QWidget, QSizePolicy, QGroupBox, QVBoxLayout, QFor
 from PySide6.QtGui import QPainter, QImage, QPixmap, QTransform, QPen, QFont
 
 from utils.curves import fit_gaussian
+from utils.misc import scale_center_point
+import time
 
 
 # Define the right widget to display the LuminosityScope of luminosity
 class AnalyserWidget(QWidget):
     OnZeroPointChanged = Signal(float)
     OnCenterPointChanged = Signal(float)
+    OnDataWidthChanged = Signal(float)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -19,7 +22,11 @@ class AnalyserWidget(QWidget):
         self.center_point = None
         self.zero_point = None
         self.sensor_width = None
+        self.units = None
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+    def set_units(self, units):
+        self.units = units
 
     def get_data_width(self):
         return int(self.LuminosityScope.shape[0])
@@ -76,8 +83,8 @@ class AnalyserWidget(QWidget):
                     # Draw the text value
                     painter.setFont(QFont("Arial", 12))
                     painter.setPen(Qt.green)
-                    center_point_real = self.sensor_width / data_width * (self.center_point - self.zero_point) * 1000
-                    text = "{:.2f}μm".format(center_point_real)
+                    center_point_real = scale_center_point(self.sensor_width, data_width, self.center_point, self.zero_point, self.units)
+                    text = "{:.2f}".format(center_point_real) + self.units
                     textWidth = painter.fontMetrics().horizontalAdvance(text)
                     textHeight = painter.fontMetrics().height()
                     x = (self.width() - textWidth) / 2
@@ -114,6 +121,7 @@ class AnalyserWidget(QWidget):
                 max_value += 1
             # Rescale the intensity values to have a range between 0 and 255
             self.LuminosityScope = (self.LuminosityScope - min_value) * (255 / (max_value - min_value))
+            self.OnDataWidthChanged.emit(self.LuminosityScope.shape[0])
 
         except Exception as e:
             print(e)
