@@ -4,6 +4,8 @@ from PySide6.QtCore import QThread, QObject, Signal, Qt
 
 import numpy as np
 
+from utils.misc import units_of_measurements, scale_center_point
+
 
 class SampleWorker(QObject):
     OnSampleReady = Signal(float)
@@ -57,6 +59,7 @@ class SampleWorker(QObject):
 class Sampler(QGroupBox):
     OnSetZero = Signal(float)
     OnSensorWidthChange = Signal(float)
+    OnUnitsChanged = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -88,7 +91,7 @@ class Sampler(QGroupBox):
         self.num_samples = QSpinBox()
         self.num_samples.setMinimum(0)
         self.num_samples.setMaximum(9999)
-        self.num_samples.setValue(60)
+        self.num_samples.setValue(10)
 
         self.sample_filter = QSpinBox()
         self.sample_filter.setMinimum(0)
@@ -96,6 +99,9 @@ class Sampler(QGroupBox):
         self.sample_filter.setValue(30)
 
         self.units = QComboBox()
+
+        for unit in units_of_measurements.keys():
+            self.units.addItem(unit)
 
         self.sensor_width = QLineEdit("3")
         self.sensor_width.setValidator(QDoubleValidator())  # Only allow integer values
@@ -107,7 +113,8 @@ class Sampler(QGroupBox):
 
         self.sample_table = QTableWidget()
         # Set the table headers
-        header_names = ["Measured (μm)", "Residual (μm)", "Scrape (μm)", "Shim (μm)"]
+        units = self.units.currentText()
+        header_names = [f"Measured ({units})", f"Residual ({units})", f"Scrape ({units})", f"Shim ({units})"]
         self.sample_table.setColumnCount(len(header_names))
         self.sample_table.setHorizontalHeaderLabels(header_names)
         header = self.sample_table.horizontalHeader()
@@ -135,6 +142,11 @@ class Sampler(QGroupBox):
         self.sensor_width.textChanged.connect(self.reset_zero_point)
         self.sample_filter.valueChanged.connect(self.reset_zero_point)
         self.num_samples.valueChanged.connect(self.reset_zero_point)
+        self.units.currentTextChanged.connect(self.units_changed)
+
+    def units_changed(self):
+        units = self.units.currentText()
+        self.OnUnitsChanged.emit(units)
 
     def zero_btn_cmd(self):
         self.setting_zero = True
@@ -182,7 +194,8 @@ class Sampler(QGroupBox):
 
             row_count = self.sample_table.rowCount()
 
-            value = float(self.sensor_width.text()) / self.sensor_pixel_width * (sample - self.zero_point) * 1000
+            # value = float(self.sensor_width.text()) / self.sensor_pixel_width * (sample - self.zero_point) * units
+            value = scale_center_point(self.sensor_width.text(), self.sensor_pixel_width, sample, self.zero_point, self.units.currentText())
             new_data = [value, 0, 0, 0]
 
             for index, data in enumerate(new_data):
