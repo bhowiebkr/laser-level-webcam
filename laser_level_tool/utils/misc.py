@@ -45,6 +45,5 @@ def get_webcam_max_res(index=0):
 
 def scale_center_point(sensor_width, data_width, center, zero, units):
     val = float(sensor_width) / float(data_width) * (center - zero) * units_of_measurements[units]
-    print(data_width)
     # print(f"sensor width: {sensor_width}\ndata width: {data_width}\ncenter: {center}\nzero: {zero}\nunits: {units}\nunit scale: {units_of_measurements[units]}\nval: {val}\n\n")
     return val
