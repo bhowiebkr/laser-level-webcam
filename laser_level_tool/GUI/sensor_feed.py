@@ -7,7 +7,6 @@ from PySide6.QtGui import QPainter, QImage, QPixmap, QTransform
 from PySide6.QtMultimedia import QMediaCaptureSession, QVideoSink, QVideoFrame, QCamera, QMediaDevices
 
 import qimage2ndarray
-from GUI.widgets import ResolutionInputWidget
 
 
 class FrameWorker(QObject):
@@ -141,9 +140,6 @@ class SensorFeed(QGroupBox):
         self.gamma.setMinimum(1)
         self.gamma.setMaximum(200)
         self.gamma.setValue(100)
-
-        sensor_res = ResolutionInputWidget(None, 0, 0)
-        sensor_res.lock()
 
         extra_btn = QPushButton("Camera Device Controls")
         extra_btn.setFixedHeight(40)
