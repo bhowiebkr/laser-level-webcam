@@ -18,10 +18,17 @@ class AnalyserWidget(QWidget):
         self.parent = parent
         self.center_point = None
         self.zero_point = None
+        self.sensor_width = None
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
     def get_data_width(self):
         return int(self.LuminosityScope.shape[0])
+
+    def reset_zero_point(self):
+        self.zero_point = None
+
+    def set_sensor_width(self, width):
+        self.sensor_width = width
 
     def paintEvent(self, event):
         super().paintEvent(event)
@@ -54,36 +61,35 @@ class AnalyserWidget(QWidget):
             painter.drawPixmap(self.rect(), pixmap)
 
             self.center_point = fit_gaussian(self.LuminosityScope)  # Specify the y position of the line
-
+            data_width = self.LuminosityScope.shape[0]
             self.OnCenterPointChanged.emit(self.center_point)
-            # y_pos_float = y_pos
+
             if self.center_point:
+                # Draw the green line
+
                 pen = QPen(Qt.green, 0, Qt.SolidLine)
                 painter.setPen(pen)
-                y_pos = int(self.height() - (self.center_point - 0) * (self.height() - 0) / (self.LuminosityScope.shape[0] - 0) + 0)
+                y_pos = int(self.height() - self.center_point * self.height() / data_width)
                 painter.drawLine(0, y_pos, self.width(), y_pos)
 
-                # Draw the value
-                painter.setFont(QFont("Arial", 12))
-                painter.setPen(Qt.green)
-                text = "{:.3f}".format(self.center_point)
-                textWidth = painter.fontMetrics().horizontalAdvance(text)
-                textHeight = painter.fontMetrics().height()
-
-                x = (self.width() - textWidth) / 2
-                y = y_pos - (textHeight / 2)
+                if self.zero_point:
+                    # Draw the text value
+                    painter.setFont(QFont("Arial", 12))
+                    painter.setPen(Qt.green)
+                    center_point_real = self.sensor_width / data_width * (self.center_point - self.zero_point) * 1000
+                    text = "{:.2f}μm".format(center_point_real)
+                    textWidth = painter.fontMetrics().horizontalAdvance(text)
+                    textHeight = painter.fontMetrics().height()
+                    x = (self.width() - textWidth) / 2
+                    y = y_pos - (textHeight / 2)
+                    painter.setPen(Qt.green)
+                    painter.drawText(int(x), int(y), text)
 
             if self.zero_point:
+                # Draw the zero line
                 painter.setPen(Qt.red)
-
-                zero_pos = int(self.height() - (self.zero_point - 0) * (self.height() - 0) / (self.LuminosityScope.shape[0] - 0) + 0)
-
+                zero_pos = int(self.height() - self.zero_point * self.height() / data_width)
                 painter.drawLine(0, zero_pos, self.width(), zero_pos)
-
-            # We draw text last to it's not under the zero point line
-            if self.center_point:
-                painter.setPen(Qt.green)
-                painter.drawText(int(x), int(y), text)
 
     def set_zero(self, value):
         self.zero_point = value
