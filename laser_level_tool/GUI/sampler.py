@@ -88,12 +88,12 @@ class Sampler(QGroupBox):
         self.num_samples = QSpinBox()
         self.num_samples.setMinimum(0)
         self.num_samples.setMaximum(9999)
-        self.num_samples.setValue(10)
+        self.num_samples.setValue(60)
 
         self.sample_filter = QSpinBox()
         self.sample_filter.setMinimum(0)
         self.sample_filter.setMaximum(99)
-        self.sample_filter.setValue(20)
+        self.sample_filter.setValue(30)
 
         self.units = QComboBox()
 

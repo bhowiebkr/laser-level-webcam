@@ -139,7 +139,7 @@ class Analyser(QGroupBox):
         self.smoothing = QSlider(Qt.Horizontal)
         self.smoothing.setMinimum(0)
         self.smoothing.setMaximum(200)
-        self.smoothing.setValue(0)
+        self.smoothing.setValue(50)
         self.smoothing.setTickInterval(1)
 
         params.addRow("Smoothness", self.smoothing)
