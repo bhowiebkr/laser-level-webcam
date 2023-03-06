@@ -5,8 +5,7 @@ from PySide6.QtWidgets import QWidget, QSizePolicy, QGroupBox, QVBoxLayout, QFor
 from PySide6.QtGui import QPainter, QImage, QPixmap, QTransform, QPen, QFont
 
 from utils.curves import fit_gaussian
-from utils.misc import scale_center_point
-import time
+from utils.misc import scale_center_point, get_units, scale_center_point_no_units
 
 
 # Define the right widget to display the LuminosityScope of luminosity
@@ -83,8 +82,9 @@ class AnalyserWidget(QWidget):
                     # Draw the text value
                     painter.setFont(QFont("Arial", 12))
                     painter.setPen(Qt.green)
-                    center_point_real = scale_center_point(self.sensor_width, data_width, self.center_point, self.zero_point, self.units)
-                    text = "{:.2f}".format(center_point_real) + self.units
+                    center_point_real = scale_center_point_no_units(self.sensor_width, data_width, self.center_point, self.zero_point)
+                    # text = "{:.2f}".format(center_point_real) + self.units
+                    text = get_units(self.units, center_point_real)
                     textWidth = painter.fontMetrics().horizontalAdvance(text)
                     textHeight = painter.fontMetrics().height()
                     x = (self.width() - textWidth) / 2
