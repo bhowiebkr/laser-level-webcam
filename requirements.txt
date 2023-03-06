@@ -6,3 +6,4 @@ nuitka
 ordered-set
 zstandard
 seaborn
+qimage2ndarray
