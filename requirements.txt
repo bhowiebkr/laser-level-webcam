@@ -5,3 +5,4 @@ pyqtdarktheme
 nuitka
 ordered-set
 zstandard
+seaborn
