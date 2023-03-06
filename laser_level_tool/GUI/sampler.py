@@ -1,10 +1,26 @@
-from PySide6.QtWidgets import QSizePolicy, QGroupBox, QComboBox, QVBoxLayout, QTableWidgetItem, QHBoxLayout, QGridLayout, QFormLayout, QSpinBox, QLabel, QPushButton, QTableWidget, QHeaderView, QLineEdit
+from PySide6.QtWidgets import QSizePolicy, QSplitter, QGroupBox, QComboBox, QVBoxLayout, QTableWidgetItem, QHBoxLayout, QGridLayout, QFormLayout, QSpinBox, QLabel, QPushButton, QTableWidget, QHeaderView, QLineEdit
 from PySide6.QtGui import QDoubleValidator
 from PySide6.QtCore import QThread, QObject, Signal, Qt
 
 import numpy as np
+from GUI.graph import Graph
+from utils.misc import get_units, units_of_measurements, scale_center_point, scale_center_point_no_units
 
-from utils.misc import units_of_measurements, scale_center_point
+
+class TableUnit(QTableWidgetItem):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.units = None
+        self.value = None
+
+    def set_units(self, units):
+        self.units = units
+
+    def data(self, role):
+        if role == Qt.DisplayRole:
+            # return "{:.2f}".format(self.value * units_of_measurements[self.units])
+            return get_units(self.units, self.value)
+        return super().data(role)
 
 
 class SampleWorker(QObject):
@@ -67,6 +83,7 @@ class Sampler(QGroupBox):
         self.zero_point = None
         self.setting_zero = False
         self.sensor_pixel_width = None
+        self.header_names = None
 
         self.sample_worker = SampleWorker()
         self.sample_worker.OnSampleReady.connect(self.received_sample)
@@ -79,6 +96,7 @@ class Sampler(QGroupBox):
 
         # Layouts
         main_layout = QVBoxLayout()
+        main_layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(main_layout)
 
         top_layout = QGridLayout()
@@ -100,7 +118,7 @@ class Sampler(QGroupBox):
 
         self.units = QComboBox()
 
-        for unit in units_of_measurements.keys():
+        for unit in units_of_measurements:
             self.units.addItem(unit)
 
         self.sensor_width = QLineEdit("3")
@@ -114,11 +132,18 @@ class Sampler(QGroupBox):
         self.sample_table = QTableWidget()
         # Set the table headers
         units = self.units.currentText()
-        header_names = [f"Measured ({units})", f"Residual ({units})", f"Scrape ({units})", f"Shim ({units})"]
-        self.sample_table.setColumnCount(len(header_names))
-        self.sample_table.setHorizontalHeaderLabels(header_names)
+        self.header_names = [f"Measured ({units})", f"Residual ({units})", f"Scrape ({units})", f"Shim ({units})"]
+        self.sample_table.setColumnCount(len(self.header_names))
+        self.sample_table.setHorizontalHeaderLabels(self.header_names)
         header = self.sample_table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.Stretch)
+        self.splitter = QSplitter()
+        self.splitter.setOrientation(Qt.Orientation.Vertical)
+
+        self.graph = Graph()
+
+        self.splitter.addWidget(self.sample_table)
+        self.splitter.addWidget(self.graph)
 
         sampling_cmd_layout.addWidget(self.zero_btn)
         sampling_cmd_layout.addWidget(self.take_sample_btn)
@@ -133,7 +158,7 @@ class Sampler(QGroupBox):
         top_layout.addLayout(sampling_cmd_layout, 1, 0, 1, 2)
 
         main_layout.addLayout(top_layout)
-        main_layout.addWidget(self.sample_table)
+        main_layout.addWidget(self.splitter)
 
         # Logic
         self.take_sample_btn.clicked.connect(self.take_sample_btn_cmd)
@@ -146,6 +171,14 @@ class Sampler(QGroupBox):
 
     def units_changed(self):
         units = self.units.currentText()
+        self.header_names = [f"Measured ({units})", f"Residual ({units})", f"Scrape ({units})", f"Shim ({units})"]
+        self.sample_table.setHorizontalHeaderLabels(self.header_names)
+
+        for row in range(self.sample_table.rowCount()):
+            for col in range(self.sample_table.columnCount()):
+                item = self.sample_table.item(row, col)
+                item.units = units
+
         self.OnUnitsChanged.emit(units)
 
     def zero_btn_cmd(self):
@@ -194,12 +227,15 @@ class Sampler(QGroupBox):
 
             row_count = self.sample_table.rowCount()
 
-            # value = float(self.sensor_width.text()) / self.sensor_pixel_width * (sample - self.zero_point) * units
-            value = scale_center_point(self.sensor_width.text(), self.sensor_pixel_width, sample, self.zero_point, self.units.currentText())
+            # value = scale_center_point(self.sensor_width.text(), self.sensor_pixel_width, sample, self.zero_point, self.units.currentText())
+            value = scale_center_point_no_units(self.sensor_width.text(), self.sensor_pixel_width, sample, self.zero_point)
+
             new_data = [value, 0, 0, 0]
 
             for index, data in enumerate(new_data):
-                cell = QTableWidgetItem()
-                cell.setTextAlignment(Qt.AlignCenter)  # center-align the text
-                cell.setData(Qt.DisplayRole, data)
+                cell = TableUnit()
+                # cell.setTextAlignment(Qt.AlignCenter)  # center-align the text
+                # cell.setData(Qt.DisplayRole, data)
+                cell.value = data
+                cell.units = self.units.currentText()
                 self.sample_table.setItem(row_count - 1, index, cell)
