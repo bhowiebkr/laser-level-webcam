@@ -5,6 +5,7 @@ from PySide6.QtCore import QThread, QObject, Signal, Qt
 import numpy as np
 from GUI.graph import Graph
 from utils.misc import get_units, units_of_measurements, scale_center_point, scale_center_point_no_units
+from scipy import stats
 
 
 class TableUnit(QTableWidgetItem):
@@ -84,6 +85,7 @@ class Sampler(QGroupBox):
         self.setting_zero = False
         self.sensor_pixel_width = None
         self.header_names = None
+        self.sample_data = np.empty(0)
 
         self.sample_worker = SampleWorker()
         self.sample_worker.OnSampleReady.connect(self.received_sample)
@@ -177,12 +179,16 @@ class Sampler(QGroupBox):
         for row in range(self.sample_table.rowCount()):
             for col in range(self.sample_table.columnCount()):
                 item = self.sample_table.item(row, col)
-                item.units = units
+                if item:
+                    item.units = units
 
         self.OnUnitsChanged.emit(units)
 
     def zero_btn_cmd(self):
         self.setting_zero = True
+        self.sample_data = np.empty(0)
+        self.graph.set_data(self.sample_data)
+
         self.take_sample_btn_cmd()
 
     def sensor_width_changed(self):
@@ -223,19 +229,27 @@ class Sampler(QGroupBox):
             self.take_sample_btn.setEnabled(True)
             self.take_sample_btn.setText("Take Sample")
 
-            self.sample_table.insertRow(self.sample_table.rowCount())
-
-            row_count = self.sample_table.rowCount()
-
-            # value = scale_center_point(self.sensor_width.text(), self.sensor_pixel_width, sample, self.zero_point, self.units.currentText())
             value = scale_center_point_no_units(self.sensor_width.text(), self.sensor_pixel_width, sample, self.zero_point)
+            print(f"value: {value}, array: {self.sample_data}")
+            self.sample_data = np.append(self.sample_data, value)
 
-            new_data = [value, 0, 0, 0]
+            print(self.sample_data)
 
-            for index, data in enumerate(new_data):
-                cell = TableUnit()
-                # cell.setTextAlignment(Qt.AlignCenter)  # center-align the text
-                # cell.setData(Qt.DisplayRole, data)
-                cell.value = data
-                cell.units = self.units.currentText()
-                self.sample_table.setItem(row_count - 1, index, cell)
+            self.update_sample_table()
+
+    def update_sample_table(self):
+        # Delete the rows
+        self.sample_table.setRowCount(0)
+
+        for row, data in enumerate(self.sample_data):
+            # Check if there are enough rows in the table widget, and add a new row if necessary
+            if row >= self.sample_table.rowCount():
+                self.sample_table.insertRow(row)
+
+            cell = TableUnit()
+            cell.value = data
+            cell.units = self.units.currentText()
+            self.sample_table.setItem(row, 0, cell)
+
+        self.graph.set_data(self.sample_data)
+        self.graph.set_data(self.sample_data)
