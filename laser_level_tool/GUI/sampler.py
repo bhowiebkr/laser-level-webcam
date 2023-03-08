@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QSizePolicy, QSplitter, QGroupBox, QComboBox, QVBoxLayout, QTableWidgetItem, QHBoxLayout, QGridLayout, QFormLayout, QSpinBox, QLabel, QPushButton, QTableWidget, QHeaderView, QLineEdit
+from PySide6.QtWidgets import QSizePolicy, QSplitter, QWidget, QRadioButton, QGroupBox, QComboBox, QVBoxLayout, QTableWidgetItem, QHBoxLayout, QGridLayout, QFormLayout, QSpinBox, QLabel, QPushButton, QTableWidget, QHeaderView, QLineEdit
 from PySide6.QtGui import QDoubleValidator
 from PySide6.QtCore import QThread, QObject, Signal, Qt
 
@@ -86,6 +86,7 @@ class Sampler(QGroupBox):
         self.sensor_pixel_width = None
         self.header_names = None
         self.sample_data = np.empty(0)
+        self.line_data = np.empty(0)
 
         self.sample_worker = SampleWorker()
         self.sample_worker.OnSampleReady.connect(self.received_sample)
@@ -120,6 +121,10 @@ class Sampler(QGroupBox):
 
         self.units = QComboBox()
 
+        self.raw_radio = QRadioButton("Raw")
+        self.flat_radio = QRadioButton("Flattened")
+        self.raw_radio.setChecked(True)
+
         for unit in units_of_measurements:
             self.units.addItem(unit)
 
@@ -142,10 +147,23 @@ class Sampler(QGroupBox):
         self.splitter = QSplitter()
         self.splitter.setOrientation(Qt.Orientation.Vertical)
 
-        self.graph = Graph()
+        self.graph = Graph(None, self.units.currentText())
+        graph_h_layout = QHBoxLayout()
+        graph_h_layout.addStretch()
+
+        graph_h_layout.addWidget(self.raw_radio, alignment=Qt.AlignRight)
+        graph_h_layout.addWidget(self.flat_radio)
+        graph_h_layout.addStretch()
+        graph_v_layout = QVBoxLayout()
+        graph_v_layout.setContentsMargins(0, 0, 0, 0)
+        graph_v_layout.addSpacing(5)
+        graph_v_layout.addLayout(graph_h_layout)
+        graph_v_layout.addWidget(self.graph)
+        graph_widget = QGroupBox("Plot")
+        graph_widget.setLayout(graph_v_layout)
 
         self.splitter.addWidget(self.sample_table)
-        self.splitter.addWidget(self.graph)
+        self.splitter.addWidget(graph_widget)
 
         sampling_cmd_layout.addWidget(self.zero_btn)
         sampling_cmd_layout.addWidget(self.take_sample_btn)
@@ -161,6 +179,7 @@ class Sampler(QGroupBox):
 
         main_layout.addLayout(top_layout)
         main_layout.addWidget(self.splitter)
+        self.splitter.setSizes([200, 100])
 
         # Logic
         self.take_sample_btn.clicked.connect(self.take_sample_btn_cmd)
@@ -230,10 +249,11 @@ class Sampler(QGroupBox):
             self.take_sample_btn.setText("Take Sample")
 
             value = scale_center_point_no_units(self.sensor_width.text(), self.sensor_pixel_width, sample, self.zero_point)
-            print(f"value: {value}, array: {self.sample_data}")
             self.sample_data = np.append(self.sample_data, value)
 
-            print(self.sample_data)
+            x = np.arange(1, len(self.sample_data) + 1)
+
+            self.line = np.polyfit(x, self.sample_data, 1)
 
             self.update_sample_table()
 
@@ -250,6 +270,6 @@ class Sampler(QGroupBox):
             cell.value = data
             cell.units = self.units.currentText()
             self.sample_table.setItem(row, 0, cell)
-
-        self.graph.set_data(self.sample_data)
-        self.graph.set_data(self.sample_data)
+        units = self.units.currentText()
+        unit_multiplier = units_of_measurements[units]
+        self.graph.set_data([self.sample_data * unit_multiplier, self.line * unit_multiplier, units])
