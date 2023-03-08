@@ -24,7 +24,12 @@ class FrameWorker(QObject):
         # Get the frame as a gray scale image
         image = frame.toImage().convertToFormat(QImage.Format_Grayscale8)
 
-        np_image = qimage2ndarray.raw_view(image)
+        try:
+            np_image = qimage2ndarray.raw_view(image)
+        except ValueError as e:
+            print("Invalid QImage:", e)
+            return
+
         self.OnIntensityValuesChanged.emit(np.mean(np_image, axis=0))
 
         # Get a pixmap rotated -90
