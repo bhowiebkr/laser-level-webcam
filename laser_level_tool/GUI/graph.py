@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.interpolate import interp1d, CubicSpline
 
-plt.style.use("https://github.com/dhaitz/matplotlib-stylesheets/raw/master/pitayasmoothie-dark.mplstyle")
+plt.style.use("laser_level_tool\GUI\pitayasmoothie-dark.mplstyle")
 
 
 class Graph(QGroupBox):
