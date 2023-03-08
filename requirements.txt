@@ -6,3 +6,4 @@ nuitka
 ordered-set
 zstandard
 qimage2ndarray
+matplotlib
