@@ -128,7 +128,7 @@ class Sampler(QGroupBox):
         for unit in units_of_measurements:
             self.units.addItem(unit)
 
-        self.sensor_width = QLineEdit("3")
+        self.sensor_width = QLineEdit("5.9")
         self.sensor_width.setValidator(QDoubleValidator())  # Only allow integer values
 
         self.zero_btn = QPushButton("Zero")
@@ -179,7 +179,7 @@ class Sampler(QGroupBox):
 
         main_layout.addLayout(top_layout)
         main_layout.addWidget(self.splitter)
-        self.splitter.setSizes([200, 100])
+        # self.splitter.setSizes([200, 100])
 
         # Logic
         self.take_sample_btn.clicked.connect(self.take_sample_btn_cmd)
