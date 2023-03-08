@@ -98,6 +98,8 @@ class SensorFeedWidget(QWidget):
             self.camera.stop()
 
         available_cameras = QMediaDevices.videoInputs()
+        if not available_cameras:
+            return
         camera_info = available_cameras[index]
 
         width = camera_info.photoResolutions()[0].width()
