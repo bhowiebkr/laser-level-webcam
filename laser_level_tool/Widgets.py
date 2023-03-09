@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QSizePolicy, QGroupBox, QVBoxLayout, QFormLayout, QSlider, QPushButton, QWidget, QComboBox
+from PySide6.QtWidgets import QSizePolicy, QGroupBox, QTableWidgetItem, QVBoxLayout, QFormLayout, QSlider, QPushButton, QWidget, QComboBox
 from PySide6.QtCore import Qt, QThread, Signal, QObject, Slot
 from PySide6.QtGui import QPainter, QImage, QPixmap, QTransform, QColor
 from PySide6.QtMultimedia import QMediaCaptureSession, QVideoSink, QVideoFrame, QCamera, QMediaDevices
@@ -6,8 +6,11 @@ from PySide6.QtGui import QPainter, QImage, QPixmap, QTransform, QPen, QFont
 
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 import matplotlib.pyplot as plt
+from scipy.interpolate import interp1d, CubicSpline
 
 import numpy as np
+
+from utils.misc import get_units
 
 style = {
     "axes.grid": "True",
@@ -53,6 +56,49 @@ class Graph(QWidget):
 
         self.canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         main_layout.addWidget(self.canvas)
+
+        self.plot_data()
+
+    def set_data(self, data_in):
+        if not data_in:
+            return
+
+        data, self.line, self.units = data_in
+        self.y = data
+        self.x = np.arange(1, len(data) + 1)
+
+        self.plot_data()
+
+    def plot_data(self):
+        # Clear the axis and plot the data
+        self.ax.clear()
+        if len(self.y) == 0:
+            # If the data has size 0, plot an empty plot
+            self.ax.plot([], [])
+        else:
+            self.ax.plot(self.x, self.y, marker="o", markersize=5, label="Samples")
+
+            # Fit a smooth curve to the data points
+            if self.x.shape[0] > 3:
+                # f = interp1d(self.x, self.y, kind="quadratic")
+                f = CubicSpline(self.x, self.y, bc_type="clamped")
+                smooth_x = np.linspace(self.x[0], self.x[-1], 500)
+                smooth_y = f(smooth_x)
+
+                # Plot the smooth curve
+                self.ax.plot(smooth_x, smooth_y, linewidth=2, label="Smooth")
+
+            # Plot line
+            line = np.polyval(self.line, self.x)
+
+            self.ax.set_ylabel(self.units)
+
+            self.ax.plot(self.x, line, label="Slope")
+            self.ax.legend()
+        self.ax.autoscale_view("tight")
+
+        # Draw the canvas
+        self.canvas.draw()
 
 
 class PixmapWidget(QWidget):
@@ -126,3 +172,19 @@ class AnalyserWidget(QWidget):
     def set_data(self, data):
         self.pixmap, self.sample, self.zero, self.text = data
         self.update()
+
+
+class TableUnit(QTableWidgetItem):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.units = None
+        self.value = None
+
+    def set_units(self, units):
+        self.units = units
+
+    def data(self, role):
+        if role == Qt.DisplayRole:
+            # return "{:.2f}".format(self.value * units_of_measurements[self.units])
+            return get_units(self.units, self.value)
+        return super().data(role)
