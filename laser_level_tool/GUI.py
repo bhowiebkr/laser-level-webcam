@@ -1,6 +1,6 @@
 import sys
 
-from PySide6.QtWidgets import QMainWindow, QRadioButton, QLabel, QGridLayout, QSpinBox, QLineEdit, QFormLayout, QSlider, QVBoxLayout, QTableWidget, QPushButton, QComboBox, QGroupBox, QWidget, QHBoxLayout, QSplitter, QApplication
+from PySide6.QtWidgets import QMainWindow, QDoubleSpinBox, QRadioButton, QLabel, QGridLayout, QSpinBox, QLineEdit, QFormLayout, QSlider, QVBoxLayout, QTableWidget, QPushButton, QComboBox, QGroupBox, QWidget, QHBoxLayout, QSplitter, QApplication
 from PySide6.QtCore import Qt, QThread, Signal, QObject, Slot
 
 import qdarktheme
@@ -69,7 +69,7 @@ class MainWindow(QMainWindow):
         self.units_combo = QComboBox()
         self.units_combo.addItems(units_of_measurements.keys())
         self.units_combo.setCurrentIndex(1)
-        self.sensor_width_line = QLineEdit()
+        self.sensor_width_spin = QDoubleSpinBox()
         self.zero_btn = QPushButton("Zero")
         self.sample_btn = QPushButton("Take Sample")
         self.sample_table = QTableWidget()
@@ -82,7 +82,7 @@ class MainWindow(QMainWindow):
         sample_layout.addWidget(QLabel("Units"), 1, 0, 1, 1, alignment=Qt.AlignRight)
         sample_layout.addWidget(self.units_combo, 1, 1, 1, 1)
         sample_layout.addWidget(QLabel("Sensor Width (mm)"), 1, 2, 1, 1, alignment=Qt.AlignRight)
-        sample_layout.addWidget(self.sensor_width_line, 1, 3, 1, 1)
+        sample_layout.addWidget(self.sensor_width_spin, 1, 3, 1, 1)
         sample_layout.addWidget(self.zero_btn, 2, 0, 1, 1)
         sample_layout.addWidget(self.sample_btn, 2, 1, 1, 3)
         sample_layout.addWidget(self.sample_table, 3, 0, 1, 4)
@@ -125,11 +125,11 @@ class MainWindow(QMainWindow):
         self.core.OnAnalyserUpdate.connect(self.analyser_widget.set_data)
         self.sensor_feed_widget.OnHeightChanged.connect(self.analyser_widget.setMaximumHeight)
         self.sensor_feed_widget.OnHeightChanged.connect(self.core.set_analyser_widget_height)
-        self.smoothing.valueChanged.connect(self.core.set_analyser_smoothing)
+        self.smoothing.valueChanged.connect(self.core.frameWorker.set_smoothness)
         self.subsamples_spin.valueChanged.connect(self.core.set_subsamples)
         self.outlier_spin.valueChanged.connect(self.core.set_outliers)
         self.units_combo.currentTextChanged.connect(self.core.set_units)
-        self.sensor_width_line.textChanged.connect(self.core.set_sensor_width)
+        self.sensor_width_spin.valueChanged.connect(self.core.set_sensor_width)
         self.zero_btn.clicked.connect(self.zero_btn_cmd)
         self.sample_btn.clicked.connect(self.sample_btn_cmd)
         self.core.OnSubsampleProgressUpdate.connect(self.subsample_progress_update)
@@ -138,7 +138,7 @@ class MainWindow(QMainWindow):
         self.subsamples_spin.setValue(30)
         self.outlier_spin.setValue(30)
         self.units_combo.setCurrentIndex(0)
-        self.sensor_width_line.setText(str(5.9))
+        self.sensor_width_spin.setValue(5.9)
 
     def finished_subsample(self):
         """
