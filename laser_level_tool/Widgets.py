@@ -1,16 +1,15 @@
-from PySide6.QtWidgets import QSizePolicy, QGroupBox, QTableWidgetItem, QVBoxLayout, QFormLayout, QSlider, QPushButton, QWidget, QComboBox
-from PySide6.QtCore import Qt, QThread, Signal, QObject, Slot
-from PySide6.QtGui import QPainter, QImage, QPixmap, QTransform, QColor
-from PySide6.QtMultimedia import QMediaCaptureSession, QVideoSink, QVideoFrame, QCamera, QMediaDevices
-from PySide6.QtGui import QPainter, QImage, QPixmap, QTransform, QPen, QFont
+from PySide6.QtWidgets import QSizePolicy, QTableWidgetItem, QVBoxLayout, QWidget
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QPainter, QPixmap, QColor
+from PySide6.QtGui import QPainter, QPixmap, QPen, QFont
 
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 import matplotlib.pyplot as plt
-from scipy.interpolate import interp1d, CubicSpline
+from scipy.interpolate import CubicSpline
 
 import numpy as np
 
-from utils.misc import get_units
+from utils import get_units
 
 style = {
     "axes.grid": "True",
