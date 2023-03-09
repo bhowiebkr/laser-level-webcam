@@ -13,6 +13,7 @@ class Core(QObject):
     OnAnalyserUpdate = Signal(list)
     OnSubsampleProgressUpdate = Signal(list)
     OnSampleComplete = Signal()
+    OnUnitsChanged = Signal(str)
 
     def __init__(self):
         super().__init__()
@@ -28,6 +29,8 @@ class Core(QObject):
         self.units = None  # string representing the units
         self.sensor_width = None  # width of the sensor in millimeters (mm)
         self.setting_zero_sample = False  # boolean if we are setting zero or a sample
+        self.sample_data = np.empty(0)  # numpy array of raw samples
+        self.line_data = np.empty(0)  # numpy array of the fitted line through the samples
 
         # Frame worker
         self.workerThread = QThread()
@@ -55,13 +58,16 @@ class Core(QObject):
         self.OnSubsampleProgressUpdate.emit([subsample, self.subsamples])  # current sample and total
 
     def received_sample(self, sample):
-        self.OnSampleComplete.emit()
-
         if self.setting_zero_sample:
             self.zero = sample
         else:
-            # do something with the sample. store in list
-            pass
+            width = self.histo.shape[0]
+            sample = (self.sensor_width / width) * (sample - self.zero)
+            self.sample_data = np.append(self.sample_data, sample)
+            x = np.arange(1, len(self.sample_data) + 1)
+            self.line_data = np.polyfit(x, self.sample_data, 1)
+
+        self.OnSampleComplete.emit()
 
     def set_subsamples(self, samples):
         self.subsamples = samples
@@ -71,13 +77,17 @@ class Core(QObject):
 
     def set_units(self, units):
         self.units = units
+        self.OnUnitsChanged.emit(self.units)
 
     def set_sensor_width(self, width):
         self.sensor_width = width
 
     def start_sample(self, zero=False):
-        if zero:
+        if zero:  # if we are zero, we reset everything
+            self.sample_data = np.empty(0)
+            self.line_data = np.empty(0)
             self.zero = None
+
         self.setting_zero_sample = zero
         self.sample_worker.start(self.subsamples, self.outliers)
 
@@ -95,16 +105,14 @@ class Core(QObject):
         """
         self.pixmap, self.histo, a_pix = data
 
-        # Sensor Feed
-        self.OnSensorFeedUpdate.emit(self.pixmap)
-
         self.centre = fit_gaussian_fast(self.histo)  # Specify the y position of the line
-        self.sample_worker.sample_in(self.centre)
+        self.sample_worker.sample_in(self.centre)  # send the sample to the sample worker right away.
+
+        self.OnSensorFeedUpdate.emit(self.pixmap)
         width = self.histo.shape[0]
         a_sample = int(self.analyser_widget_height - self.centre * self.analyser_widget_height / width)
 
-        a_zero = None
-        a_text = None
+        a_zero, a_text = None, None
         if self.zero:  # If we have zero, we can set it and the text
             a_zero = int(self.analyser_widget_height - self.zero * self.analyser_widget_height / width)
             centre_real = (self.sensor_width / width) * (self.centre - self.zero)
