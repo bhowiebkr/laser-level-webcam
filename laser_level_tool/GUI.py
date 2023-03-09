@@ -1,11 +1,11 @@
 import sys
 
-from PySide6.QtWidgets import QMainWindow, QDoubleSpinBox, QRadioButton, QLabel, QGridLayout, QSpinBox, QLineEdit, QFormLayout, QSlider, QVBoxLayout, QTableWidget, QPushButton, QComboBox, QGroupBox, QWidget, QHBoxLayout, QSplitter, QApplication
+from PySide6.QtWidgets import QMainWindow, QHeaderView, QDoubleSpinBox, QRadioButton, QLabel, QGridLayout, QSpinBox, QLineEdit, QFormLayout, QSlider, QVBoxLayout, QTableWidget, QPushButton, QComboBox, QGroupBox, QWidget, QHBoxLayout, QSplitter, QApplication
 from PySide6.QtCore import Qt, QThread, Signal, QObject, Slot
 
 import qdarktheme
 
-from Widgets import PixmapWidget, Graph, AnalyserWidget
+from Widgets import PixmapWidget, Graph, AnalyserWidget, TableUnit
 from utils.misc import units_of_measurements
 from Core import Core
 
@@ -134,11 +134,38 @@ class MainWindow(QMainWindow):
         self.sample_btn.clicked.connect(self.sample_btn_cmd)
         self.core.OnSubsampleProgressUpdate.connect(self.subsample_progress_update)
         self.core.OnSampleComplete.connect(self.finished_subsample)
+        self.core.OnSampleComplete.connect(self.update_table)
+        self.core.OnUnitsChanged.connect(self.update_table)
         self.smoothing.setValue(50)
-        self.subsamples_spin.setValue(30)
+        self.subsamples_spin.setValue(10)
         self.outlier_spin.setValue(30)
         self.units_combo.setCurrentIndex(0)
         self.sensor_width_spin.setValue(5.9)
+
+    def update_table(self):
+        units = self.core.units
+        header_names = [f"Measured ({units})", f"Residual ({units})", f"Scrape ({units})", f"Shim ({units})"]
+        self.sample_table.setColumnCount(len(header_names))
+        self.sample_table.setHorizontalHeaderLabels(header_names)
+        header = self.sample_table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.Stretch)
+
+        # Delete the rows
+        self.sample_table.setRowCount(0)
+
+        for row, data in enumerate(self.core.sample_data):
+            # Check if there are enough rows in the table widget, and add a new row if necessary
+            if row >= self.sample_table.rowCount():
+                self.sample_table.insertRow(row)
+
+            cell = TableUnit()
+            cell.value = data
+            cell.units = self.core.units
+            self.sample_table.setItem(row, 0, cell)
+
+        unit_multiplier = units_of_measurements[self.core.units]
+
+        self.graph.set_data([self.core.sample_data * unit_multiplier, self.core.line_data * unit_multiplier, self.core.units])
 
     def finished_subsample(self):
         """
