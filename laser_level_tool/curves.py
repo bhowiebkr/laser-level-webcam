@@ -48,8 +48,8 @@ def fit_gaussian_fast(curve):
 
     x_data = np.arange(curve.size)
     try:
-        popt, _ = curve_fit(gaussian, x_data, curve, p0=(np.mean(x_data),), maxfev=1000)
-    except OptimizeWarning:
+        popt, _ = curve_fit(gaussian, x_data, curve, p0=(np.mean(x_data),), maxfev=800)
+    except RuntimeError:
         return None
     else:
         return popt[0]
