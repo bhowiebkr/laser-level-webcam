@@ -104,46 +104,36 @@ class Core(QObject):
         self.OnSensorFeedUpdate.emit(self.pixmap)
 
         # Smoothing
-        # compute the moving average with nearest neighbour
         kernel = np.ones(2 * self.analyser_smoothing + 1) / (2 * self.analyser_smoothing + 1)
         self.histo = np.convolve(self.histo, kernel, mode="valid")
 
         # Find the min and max values
-        min_value = np.min(self.histo)
-        max_value = np.max(self.histo)
+        min_value, max_value = self.histo.min(), self.histo.max()
 
-        # Ensure max_value and min_value are not equal to avoid division by zero
-        if max_value == min_value:
-            max_value += 1
         # Rescale the intensity values to have a range between 0 and 255
-        self.histo = (self.histo - min_value) * (255 / (max_value - min_value))
+        self.histo = ((self.histo - min_value) * (255.0 / (max_value - min_value))).clip(0, 255).astype(np.uint8)
 
         # Generate the image
-        # Defind the scope image data as the width (long side) of the image x 256 for pixels
-        scopeData = np.zeros((self.histo.shape[0], 256)).astype(np.uint8)
+        # Define the scope image data as the width (long side) of the image x 256 for pixels
+        scopeData = np.zeros((self.histo.shape[0], 256), dtype=np.uint8)
 
-        # Loop over intensity values and set scope data
+        # Replace NaN values with 0
+        self.histo = np.nan_to_num(self.histo)
+
+        # Set scope data
         for i, intensity in enumerate(self.histo):
-            if np.isnan(intensity):
-                intensity = 0
-            try:
-                scopeData[i, : int(intensity)] = 128
-            except IndexError as e:
-                print(e)
+            scopeData[i, : int(intensity)] = 128
 
-        qimage = QImage(
-            scopeData,
-            scopeData.shape[1],
-            scopeData.shape[0],
-            QImage.Format_Grayscale8,
-        )
+        # Create QImage directly from the scope data
+        qimage = QImage(scopeData.data, scopeData.shape[1], scopeData.shape[0], scopeData.strides[0], QImage.Format_Grayscale8)
 
+        # Create QPixmap from QImage
         a_pix = QPixmap.fromImage(qimage)
 
-        # Create a vertical flip transform
-        transform = QTransform()
-        transform.scale(1, -1)
-        a_pix = a_pix.transformed(transform)
+        # Create a vertical flip transform and apply it to the QPixmap
+        a_pix = a_pix.transformed(QTransform().scale(1, -1))
+
+        print(self.histo.shape)
 
         self.centre = fit_gaussian(self.histo)  # Specify the y position of the line
         self.sample_worker.sample_in(self.centre)
