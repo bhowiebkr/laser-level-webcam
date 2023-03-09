@@ -69,6 +69,7 @@ class FrameWorker(QObject):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.ready = True
+        self.analyser_smoothing = 0
 
     @Slot(QVideoFrame)
     def setVideoFrame(self, frame: QVideoFrame):
@@ -86,8 +87,42 @@ class FrameWorker(QObject):
             return
 
         pixmap = QPixmap.fromImage(image).transformed(QTransform().rotate(-90))
-        self.OnFrameChanged.emit([pixmap, histo])
+
+        # Smoothing
+        kernel = np.ones(2 * self.analyser_smoothing + 1) / (2 * self.analyser_smoothing + 1)
+        histo = np.convolve(histo, kernel, mode="valid")
+
+        # Find the min and max values
+        min_value, max_value = histo.min(), histo.max()
+
+        # Rescale the intensity values to have a range between 0 and 255
+        histo = ((histo - min_value) * (255.0 / (max_value - min_value))).clip(0, 255).astype(np.uint8)
+
+        # Generate the image
+        # Define the scope image data as the width (long side) of the image x 256 for pixels
+        scopeData = np.zeros((histo.shape[0], 256), dtype=np.uint8)
+
+        # Replace NaN values with 0
+        self.histo = np.nan_to_num(histo)
+
+        # Set scope data
+        for i, intensity in enumerate(histo):
+            scopeData[i, : int(intensity)] = 128
+
+        # Create QImage directly from the scope data
+        qimage = QImage(scopeData.data, scopeData.shape[1], scopeData.shape[0], scopeData.strides[0], QImage.Format_Grayscale8)
+
+        # Create QPixmap from QImage
+        a_pix = QPixmap.fromImage(qimage)
+
+        # Create a vertical flip transform and apply it to the QPixmap
+        a_pix = a_pix.transformed(QTransform().scale(1, -1))
+
+        self.OnFrameChanged.emit([pixmap, histo, a_pix])
         self.ready = True
+
+    def set_smoothness(self, smoothness):
+        self.analyser_smoothing = smoothness
 
 
 class FrameSender(QObject):
