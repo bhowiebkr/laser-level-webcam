@@ -3,7 +3,7 @@ from PySide6.QtGui import QDoubleValidator
 from PySide6.QtCore import QThread, QObject, Signal, Qt
 
 import numpy as np
-from GUI.graph import Graph
+from GUI_old.graph import Graph
 from utils.misc import get_units, units_of_measurements, scale_center_point, scale_center_point_no_units
 from scipy import stats
 
@@ -179,7 +179,7 @@ class Sampler(QGroupBox):
 
         main_layout.addLayout(top_layout)
         main_layout.addWidget(self.splitter)
-        #self.splitter.setSizes([200, 100])
+        # self.splitter.setSizes([200, 100])
 
         # Logic
         self.take_sample_btn.clicked.connect(self.take_sample_btn_cmd)
