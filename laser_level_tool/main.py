@@ -1,12 +1,12 @@
 import sys
 
-from PySide6.QtWidgets import QMainWindow, QHeaderView, QDoubleSpinBox, QRadioButton, QLabel, QGridLayout, QSpinBox, QLineEdit, QFormLayout, QSlider, QVBoxLayout, QTableWidget, QPushButton, QComboBox, QGroupBox, QWidget, QHBoxLayout, QSplitter, QApplication
-from PySide6.QtCore import Qt, QThread, Signal, QObject, Slot
+from PySide6.QtWidgets import QMainWindow, QHeaderView, QDoubleSpinBox, QRadioButton, QLabel, QGridLayout, QSpinBox, QFormLayout, QSlider, QVBoxLayout, QTableWidget, QPushButton, QComboBox, QGroupBox, QWidget, QHBoxLayout, QSplitter, QApplication
+from PySide6.QtCore import Qt
 
 import qdarktheme
 
 from Widgets import PixmapWidget, Graph, AnalyserWidget, TableUnit
-from utils.misc import units_of_measurements
+from utils import units_of_measurements
 from Core import Core
 
 
