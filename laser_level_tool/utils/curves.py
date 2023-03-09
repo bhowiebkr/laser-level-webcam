@@ -32,3 +32,24 @@ def fit_gaussian(curve):
         return popt[0]
     except:
         return None
+
+
+from scipy.optimize import OptimizeWarning
+
+
+def fit_gaussian_fast(curve):
+    curve_max = np.max(curve)
+    curve_std = np.nanstd(curve)
+    if np.isnan(curve_std) or curve_max == 0 or curve_std == 0:
+        return None
+
+    def gaussian(x, mean):
+        return curve_max * np.exp(-(((x - mean) / curve_std) ** 2))
+
+    x_data = np.arange(curve.size)
+    try:
+        popt, _ = curve_fit(gaussian, x_data, curve, p0=(np.mean(x_data),), maxfev=1000)
+    except OptimizeWarning:
+        return None
+    else:
+        return popt[0]
