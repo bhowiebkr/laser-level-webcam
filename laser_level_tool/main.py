@@ -1,5 +1,5 @@
 import sys
-
+import subprocess
 from PySide6.QtWidgets import QMainWindow, QHeaderView, QDoubleSpinBox, QRadioButton, QLabel, QGridLayout, QSpinBox, QFormLayout, QSlider, QVBoxLayout, QTableWidget, QPushButton, QComboBox, QGroupBox, QWidget, QHBoxLayout, QSplitter, QApplication
 from PySide6.QtCore import Qt
 
@@ -141,6 +141,12 @@ class MainWindow(QMainWindow):
         self.outlier_spin.setValue(30)
         self.units_combo.setCurrentIndex(0)
         self.sensor_width_spin.setValue(5.9)
+        camera_device_settings_btn.clicked.connect(self.extra_controls)
+        self.camera_combo.currentIndexChanged.connect(self.core.set_camera)
+
+    def extra_controls(self):
+        cmd = f'ffmpeg -f dshow -show_video_device_dialog true -i video="{self.camera_combo.currentText()}"'
+        subprocess.Popen(cmd, shell=True)
 
     def update_table(self):
         units = self.core.units
