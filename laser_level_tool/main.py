@@ -4,9 +4,9 @@ from PySide6.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QSplitter, QApp
 
 import qdarktheme
 
-from GUI.analyser import Analyser
-from GUI.sensor_feed import SensorFeed
-from GUI.sampler import Sampler
+from GUI_old.analyser import Analyser
+from GUI_old.sensor_feed import SensorFeed
+from GUI_old.sampler import Sampler
 
 from utils.misc import get_webcam_max_res
 
