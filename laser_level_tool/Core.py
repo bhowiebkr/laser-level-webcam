@@ -4,7 +4,7 @@ from PySide6.QtGui import QImage, QPixmap, QTransform
 
 import numpy as np
 from Workers import FrameSender, FrameWorker, SampleWorker
-from utils.curves import fit_gaussian
+from utils.curves import fit_gaussian, fit_gaussian_fast
 from utils.misc import scale_center_point_no_units, get_units
 
 
@@ -20,7 +20,6 @@ class Core(QObject):
         self.pixmap = None  # pixmap used for the camera feed
         self.histo = None  # histogram values used in analyser
         self.camera = None  # camera being used
-        self.analyser_smoothing = 0  # Smoothing
         self.centre = None  # The found centre of the histogram
         self.zero = None  # The zero point
         self.analyser_widget_height = 0  # The height of the widget so we can calculate the offset
@@ -85,9 +84,6 @@ class Core(QObject):
     def set_analyser_widget_height(self, height):
         self.analyser_widget_height = height
 
-    def set_analyser_smoothing(self, smoothing):
-        self.analyser_smoothing = smoothing
-
     @Slot(QVideoFrame)
     def onFramePassedFromCamera(self, frame: QVideoFrame):
         if self.frameWorker.ready:
@@ -97,45 +93,12 @@ class Core(QObject):
         """
         This is where most of the data processing happens
         """
-        self.pixmap = data[0]
-        self.histo = data[1]
+        self.pixmap, self.histo, a_pix = data
 
         # Sensor Feed
         self.OnSensorFeedUpdate.emit(self.pixmap)
 
-        # Smoothing
-        kernel = np.ones(2 * self.analyser_smoothing + 1) / (2 * self.analyser_smoothing + 1)
-        self.histo = np.convolve(self.histo, kernel, mode="valid")
-
-        # Find the min and max values
-        min_value, max_value = self.histo.min(), self.histo.max()
-
-        # Rescale the intensity values to have a range between 0 and 255
-        self.histo = ((self.histo - min_value) * (255.0 / (max_value - min_value))).clip(0, 255).astype(np.uint8)
-
-        # Generate the image
-        # Define the scope image data as the width (long side) of the image x 256 for pixels
-        scopeData = np.zeros((self.histo.shape[0], 256), dtype=np.uint8)
-
-        # Replace NaN values with 0
-        self.histo = np.nan_to_num(self.histo)
-
-        # Set scope data
-        for i, intensity in enumerate(self.histo):
-            scopeData[i, : int(intensity)] = 128
-
-        # Create QImage directly from the scope data
-        qimage = QImage(scopeData.data, scopeData.shape[1], scopeData.shape[0], scopeData.strides[0], QImage.Format_Grayscale8)
-
-        # Create QPixmap from QImage
-        a_pix = QPixmap.fromImage(qimage)
-
-        # Create a vertical flip transform and apply it to the QPixmap
-        a_pix = a_pix.transformed(QTransform().scale(1, -1))
-
-        print(self.histo.shape)
-
-        self.centre = fit_gaussian(self.histo)  # Specify the y position of the line
+        self.centre = fit_gaussian_fast(self.histo)  # Specify the y position of the line
         self.sample_worker.sample_in(self.centre)
         width = self.histo.shape[0]
         a_sample = int(self.analyser_widget_height - self.centre * self.analyser_widget_height / width)
@@ -144,8 +107,8 @@ class Core(QObject):
         a_text = None
         if self.zero:  # If we have zero, we can set it and the text
             a_zero = int(self.analyser_widget_height - self.zero * self.analyser_widget_height / width)
-            center_point_real = scale_center_point_no_units(self.analyser_widget_height, width, self.centre, self.zero)
-            a_text = get_units(self.units, center_point_real)
+            centre_real = (self.sensor_width / width) * (self.centre - self.zero)
+            a_text = get_units(self.units, centre_real)
 
         self.OnAnalyserUpdate.emit([a_pix, a_sample, a_zero, a_text])
 
