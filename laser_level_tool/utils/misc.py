@@ -69,6 +69,10 @@ def scale_center_point(sensor_width, data_width, center, zero, units):
 
 
 def scale_center_point_no_units(sensor_width, data_width, center, zero):
+    if data_width == 0:
+        return None
+    return (sensor_width / data_width) * (center - zero)
+
     val = float(sensor_width) / float(data_width) * (center - zero)
-    # print(f"sensor width: {sensor_width}\ndata width: {data_width}\ncenter: {center}\nzero: {zero}\nunits: {units}\nunit scale: {units_of_measurements[units]}\nval: {val}\n\n")
+    # print(f"sensor width: {sensor_width}\ndata width: {data_width}\ncenter: {center}\nzero: {zero}\n")
     return val
