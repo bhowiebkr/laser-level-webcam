@@ -149,9 +149,10 @@ class AnalyserWidget(QWidget):
         painter.drawPixmap(self.rect(), self.pixmap)
 
         # Sample
-        pen = QPen(Qt.green, 0, Qt.SolidLine)
-        painter.setPen(pen)
-        painter.drawLine(0, self.sample, self.width(), self.sample)
+        if self.sample:
+            pen = QPen(Qt.green, 0, Qt.SolidLine)
+            painter.setPen(pen)
+            painter.drawLine(0, self.sample, self.width(), self.sample)
 
         # zero
         if self.zero:

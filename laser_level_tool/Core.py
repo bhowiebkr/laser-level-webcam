@@ -104,15 +104,15 @@ class Core(QObject):
         This is where most of the data processing happens
         """
         self.pixmap, self.histo, a_pix = data
-
-        self.centre = fit_gaussian_fast(self.histo)  # Specify the y position of the line
-        if not self.centre:
-            return
-        self.sample_worker.sample_in(self.centre)  # send the sample to the sample worker right away.
-
         self.OnSensorFeedUpdate.emit(self.pixmap)
+
         width = self.histo.shape[0]
-        a_sample = int(self.analyser_widget_height - self.centre * self.analyser_widget_height / width)
+
+        a_sample = None
+        self.centre = fit_gaussian_fast(self.histo)  # Specify the y position of the line
+        if self.centre:
+            self.sample_worker.sample_in(self.centre)  # send the sample to the sample worker right away.
+            a_sample = int(self.analyser_widget_height - self.centre * self.analyser_widget_height / width)
 
         a_zero, a_text = None, None
         if self.zero:  # If we have zero, we can set it and the text
