@@ -106,6 +106,8 @@ class Core(QObject):
         self.pixmap, self.histo, a_pix = data
 
         self.centre = fit_gaussian_fast(self.histo)  # Specify the y position of the line
+        if not self.centre:
+            return
         self.sample_worker.sample_in(self.centre)  # send the sample to the sample worker right away.
 
         self.OnSensorFeedUpdate.emit(self.pixmap)
