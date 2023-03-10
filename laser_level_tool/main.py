@@ -224,6 +224,9 @@ class MainWindow(QMainWindow):
         Calls the sample button command but sets a flag so we know the GUI is in a state of setting the zero value
         """
         self.setting_zero = True
+        print("clearing samples")
+        self.core.samples[:] = []  # clear list in-place without changing it's reference
+        self.graph.update(self.zero_btn_cmd)
         self.core.start_sample(self.setting_zero)
 
     def sample_btn_cmd(self):
