@@ -66,11 +66,12 @@ class Graph(QWidget):
         self.update(self.set_mode)
 
     def update(self, sender):
-        if self.units == None or self.mode == None or len(self.samples) == 0:
-            return
-
         # Clear the axis and plot the data
         self.ax.clear()
+
+        if self.units == None or self.mode == None or len(self.samples) == 0:
+            self.canvas.draw()
+            return
 
         unit_multiplier = units_of_measurements[self.units]
 
