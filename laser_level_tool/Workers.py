@@ -8,7 +8,15 @@ import qimage2ndarray
 
 class SampleWorker(QObject):
     """
-    A worker that does multisampling
+    A worker class to process a stream of samples and emit the calculated mean.
+
+    Attributes:
+        OnSampleReady (Signal): Signal emitted when a sample is processed and a new mean is calculated.
+        OnSubsampleRecieved (Signal): Signal emitted when a new subsample is received and processed.
+
+    Methods:
+        sample_in: Process a new subsample.
+        start: Start the worker with a given number of total samples and outlier percentage to remove.
     """
 
     OnSampleReady = Signal(float)
@@ -24,6 +32,15 @@ class SampleWorker(QObject):
         self.started = False
 
     def sample_in(self, sample):
+        """
+        Process a new subsample by appending it to the array and emitting OnSubsampleRecieved.
+
+        When the total number of subsamples is reached, the worker calculates the mean, removes the outlier
+        percentage, and emits OnSampleReady with the new mean.
+
+        Args:
+            sample (float): A new subsample to process.
+        """
         if not self.started:
             return
 
@@ -54,6 +71,13 @@ class SampleWorker(QObject):
             self.started = False
 
     def start(self, total_samples, outlier_percent):
+        """
+        Start the worker with a given number of total samples and outlier percentage to remove.
+
+        Args:
+            total_samples (int): The total number of subsamples to process before emitting the mean.
+            outlier_percent (float): The percentage of outliers to remove from the subsamples (0-100).
+        """
         self.total_samples = total_samples
         self.outlier_percent = outlier_percent / 100
         self.started = True
@@ -61,7 +85,15 @@ class SampleWorker(QObject):
 
 class FrameWorker(QObject):
     """
-    FrameWorker gets frames from the webcam as a pixmap and numpy array [pixmap, np.array]
+    A worker class to process a QVideoFrame and emit the corresponding image data.
+
+    Attributes:
+        OnFrameChanged (Signal): Signal emitted when the processed image data is ready.
+
+    Methods:
+        setVideoFrame(frame: QVideoFrame) -> None:
+            Process a new QVideoFrame and emit the corresponding image data.
+
     """
 
     OnFrameChanged = Signal(list)
@@ -74,7 +106,14 @@ class FrameWorker(QObject):
     @Slot(QVideoFrame)
     def setVideoFrame(self, frame: QVideoFrame):
         """
-        Recieves the fram from the FrameSender
+        Process a new QVideoFrame and emit the corresponding image data.
+
+        Args:
+            frame (QVideoFrame): A QVideoFrame object to be processed.
+
+        Returns:
+            None
+
         """
         self.ready = False
 
@@ -124,7 +163,10 @@ class FrameWorker(QObject):
 
 class FrameSender(QObject):
     """
-    A frame sender that sends the frame to the FrameWorker
+    A class to send QVideoFrames.
+
+    Attributes:
+        OnFrameChanged (Signal): Signal emitted when a new QVideoFrame is ready to be processed.
     """
 
     OnFrameChanged = Signal(QVideoFrame)
