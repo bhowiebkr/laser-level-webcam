@@ -2,47 +2,40 @@ from scipy.optimize import curve_fit
 import numpy as np
 
 
+import numpy as np
+from scipy.optimize import curve_fit
+
+
 def fit_gaussian(curve):
-    try:
+    """
+    Fits a Gaussian curve to the given data points.
 
-        def gaussian(x, mean):
-            amplitude = np.max(curve)
-            stddev = np.std(curve)
+    Args:
+    curve: 1D array of float, representing the curve to be fitted.
 
-            # Check if stddev is zero
-            if stddev == 0:
-                return 0
-
-            return amplitude * np.exp(-(((x - mean) / stddev) ** 2))
-
-        x_data = np.arange(curve.size)
-        y_data = np.asarray(curve)
-        popt, _ = curve_fit(
-            gaussian,
-            x_data,
-            y_data,
-            p0=(np.mean(x_data),),
-            absolute_sigma=True,
-            maxfev=1000,
-        )
-        return popt[0]
-    except:
-        return None
-
-
-def fit_gaussian_fast(curve):
+    Returns:
+    A float representing the mean of the fitted Gaussian curve.
+    If the curve cannot be fitted, None is returned.
+    """
+    # Compute the maximum and standard deviation of the curve
     curve_max = np.max(curve)
     curve_std = np.nanstd(curve)
+
+    # Check if the standard deviation is NaN or the curve max/std is zero
     if np.isnan(curve_std) or curve_max == 0 or curve_std == 0:
         return None
 
+    # Define the Gaussian function
     def gaussian(x, mean):
         return curve_max * np.exp(-(((x - mean) / curve_std) ** 2))
 
+    # Generate x data points and try to fit the curve using the defined Gaussian function
     x_data = np.arange(curve.size)
     try:
         popt, _ = curve_fit(gaussian, x_data, curve, p0=(np.mean(x_data),), maxfev=800)
     except RuntimeError:
+        # If the curve fitting fails, return None
         return None
     else:
+        # Return the mean of the fitted Gaussian curve
         return popt[0]
