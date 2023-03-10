@@ -20,6 +20,7 @@ class MainWindow(QMainWindow):
 
         self.setting_zero = False  # state if the GUI is setting zero
         self.replace_sample = False  # state if we are replcing a sample
+        self.table_selected_index = 0  # we keep track of the index so we can reselect it
 
         self.core = Core()  # where all the magic happens
 
@@ -152,6 +153,7 @@ class MainWindow(QMainWindow):
         camera_device_settings_btn.clicked.connect(self.extra_controls)
         self.camera_combo.currentIndexChanged.connect(self.core.set_camera)
         self.graph_mode_group.buttonClicked.connect(self.update_graph_mode)
+        self.sample_table.itemSelectionChanged.connect(self.hightlight_sample)
 
         # Trigger the state of things
         self.smoothing.setValue(50)
@@ -161,6 +163,10 @@ class MainWindow(QMainWindow):
         self.sensor_width_spin.setValue(5.9)
         self.raw_radio.setChecked(True)
         self.update_graph_mode()  # have to trigger it manually the first time
+
+    def hightlight_sample(self):
+        index = self.sample_table.currentRow()
+        self.graph.set_selected_index(index)
 
     def extra_controls(self):
         cmd = f'ffmpeg -f dshow -show_video_device_dialog true -i video="{self.camera_combo.currentText()}"'
@@ -178,9 +184,6 @@ class MainWindow(QMainWindow):
         header = self.sample_table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.Stretch)
 
-        # store the original selected sample
-        selected_sample = self.sample_table.currentRow()
-
         # Delete the rows
         self.sample_table.setRowCount(0)
 
@@ -196,8 +199,7 @@ class MainWindow(QMainWindow):
                 cell.units = self.core.units
                 self.sample_table.setItem(sample.x, col, cell)
 
-        if selected_sample:
-            self.sample_table.selectRow(selected_sample)
+        self.sample_table.selectRow(self.table_selected_index)
         self.graph.update(self.update_table)
         # unit_multiplier = units_of_measurements[self.core.units]
 
@@ -237,35 +239,40 @@ class MainWindow(QMainWindow):
         """
         Calls the sample button command but sets a flag so we know the GUI is in a state of setting the zero value
         """
+        self.table_selected_index = 0
+
         self.setting_zero = True
         self.replace_sample = False
         self.zero_btn.setDisabled(True)
         self.sample_btn.setDisabled(True)
         self.replace_btn.setDisabled(True)
 
-        print("clearing samples")
         self.core.samples[:] = []  # clear list in-place without changing it's reference
         self.graph.update(self.zero_btn_cmd)
-        self.core.start_sample(self.setting_zero)
+        self.core.start_sample(self.setting_zero, replacing_sample=False, replacing_sample_index=None)
 
     def sample_btn_cmd(self):
         """
         Calls on Core to take a sample
         """
+        self.table_selected_index = self.sample_table.currentRow()
+
         self.zero_btn.setDisabled(True)
         self.sample_btn.setDisabled(True)
         self.replace_btn.setDisabled(True)
-        self.core.start_sample(self.setting_zero)
+        self.core.start_sample(self.setting_zero, replacing_sample=False, replacing_sample_index=None)
 
     def replace_btn_cmd(self):
         """
         Call for when we are replacing a sample
         """
+        self.table_selected_index = self.sample_table.currentRow()
+
         self.zero_btn.setDisabled(True)
         self.sample_btn.setDisabled(True)
         self.replace_btn.setDisabled(True)
         index = self.sample_table.currentRow()
-        self.core.start_sample(self.setting_zero, sample_index=index)
+        self.core.start_sample(self.setting_zero, replacing_sample=True, replacing_sample_index=index)
 
     def closeEvent(self, event):
         self.core.workerThread.quit()
