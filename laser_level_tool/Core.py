@@ -38,7 +38,8 @@ class Core(QObject):
         self.units = None  # string representing the units
         self.sensor_width = None  # width of the sensor in millimeters (mm)
         self.setting_zero_sample = False  # boolean if we are setting zero or a sample
-        self.replacing_sample = False  # Lets go crazy here and use False when not being used and int for the sample index when being used
+        self.replacing_sample = False  # If we are replacing a sample
+        self.replacing_sample_index = None  # the index of the sample we are replacing
         self.sample_data = np.empty(0)  # numpy array of raw samples
         self.line_data = np.empty(0)  # numpy array of the fitted line through the samples
         self.samples = []
@@ -73,10 +74,12 @@ class Core(QObject):
             self.zero = val
         else:
             size_in_mm = (self.sensor_width / self.histo.shape[0]) * (val - self.zero)
-            if self.replacing_sample:  # Replace a sample
-                x_orig = self.samples[self.replacing_sample].x
-                self.samples[self.replacing_sample] = Sample(x=x_orig, y=size_in_mm)
+
+            if self.replacing_sample:
+                x_orig = self.samples[self.replacing_sample_index].x
+                self.samples[self.replacing_sample_index] = Sample(x=x_orig, y=size_in_mm)
                 self.replacing_sample = False
+
             else:  # Append to samples
                 self.samples.append(Sample(x=len(self.samples), y=size_in_mm))
 
@@ -89,15 +92,14 @@ class Core(QObject):
 
         self.OnUnitsChanged.emit(self.units)
 
-    def start_sample(self, zero, sample_index=False):
+    def start_sample(self, zero, replacing_sample, replacing_sample_index):
+        self.replacing_sample = replacing_sample
+        self.replacing_sample_index = replacing_sample_index
+
         if zero:  # if we are zero, we reset everything
             self.sample_data = np.empty(0)
             self.line_data = np.empty(0)
             self.zero = None
-
-        # Keep track of the sample index we are replacing. If False, we are appending to the samples
-        if sample_index:
-            self.replacing_sample = sample_index
 
         self.setting_zero_sample = zero
         self.sample_worker.start(self.subsamples, self.outliers)
