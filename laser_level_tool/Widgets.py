@@ -108,10 +108,9 @@ class Graph(QWidget):
                 self.ax.plot(smooth_x, smooth_y, linewidth=2, label="Smooth")
 
             # Plot line
-            line = np.polyfit(x, y, 1)
-            line = np.polyval(line, x)
-            self.ax.set_ylabel(self.units)
-            self.ax.plot(x, line, label="Slope")
+
+            zeros = np.zeros(len(self.samples))
+            self.ax.plot(x, zeros, label="Slope")
 
         self.ax.legend()
         self.canvas.draw()
@@ -202,6 +201,5 @@ class TableUnit(QTableWidgetItem):
 
     def data(self, role):
         if role == Qt.DisplayRole:
-            # return "{:.2f}".format(self.value * units_of_measurements[self.units])
             return get_units(self.units, self.value)
         return super().data(role)
