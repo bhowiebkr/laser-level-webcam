@@ -1,6 +1,6 @@
 import sys
 import subprocess
-from PySide6.QtWidgets import QMainWindow, QHeaderView, QButtonGroup, QDoubleSpinBox, QRadioButton, QLabel, QGridLayout, QSpinBox, QFormLayout, QSlider, QVBoxLayout, QTableWidget, QPushButton, QComboBox, QGroupBox, QWidget, QHBoxLayout, QSplitter, QApplication
+from PySide6.QtWidgets import QMainWindow, QHeaderView, QAbstractItemView, QButtonGroup, QDoubleSpinBox, QRadioButton, QLabel, QGridLayout, QSpinBox, QFormLayout, QSlider, QVBoxLayout, QTableWidget, QPushButton, QComboBox, QGroupBox, QWidget, QHBoxLayout, QSplitter, QApplication
 from PySide6.QtCore import Qt
 
 import qdarktheme
@@ -76,6 +76,7 @@ class MainWindow(QMainWindow):
         self.sample_btn = QPushButton("Take Sample")
         self.sample_btn.setDisabled(True)
         self.sample_table = QTableWidget()
+        self.sample_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         sample_layout = QGridLayout()
         sample_layout.setContentsMargins(1, 1, 1, 1)
         sample_layout.addWidget(QLabel("Sub Samples #"), 0, 0, 1, 1, alignment=Qt.AlignRight)
@@ -166,7 +167,7 @@ class MainWindow(QMainWindow):
 
     def update_table(self):
         units = self.core.units
-        header_names = [f"Measured ({units})", f"Residual ({units})", f"Scrape ({units})", f"Shim ({units})"]
+        header_names = [f"Measured ({units})", f"Flattened ({units})", f"Scrape ({units})", f"Shim ({units})"]
         self.sample_table.setColumnCount(len(header_names))
         self.sample_table.setHorizontalHeaderLabels(header_names)
         header = self.sample_table.horizontalHeader()
