@@ -95,6 +95,7 @@ class Graph(QWidget):
             line = np.polyval(line, x)
             self.ax.set_ylabel(self.units)
             self.ax.plot(x, line, label="Slope")
+
         else:
             # Raw points
             for s in self.samples:
@@ -109,9 +110,14 @@ class Graph(QWidget):
                 self.ax.plot(smooth_x, smooth_y, linewidth=2, label="Smooth")
 
             # Plot line
-
+            self.ax.set_ylabel(self.units)
             zeros = np.zeros(len(self.samples))
             self.ax.plot(x, zeros, label="Slope")
+
+        # Increase the number of ticks on the y-axis
+        num_ticks = 10
+        ticks = np.linspace(min(y), max(y), num_ticks)
+        self.ax.set_yticks(ticks)
 
         self.ax.legend()
         self.canvas.draw()
