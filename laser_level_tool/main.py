@@ -1,6 +1,6 @@
 import sys
 import subprocess
-from PySide6.QtWidgets import QMainWindow, QHeaderView, QDoubleSpinBox, QRadioButton, QLabel, QGridLayout, QSpinBox, QFormLayout, QSlider, QVBoxLayout, QTableWidget, QPushButton, QComboBox, QGroupBox, QWidget, QHBoxLayout, QSplitter, QApplication
+from PySide6.QtWidgets import QMainWindow, QHeaderView, QButtonGroup, QDoubleSpinBox, QRadioButton, QLabel, QGridLayout, QSpinBox, QFormLayout, QSlider, QVBoxLayout, QTableWidget, QPushButton, QComboBox, QGroupBox, QWidget, QHBoxLayout, QSplitter, QApplication
 from PySide6.QtCore import Qt
 
 import qdarktheme
@@ -19,6 +19,8 @@ class MainWindow(QMainWindow):
         self.resize(1100, 650)
 
         self.setting_zero = False  # state if the GUI is setting zero
+
+        self.core = Core()  # where all the magic happens
 
         # Set the main window layout
         central_widget = QWidget()
@@ -72,6 +74,7 @@ class MainWindow(QMainWindow):
         self.sensor_width_spin = QDoubleSpinBox()
         self.zero_btn = QPushButton("Zero")
         self.sample_btn = QPushButton("Take Sample")
+        self.sample_btn.setDisabled(True)
         self.sample_table = QTableWidget()
         sample_layout = QGridLayout()
         sample_layout.setContentsMargins(1, 1, 1, 1)
@@ -89,9 +92,12 @@ class MainWindow(QMainWindow):
         sampler_widget.setLayout(sample_layout)
 
         # -- Plot --
+        self.graph_mode_group = QButtonGroup()
         self.raw_radio = QRadioButton("Raw")
+        self.graph_mode_group.addButton(self.raw_radio)
         self.flat_radio = QRadioButton("Flattened")
-        self.graph = Graph()
+        self.graph_mode_group.addButton(self.flat_radio)
+        self.graph = Graph(self.core.samples)
         plot_layout = QVBoxLayout()
         plot_layout.setContentsMargins(0, 3, 0, 0)
         radio_layout = QHBoxLayout()
@@ -113,7 +119,7 @@ class MainWindow(QMainWindow):
         # Logic
         middle_splitter.setSizes([300, 100])
 
-        self.core = Core()
+        self.graph.samples = self.core.samples
 
         for cam in self.core.get_cameras():
             self.camera_combo.addItem(cam)
@@ -124,29 +130,39 @@ class MainWindow(QMainWindow):
         self.core.OnSensorFeedUpdate.connect(self.sensor_feed_widget.setPixmap)
         self.core.OnAnalyserUpdate.connect(self.analyser_widget.set_data)
         self.sensor_feed_widget.OnHeightChanged.connect(self.analyser_widget.setMaximumHeight)
-        self.sensor_feed_widget.OnHeightChanged.connect(self.core.set_analyser_widget_height)
-        self.smoothing.valueChanged.connect(self.core.frameWorker.set_smoothness)
-        self.subsamples_spin.valueChanged.connect(self.core.set_subsamples)
-        self.outlier_spin.valueChanged.connect(self.core.set_outliers)
+        self.sensor_feed_widget.OnHeightChanged.connect(lambda value: setattr(self.core, "analyser_widget_height", value))
+        self.smoothing.valueChanged.connect(lambda value: setattr(self.core.frameWorker, "analyser_smoothing", value))
+        self.subsamples_spin.valueChanged.connect(lambda value: setattr(self.core, "subsamples", value))
+        self.outlier_spin.valueChanged.connect(lambda value: setattr(self.core, "outliers", value))
         self.units_combo.currentTextChanged.connect(self.core.set_units)
-        self.sensor_width_spin.valueChanged.connect(self.core.set_sensor_width)
+        self.sensor_width_spin.valueChanged.connect(lambda value: setattr(self.core, "sensor_width", value))
         self.zero_btn.clicked.connect(self.zero_btn_cmd)
         self.sample_btn.clicked.connect(self.sample_btn_cmd)
         self.core.OnSubsampleProgressUpdate.connect(self.subsample_progress_update)
         self.core.OnSampleComplete.connect(self.finished_subsample)
         self.core.OnSampleComplete.connect(self.update_table)
         self.core.OnUnitsChanged.connect(self.update_table)
+        self.core.OnUnitsChanged.connect(self.graph.set_units)
+        camera_device_settings_btn.clicked.connect(self.extra_controls)
+        self.camera_combo.currentIndexChanged.connect(self.core.set_camera)
+        self.graph_mode_group.buttonClicked.connect(self.update_graph_mode)
+
+        # Trigger the state of things
         self.smoothing.setValue(50)
         self.subsamples_spin.setValue(10)
         self.outlier_spin.setValue(30)
         self.units_combo.setCurrentIndex(0)
         self.sensor_width_spin.setValue(5.9)
-        camera_device_settings_btn.clicked.connect(self.extra_controls)
-        self.camera_combo.currentIndexChanged.connect(self.core.set_camera)
+        self.raw_radio.setChecked(True)
+        self.update_graph_mode()  # have to trigger it manually the first time
 
     def extra_controls(self):
         cmd = f'ffmpeg -f dshow -show_video_device_dialog true -i video="{self.camera_combo.currentText()}"'
         subprocess.Popen(cmd, shell=True)
+
+    def update_graph_mode(self):
+        checked_button = self.graph_mode_group.checkedButton()
+        self.graph.set_mode(checked_button.text())
 
     def update_table(self):
         units = self.core.units
@@ -159,19 +175,22 @@ class MainWindow(QMainWindow):
         # Delete the rows
         self.sample_table.setRowCount(0)
 
-        for row, data in enumerate(self.core.sample_data):
+        for sample in self.core.samples:
             # Check if there are enough rows in the table widget, and add a new row if necessary
-            if row >= self.sample_table.rowCount():
-                self.sample_table.insertRow(row)
+            if sample.x >= self.sample_table.rowCount():
+                self.sample_table.insertRow(sample.x)
 
-            cell = TableUnit()
-            cell.value = data
-            cell.units = self.core.units
-            self.sample_table.setItem(row, 0, cell)
+            for col, val in enumerate([sample.y, sample.linYError, sample.shim, sample.scrape]):
+                # measured value
+                cell = TableUnit()
+                cell.value = val
+                cell.units = self.core.units
+                self.sample_table.setItem(sample.x, col, cell)
 
-        unit_multiplier = units_of_measurements[self.core.units]
+        self.graph.update(self.update_table)
+        # unit_multiplier = units_of_measurements[self.core.units]
 
-        self.graph.set_data([self.core.sample_data * unit_multiplier, self.core.line_data * unit_multiplier, self.core.units])
+        # self.graph.set_data([self.core.sample_data * unit_multiplier, self.core.line_data * unit_multiplier, self.core.units])
 
     def finished_subsample(self):
         """
@@ -179,6 +198,7 @@ class MainWindow(QMainWindow):
         """
         if self.setting_zero == True:
             self.zero_btn.setEnabled(True)
+            self.sample_btn.setEnabled(True)
             self.zero_btn.setText("Zero")
             self.setting_zero = False
         else:
@@ -204,7 +224,7 @@ class MainWindow(QMainWindow):
         Calls the sample button command but sets a flag so we know the GUI is in a state of setting the zero value
         """
         self.setting_zero = True
-        self.sample_btn_cmd()
+        self.core.start_sample(self.setting_zero)
 
     def sample_btn_cmd(self):
         """
