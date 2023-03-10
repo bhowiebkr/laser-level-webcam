@@ -41,6 +41,7 @@ class Graph(QWidget):
         self.samples = samples
         self.units = None
         self.mode = None
+        self.selected_index = None
 
         # Layouts
         main_layout = QVBoxLayout()
@@ -56,6 +57,10 @@ class Graph(QWidget):
 
         self.canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         main_layout.addWidget(self.canvas)
+
+    def set_selected_index(self, index):
+        self.selected_index = index + 1
+        self.update(self.set_selected_index)
 
     def set_units(self, units):
         self.units = units
@@ -77,10 +82,15 @@ class Graph(QWidget):
 
         x = np.arange(1, len(self.samples) + 1)
         y = []
+
+        min_sample = 0
+        max_sample = 0
         if self.mode == "Raw":
             # Raw points
             for s in self.samples:
                 y.append(s.y * unit_multiplier)
+            min_sample = min(y)
+            max_sample = max(y)
             self.ax.plot(x, y, marker="o", markersize=5, label="Samples")
 
             # Fit a smooth curve to the data points
@@ -102,6 +112,9 @@ class Graph(QWidget):
                 y.append(s.linYError * unit_multiplier)
             self.ax.plot(x, y, marker="o", markersize=5, label="Samples")
 
+            min_sample = min(y)
+            max_sample = max(y)
+
             # Fit a smooth curve to the data points
             if len(x) > 2:
                 f = CubicSpline(x, y, bc_type="clamped")
@@ -113,6 +126,14 @@ class Graph(QWidget):
             self.ax.set_ylabel(self.units)
             zeros = np.zeros(len(self.samples))
             self.ax.plot(x, zeros, label="Slope")
+
+        # Plot selected index
+        if type(self.selected_index) is int and self.selected_index >= 0:
+            x = np.array([self.selected_index, self.selected_index])
+            y = np.array([min_sample, max_sample])
+
+            self.ax.plot(x, y, linewidth=7, color="#380000", zorder=-1)
+            self.ax.set_alpha(0.2)
 
         # Increase the number of ticks on the y-axis
         num_ticks = 10
