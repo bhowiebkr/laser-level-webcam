@@ -1,10 +1,6 @@
 from scipy.optimize import curve_fit
 import numpy as np
 
-import warnings
-
-warnings.filterwarnings("ignore")
-
 
 def fit_gaussian(curve):
     try:
@@ -32,9 +28,6 @@ def fit_gaussian(curve):
         return popt[0]
     except:
         return None
-
-
-from scipy.optimize import OptimizeWarning
 
 
 def fit_gaussian_fast(curve):
