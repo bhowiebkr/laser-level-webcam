@@ -121,9 +121,6 @@ class FrameWorker(QObject):
         self.OnFrameChanged.emit([pixmap, histo, a_pix])
         self.ready = True
 
-    def set_smoothness(self, smoothness):
-        self.analyser_smoothing = smoothness
-
 
 class FrameSender(QObject):
     """
