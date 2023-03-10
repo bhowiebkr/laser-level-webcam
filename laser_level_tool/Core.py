@@ -116,7 +116,7 @@ class Core(QObject):
             a_sample = int(self.analyser_widget_height - self.centre * self.analyser_widget_height / width)
 
         a_zero, a_text = None, None
-        if self.zero:  # If we have zero, we can set it and the text
+        if self.zero and self.centre:  # If we have zero, we can set it and the text
             a_zero = int(self.analyser_widget_height - self.zero * self.analyser_widget_height / width)
             centre_real = (self.sensor_width / width) * (self.centre - self.zero)
             a_text = get_units(self.units, centre_real)
