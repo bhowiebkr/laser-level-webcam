@@ -6,6 +6,7 @@ from PySide6.QtGui import QPainter, QPixmap, QPen, QFont
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 import matplotlib.pyplot as plt
 from scipy.interpolate import CubicSpline
+from utils import units_of_measurements
 
 import numpy as np
 
@@ -34,12 +35,12 @@ plt.style.use(style)
 
 
 class Graph(QWidget):
-    def __init__(self, parent=None, units=None):
-        super().__init__(parent)
+    def __init__(self, samples):
+        super().__init__()
 
-        self.x = np.empty(0)
-        self.y = np.empty(0)
-        self.units = units
+        self.samples = samples
+        self.units = None
+        self.mode = None
 
         # Layouts
         main_layout = QVBoxLayout()
@@ -56,47 +57,63 @@ class Graph(QWidget):
         self.canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         main_layout.addWidget(self.canvas)
 
-        self.plot_data()
+    def set_units(self, units):
+        self.units = units
+        self.update(self.set_units)
 
-    def set_data(self, data_in):
-        if not data_in:
+    def set_mode(self, mode):
+        self.mode = mode
+        self.update(self.set_mode)
+
+    def update(self, sender):
+        if self.units == None or self.mode == None or len(self.samples) == 0:
             return
 
-        data, self.line, self.units = data_in
-        self.y = data
-        self.x = np.arange(1, len(data) + 1)
-
-        self.plot_data()
-
-    def plot_data(self):
         # Clear the axis and plot the data
         self.ax.clear()
-        if len(self.y) == 0:
-            # If the data has size 0, plot an empty plot
-            self.ax.plot([], [])
-        else:
-            self.ax.plot(self.x, self.y, marker="o", markersize=5, label="Samples")
+
+        unit_multiplier = units_of_measurements[self.units]
+
+        x = np.arange(1, len(self.samples) + 1)
+        y = []
+        if self.mode == "Raw":
+            # Raw points
+            for s in self.samples:
+                y.append(s.y * unit_multiplier)
+            self.ax.plot(x, y, marker="o", markersize=5, label="Samples")
 
             # Fit a smooth curve to the data points
-            if self.x.shape[0] > 3:
-                # f = interp1d(self.x, self.y, kind="quadratic")
-                f = CubicSpline(self.x, self.y, bc_type="clamped")
-                smooth_x = np.linspace(self.x[0], self.x[-1], 500)
+            if len(x) > 2:
+                f = CubicSpline(x, y, bc_type="clamped")
+                smooth_x = np.linspace(x[0], x[-1], 500)
                 smooth_y = f(smooth_x)
-
-                # Plot the smooth curve
                 self.ax.plot(smooth_x, smooth_y, linewidth=2, label="Smooth")
 
             # Plot line
-            line = np.polyval(self.line, self.x)
-
+            line = np.polyfit(x, y, 1)
+            line = np.polyval(line, x)
             self.ax.set_ylabel(self.units)
+            self.ax.plot(x, line, label="Slope")
+        else:
+            # Raw points
+            for s in self.samples:
+                y.append(s.linYError * unit_multiplier)
+            self.ax.plot(x, y, marker="o", markersize=5, label="Samples")
 
-            self.ax.plot(self.x, line, label="Slope")
-            self.ax.legend()
-        self.ax.autoscale_view("tight")
+            # Fit a smooth curve to the data points
+            if len(x) > 2:
+                f = CubicSpline(x, y, bc_type="clamped")
+                smooth_x = np.linspace(x[0], x[-1], 500)
+                smooth_y = f(smooth_x)
+                self.ax.plot(smooth_x, smooth_y, linewidth=2, label="Smooth")
 
-        # Draw the canvas
+            # Plot line
+            line = np.polyfit(x, y, 1)
+            line = np.polyval(line, x)
+            self.ax.set_ylabel(self.units)
+            self.ax.plot(x, line, label="Slope")
+
+        self.ax.legend()
         self.canvas.draw()
 
 
