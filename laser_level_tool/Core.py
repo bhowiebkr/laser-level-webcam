@@ -5,7 +5,16 @@ from PySide6.QtGui import QPixmap
 import numpy as np
 from Workers import FrameSender, FrameWorker, SampleWorker
 from curves import fit_gaussian_fast
-from utils import get_units
+from utils import get_units, samples_recalc
+
+
+class Sample:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+        self.linYError = 0
+        self.shim = 0
+        self.scrape = 0
 
 
 class Core(QObject):
@@ -31,6 +40,7 @@ class Core(QObject):
         self.setting_zero_sample = False  # boolean if we are setting zero or a sample
         self.sample_data = np.empty(0)  # numpy array of raw samples
         self.line_data = np.empty(0)  # numpy array of the fitted line through the samples
+        self.samples = []
 
         # Frame worker
         self.workerThread = QThread()
@@ -57,30 +67,24 @@ class Core(QObject):
     def subsample_progress_update(self, subsample):
         self.OnSubsampleProgressUpdate.emit([subsample, self.subsamples])  # current sample and total
 
-    def received_sample(self, sample):
+    def received_sample(self, val):
         if self.setting_zero_sample:
-            self.zero = sample
+            self.zero = val
         else:
-            width = self.histo.shape[0]
-            sample = (self.sensor_width / width) * (sample - self.zero)
-            self.sample_data = np.append(self.sample_data, sample)
-            x = np.arange(1, len(self.sample_data) + 1)
-            self.line_data = np.polyfit(x, self.sample_data, 1)
+            size_in_mm = (self.sensor_width / self.histo.shape[0]) * (val - self.zero)
+            self.samples.append(Sample(x=len(self.samples), y=size_in_mm))
+            samples_recalc(self.samples)
+
+            # self.sample_data = np.append(self.sample_data, sample)
+            # x = np.arange(1, len(self.sample_data) + 1)
+            # self.line_data = np.polyfit(x, self.sample_data, 1)
 
         self.OnSampleComplete.emit()
 
-    def set_subsamples(self, samples):
-        self.subsamples = samples
-
-    def set_outliers(self, outliers):
-        self.outliers = outliers
-
     def set_units(self, units):
         self.units = units
-        self.OnUnitsChanged.emit(self.units)
 
-    def set_sensor_width(self, width):
-        self.sensor_width = width
+        self.OnUnitsChanged.emit(self.units)
 
     def start_sample(self, zero=False):
         if zero:  # if we are zero, we reset everything
@@ -90,9 +94,6 @@ class Core(QObject):
 
         self.setting_zero_sample = zero
         self.sample_worker.start(self.subsamples, self.outliers)
-
-    def set_analyser_widget_height(self, height):
-        self.analyser_widget_height = height
 
     @Slot(QVideoFrame)
     def onFramePassedFromCamera(self, frame: QVideoFrame):
