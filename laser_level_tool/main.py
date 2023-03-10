@@ -19,6 +19,7 @@ class MainWindow(QMainWindow):
         self.resize(1100, 650)
 
         self.setting_zero = False  # state if the GUI is setting zero
+        self.replace_sample = False  # state if we are replcing a sample
 
         self.core = Core()  # where all the magic happens
 
@@ -74,7 +75,9 @@ class MainWindow(QMainWindow):
         self.sensor_width_spin = QDoubleSpinBox()
         self.zero_btn = QPushButton("Zero")
         self.sample_btn = QPushButton("Take Sample")
+        self.replace_btn = QPushButton("Replace Sample")
         self.sample_btn.setDisabled(True)
+        self.replace_btn.setDisabled(True)
         self.sample_table = QTableWidget()
         self.sample_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         sample_layout = QGridLayout()
@@ -88,7 +91,8 @@ class MainWindow(QMainWindow):
         sample_layout.addWidget(QLabel("Sensor Width (mm)"), 1, 2, 1, 1, alignment=Qt.AlignRight)
         sample_layout.addWidget(self.sensor_width_spin, 1, 3, 1, 1)
         sample_layout.addWidget(self.zero_btn, 2, 0, 1, 1)
-        sample_layout.addWidget(self.sample_btn, 2, 1, 1, 3)
+        sample_layout.addWidget(self.sample_btn, 2, 1, 1, 2)
+        sample_layout.addWidget(self.replace_btn, 2, 3, 1, 1)
         sample_layout.addWidget(self.sample_table, 3, 0, 1, 4)
         sampler_widget.setLayout(sample_layout)
 
@@ -139,6 +143,7 @@ class MainWindow(QMainWindow):
         self.sensor_width_spin.valueChanged.connect(lambda value: setattr(self.core, "sensor_width", value))
         self.zero_btn.clicked.connect(self.zero_btn_cmd)
         self.sample_btn.clicked.connect(self.sample_btn_cmd)
+        self.replace_btn.clicked.connect(self.replace_btn_cmd)
         self.core.OnSubsampleProgressUpdate.connect(self.subsample_progress_update)
         self.core.OnSampleComplete.connect(self.finished_subsample)
         self.core.OnSampleComplete.connect(self.update_table)
@@ -173,6 +178,9 @@ class MainWindow(QMainWindow):
         header = self.sample_table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.Stretch)
 
+        # store the original selected sample
+        selected_sample = self.sample_table.currentRow()
+
         # Delete the rows
         self.sample_table.setRowCount(0)
 
@@ -188,6 +196,8 @@ class MainWindow(QMainWindow):
                 cell.units = self.core.units
                 self.sample_table.setItem(sample.x, col, cell)
 
+        if selected_sample:
+            self.sample_table.selectRow(selected_sample)
         self.graph.update(self.update_table)
         # unit_multiplier = units_of_measurements[self.core.units]
 
@@ -197,14 +207,19 @@ class MainWindow(QMainWindow):
         """
         Sample complete. Reset the GUI back to the default state
         """
+        self.zero_btn.setEnabled(True)
+        self.sample_btn.setEnabled(True)
+        self.replace_btn.setEnabled(True)
+
         if self.setting_zero == True:
-            self.zero_btn.setEnabled(True)
-            self.sample_btn.setEnabled(True)
             self.zero_btn.setText("Zero")
             self.setting_zero = False
         else:
-            self.sample_btn.setEnabled(True)
-            self.sample_btn.setText("Take Sample")
+            if self.replace_sample:
+                self.replace_btn.setText("Replace Sample")
+                self.replace_sample = False
+            else:
+                self.sample_btn.setText("Take Sample")
 
     def subsample_progress_update(self, sample_total):
         """
@@ -214,10 +229,8 @@ class MainWindow(QMainWindow):
         total = sample_total[1]
 
         if self.setting_zero == True:
-            self.zero_btn.setDisabled(True)
             self.zero_btn.setText(f"{sample}/{total}")
         else:
-            self.sample_btn.setDisabled(True)
             self.sample_btn.setText(f"{sample}/{total}")
 
     def zero_btn_cmd(self):
@@ -225,6 +238,11 @@ class MainWindow(QMainWindow):
         Calls the sample button command but sets a flag so we know the GUI is in a state of setting the zero value
         """
         self.setting_zero = True
+        self.replace_sample = False
+        self.zero_btn.setDisabled(True)
+        self.sample_btn.setDisabled(True)
+        self.replace_btn.setDisabled(True)
+
         print("clearing samples")
         self.core.samples[:] = []  # clear list in-place without changing it's reference
         self.graph.update(self.zero_btn_cmd)
@@ -234,7 +252,20 @@ class MainWindow(QMainWindow):
         """
         Calls on Core to take a sample
         """
+        self.zero_btn.setDisabled(True)
+        self.sample_btn.setDisabled(True)
+        self.replace_btn.setDisabled(True)
         self.core.start_sample(self.setting_zero)
+
+    def replace_btn_cmd(self):
+        """
+        Call for when we are replacing a sample
+        """
+        self.zero_btn.setDisabled(True)
+        self.sample_btn.setDisabled(True)
+        self.replace_btn.setDisabled(True)
+        index = self.sample_table.currentRow()
+        self.core.start_sample(self.setting_zero, sample_index=index)
 
     def closeEvent(self, event):
         self.core.workerThread.quit()
