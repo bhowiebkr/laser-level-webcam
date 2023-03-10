@@ -4,7 +4,7 @@ from PySide6.QtGui import QPixmap
 
 import numpy as np
 from Workers import FrameSender, FrameWorker, SampleWorker
-from curves import fit_gaussian_fast
+from curves import fit_gaussian
 from utils import get_units, samples_recalc
 
 
@@ -110,7 +110,7 @@ class Core(QObject):
         width = self.histo.shape[0]
 
         a_sample = None
-        self.centre = fit_gaussian_fast(self.histo)  # Specify the y position of the line
+        self.centre = fit_gaussian(self.histo)  # Specify the y position of the line
         if self.centre:
             self.sample_worker.sample_in(self.centre)  # send the sample to the sample worker right away.
             a_sample = int(self.analyser_widget_height - self.centre * self.analyser_widget_height / width)
