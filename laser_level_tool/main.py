@@ -1,13 +1,16 @@
 import sys
 import subprocess
-from PySide6.QtWidgets import QMainWindow, QHeaderView, QAbstractItemView, QButtonGroup, QDoubleSpinBox, QRadioButton, QLabel, QGridLayout, QSpinBox, QFormLayout, QSlider, QVBoxLayout, QTableWidget, QPushButton, QComboBox, QGroupBox, QWidget, QHBoxLayout, QSplitter, QApplication
-from PySide6.QtCore import Qt
-
+from PySide6.QtWidgets import QMainWindow, QMenu, QToolTip, QFileDialog, QHeaderView, QAbstractItemView, QButtonGroup, QDoubleSpinBox, QRadioButton, QLabel, QGridLayout, QSpinBox, QFormLayout, QSlider, QVBoxLayout, QTableWidget, QPushButton, QComboBox, QGroupBox, QWidget, QHBoxLayout, QSplitter, QApplication
+from PySide6.QtCore import Qt, QUrl
+from PySide6.QtGui import QAction, QDesktopServices, QPalette, QColor
+import csv
 import qdarktheme
 
 from Widgets import PixmapWidget, Graph, AnalyserWidget, TableUnit
 from utils import units_of_measurements
 from Core import Core
+
+from tooltips import tooltips as tt
 
 
 # Define the main window
@@ -17,6 +20,28 @@ class MainWindow(QMainWindow):
 
         self.setWindowTitle("Laser Level Webcam Tool")
         self.resize(1100, 650)
+
+        # create a "File" menu and add an "Export CSV" action to it
+        file_menu = QMenu("File", self)
+        self.menuBar().addMenu(file_menu)
+        export_action = QAction("Export CSV", self)
+        export_action.triggered.connect(self.export_csv)
+        file_menu.addAction(export_action)
+
+        # create a QAction for the "Exit" option
+        exit_action = QAction("Exit", self)
+        exit_action.setShortcut("Ctrl+Q")
+        exit_action.triggered.connect(self.close)
+        file_menu.addAction(exit_action)
+
+        # create a QAction for the "Source Code" option
+        source_action = QAction("Source Code", self)
+        source_action.triggered.connect(self.openSourceCode)
+        help_menu = self.menuBar().addMenu("Help")
+        help_menu.addAction(source_action)
+
+        # Create status bar
+        self.status_bar = self.statusBar()
 
         self.setting_zero = False  # state if the GUI is setting zero
         self.replace_sample = False  # state if we are replcing a sample
@@ -75,12 +100,14 @@ class MainWindow(QMainWindow):
         self.units_combo.setCurrentIndex(1)
         self.sensor_width_spin = QDoubleSpinBox()
         self.zero_btn = QPushButton("Zero")
+        self.zero_btn.setToolTip(tt["zero_btn"])
         self.sample_btn = QPushButton("Take Sample")
         self.replace_btn = QPushButton("Replace Sample")
         self.sample_btn.setDisabled(True)
         self.replace_btn.setDisabled(True)
         self.sample_table = QTableWidget()
         self.sample_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.sample_table.setSelectionMode(QAbstractItemView.SingleSelection)  # limit selection to a single row
         sample_layout = QGridLayout()
         sample_layout.setContentsMargins(1, 1, 1, 1)
         sample_layout.addWidget(QLabel("Sub Samples #"), 0, 0, 1, 1, alignment=Qt.AlignRight)
@@ -138,6 +165,7 @@ class MainWindow(QMainWindow):
         self.sensor_feed_widget.OnHeightChanged.connect(self.analyser_widget.setMaximumHeight)
         self.sensor_feed_widget.OnHeightChanged.connect(lambda value: setattr(self.core, "analyser_widget_height", value))
         self.smoothing.valueChanged.connect(lambda value: setattr(self.core.frameWorker, "analyser_smoothing", value))
+        self.smoothing.valueChanged.connect(self.smoothing_value)
         self.subsamples_spin.valueChanged.connect(lambda value: setattr(self.core, "subsamples", value))
         self.outlier_spin.valueChanged.connect(lambda value: setattr(self.core, "outliers", value))
         self.units_combo.currentTextChanged.connect(self.core.set_units)
@@ -163,6 +191,34 @@ class MainWindow(QMainWindow):
         self.sensor_width_spin.setValue(5.9)
         self.raw_radio.setChecked(True)
         self.update_graph_mode()  # have to trigger it manually the first time
+
+        self.status_bar.showMessage("Loading first camera", 1000)  # 3 seconds
+
+    def smoothing_value(self, val):
+        self.status_bar.showMessage(f"Smoothing: {val}", 1000)  # 3 seconds
+
+    def openSourceCode(self):
+        url = "https://github.com/bhowiebkr/laser-level-webcam"
+        QDesktopServices.openUrl(QUrl(url))
+
+    def export_csv(self):
+        # get the file path from the user using a QFileDialog
+        file_path, _ = QFileDialog.getSaveFileName(self, "Export CSV", "", "CSV Files (*.csv)")
+        if not file_path:
+            return
+
+        # open the file and write the data from the QTableWidget to it as CSV
+        with open(file_path, "w", newline="") as csv_file:
+            writer = csv.writer(csv_file)
+            for row in range(self.sample_table.rowCount()):
+                row_data = []
+                for column in range(self.sample_table.columnCount()):
+                    item = self.sample_table.item(row, column)
+                    if item is not None:
+                        row_data.append(item.text().replace("\u03bc", "u"))
+                    else:
+                        row_data.append("")
+                writer.writerow(row_data)
 
     def hightlight_sample(self):
         index = self.sample_table.currentRow()
@@ -201,9 +257,6 @@ class MainWindow(QMainWindow):
 
         self.sample_table.selectRow(self.table_selected_index)
         self.graph.update(self.update_table)
-        # unit_multiplier = units_of_measurements[self.core.units]
-
-        # self.graph.set_data([self.core.sample_data * unit_multiplier, self.core.line_data * unit_multiplier, self.core.units])
 
     def finished_subsample(self):
         """
@@ -233,7 +286,10 @@ class MainWindow(QMainWindow):
         if self.setting_zero == True:
             self.zero_btn.setText(f"{sample}/{total}")
         else:
-            self.sample_btn.setText(f"{sample}/{total}")
+            if self.replace_sample:
+                self.replace_btn.setText(f"{sample}/{total}")
+            else:
+                self.sample_btn.setText(f"{sample}/{total}")
 
     def zero_btn_cmd(self):
         """
@@ -271,6 +327,7 @@ class MainWindow(QMainWindow):
         self.zero_btn.setDisabled(True)
         self.sample_btn.setDisabled(True)
         self.replace_btn.setDisabled(True)
+        self.replace_sample = True
         index = self.sample_table.currentRow()
         self.core.start_sample(self.setting_zero, replacing_sample=True, replacing_sample_index=index)
 
@@ -285,7 +342,9 @@ class MainWindow(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    qdarktheme.setup_theme()
+    qdarktheme.setup_theme(additional_qss="QToolTip {color: black;}")
+
     window = MainWindow()
+
     window.show()
     sys.exit(app.exec())
