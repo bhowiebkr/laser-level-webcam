@@ -66,8 +66,11 @@ class MainWindow(QMainWindow):
 
         # -- Sensor Feed --
         self.sensor_feed_widget = PixmapWidget()
+        self.sensor_feed_widget.setToolTip(tt["feed"])
         self.camera_combo = QComboBox()
+        self.camera_combo.setToolTip(tt["cameras"])
         camera_device_settings_btn = QPushButton("Device Settings")
+        camera_device_settings_btn.setToolTip(tt["cam_device"])
         sensor_layout = QVBoxLayout()
         sensor_layout.setContentsMargins(1, 6, 1, 1)
         sensor_form = QFormLayout()
@@ -79,7 +82,9 @@ class MainWindow(QMainWindow):
 
         # -- Analyser --
         self.analyser_widget = AnalyserWidget()
+        self.analyser_widget.setToolTip(tt["analyser"])
         self.smoothing = QSlider(Qt.Horizontal)
+        self.smoothing.setToolTip(tt["smoothing"])
         self.smoothing.setRange(0, 200)
         self.smoothing.setTickInterval(1)
         analyser_form = QFormLayout()
@@ -92,20 +97,27 @@ class MainWindow(QMainWindow):
 
         # -- Sampler --
         self.subsamples_spin = QSpinBox()
+        self.subsamples_spin.setToolTip(tt["subsamples"])
         self.subsamples_spin.setRange(0, 9999)
         self.outlier_spin = QSpinBox()
+        self.outlier_spin.setToolTip(tt["outliers"])
         self.outlier_spin.setRange(0, 99)
         self.units_combo = QComboBox()
+        self.units_combo.setToolTip(tt["units"])
         self.units_combo.addItems(units_of_measurements.keys())
         self.units_combo.setCurrentIndex(1)
         self.sensor_width_spin = QDoubleSpinBox()
+        self.sensor_width_spin.setToolTip(tt["sensor_width"])
         self.zero_btn = QPushButton("Zero")
         self.zero_btn.setToolTip(tt["zero_btn"])
         self.sample_btn = QPushButton("Take Sample")
+        self.sample_btn.setToolTip(tt["samples"])
         self.replace_btn = QPushButton("Replace Sample")
+        self.replace_btn.setToolTip(tt["replace"])
         self.sample_btn.setDisabled(True)
         self.replace_btn.setDisabled(True)
         self.sample_table = QTableWidget()
+        self.sample_table.setToolTip(tt["table"])
         self.sample_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.sample_table.setSelectionMode(QAbstractItemView.SingleSelection)  # limit selection to a single row
         sample_layout = QGridLayout()
@@ -126,11 +138,15 @@ class MainWindow(QMainWindow):
 
         # -- Plot --
         self.graph_mode_group = QButtonGroup()
+
         self.raw_radio = QRadioButton("Raw")
+        self.raw_radio.setToolTip(tt["raw"])
         self.graph_mode_group.addButton(self.raw_radio)
         self.flat_radio = QRadioButton("Flattened")
+        self.flat_radio.setToolTip(tt["flat"])
         self.graph_mode_group.addButton(self.flat_radio)
         self.graph = Graph(self.core.samples)
+        self.graph.setToolTip(tt["plot"])
         plot_layout = QVBoxLayout()
         plot_layout.setContentsMargins(0, 3, 0, 0)
         radio_layout = QHBoxLayout()
