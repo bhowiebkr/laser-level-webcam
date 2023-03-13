@@ -176,10 +176,10 @@ class MainWindow(QMainWindow):
         self.core.set_camera(self.camera_combo.currentIndex())
 
         # Signals
-        self.core.OnSensorFeedUpdate.connect(self.sensor_feed_widget.setPixmap)
-        self.core.OnAnalyserUpdate.connect(self.analyser_widget.set_data)
+        # self.core.OnSensorFeedUpdate.connect(self.sensor_feed_widget.setPixmap)
+        self.core.frameWorker.OnAnalyserUpdate.connect(self.analyser_widget.set_data)
         self.sensor_feed_widget.OnHeightChanged.connect(self.analyser_widget.setMaximumHeight)
-        self.sensor_feed_widget.OnHeightChanged.connect(lambda value: setattr(self.core, "analyser_widget_height", value))
+        self.sensor_feed_widget.OnHeightChanged.connect(lambda value: setattr(self.core.frameWorker, "analyser_widget_height", value))
         self.smoothing.valueChanged.connect(lambda value: setattr(self.core.frameWorker, "analyser_smoothing", value))
         self.smoothing.valueChanged.connect(self.smoothing_value)
         self.subsamples_spin.valueChanged.connect(lambda value: setattr(self.core, "subsamples", value))
@@ -198,6 +198,10 @@ class MainWindow(QMainWindow):
         self.camera_combo.currentIndexChanged.connect(self.core.set_camera)
         self.graph_mode_group.buttonClicked.connect(self.update_graph_mode)
         self.sample_table.itemSelectionChanged.connect(self.hightlight_sample)
+
+        # New
+        self.core.frameWorker.OnPixmapChanged.connect(self.sensor_feed_widget.setPixmap)
+        self.core.frameWorker.OnCentreChanged.connect(self.core.sample_worker.sample_in)
 
         # Trigger the state of things
         self.smoothing.setValue(50)

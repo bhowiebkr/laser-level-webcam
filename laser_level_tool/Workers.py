@@ -4,6 +4,8 @@ from PySide6.QtMultimedia import QVideoFrame
 
 import numpy as np
 import qimage2ndarray
+from curves import fit_gaussian
+from utils import get_units
 
 
 class SampleWorker(QObject):
@@ -97,11 +99,18 @@ class FrameWorker(QObject):
     """
 
     OnFrameChanged = Signal(list)
+    OnCentreChanged = Signal(int)
+    OnPixmapChanged = Signal(QPixmap)
+    OnAnalyserUpdate = Signal(list)
 
     def __init__(self, parent=None):
-        super().__init__(parent)
+        super().__init__()
         self.ready = True
         self.analyser_smoothing = 0
+        self.centre = None
+        self.analyser_widget_height = 0
+        self.parent = parent
+        self.data_width = 0
 
     @Slot(QVideoFrame)
     def setVideoFrame(self, frame: QVideoFrame):
@@ -126,6 +135,7 @@ class FrameWorker(QObject):
             return
 
         pixmap = QPixmap.fromImage(image).transformed(QTransform().rotate(-90))
+        self.OnPixmapChanged.emit(pixmap)
 
         # Smoothing
         kernel = np.ones(2 * self.analyser_smoothing + 1) / (2 * self.analyser_smoothing + 1)
@@ -157,7 +167,25 @@ class FrameWorker(QObject):
         # Create a vertical flip transform and apply it to the QPixmap
         a_pix = a_pix.transformed(QTransform().scale(1, -1))
 
-        self.OnFrameChanged.emit([pixmap, histo, a_pix])
+        width = self.histo.shape[0]
+        self.data_width = width
+
+        a_sample = None
+        self.centre = fit_gaussian(self.histo)  # Specify the y position of the line
+        self.OnCentreChanged.emit(self.centre)
+        if self.centre:
+            # self.sample_worker.sample_in(self.centre)  # send the sample to the sample worker right away.
+            a_sample = int(self.analyser_widget_height - self.centre * self.analyser_widget_height / width)
+
+        a_zero, a_text = None, None
+        if self.parent.zero and self.centre:  # If we have zero, we can set it and the text
+            a_zero = int(self.analyser_widget_height - self.parent.zero * self.analyser_widget_height / width)
+            centre_real = (self.parent.sensor_width / width) * (self.centre - self.parent.zero)
+            a_text = get_units(self.parent.units, centre_real)
+
+        self.OnAnalyserUpdate.emit([a_pix, a_sample, a_zero, a_text])
+
+        # self.OnFrameChanged.emit([pixmap, histo, a_pix])
         self.ready = True
 
 

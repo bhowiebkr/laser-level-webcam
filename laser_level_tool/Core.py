@@ -48,7 +48,7 @@ class Core(QObject):
         self.workerThread = QThread()
         self.captureSession = QMediaCaptureSession()
         self.frameSender = FrameSender()
-        self.frameWorker = FrameWorker()
+        self.frameWorker = FrameWorker(parent=self)
         self.frameWorker.moveToThread(self.workerThread)
         self.workerThread.start()
 
@@ -73,7 +73,7 @@ class Core(QObject):
         if self.setting_zero_sample:
             self.zero = val
         else:
-            size_in_mm = (self.sensor_width / self.histo.shape[0]) * (val - self.zero)
+            size_in_mm = (self.sensor_width / self.frameWorker.data_width) * (val - self.zero)
 
             if self.replacing_sample:
                 x_orig = self.samples[self.replacing_sample_index].x
@@ -113,24 +113,11 @@ class Core(QObject):
         """
         This is where most of the data processing happens
         """
+
+        # This method shouldn't exist anymore
+
         self.pixmap, self.histo, a_pix = data
         self.OnSensorFeedUpdate.emit(self.pixmap)
-
-        width = self.histo.shape[0]
-
-        a_sample = None
-        self.centre = fit_gaussian(self.histo)  # Specify the y position of the line
-        if self.centre:
-            self.sample_worker.sample_in(self.centre)  # send the sample to the sample worker right away.
-            a_sample = int(self.analyser_widget_height - self.centre * self.analyser_widget_height / width)
-
-        a_zero, a_text = None, None
-        if self.zero and self.centre:  # If we have zero, we can set it and the text
-            a_zero = int(self.analyser_widget_height - self.zero * self.analyser_widget_height / width)
-            centre_real = (self.sensor_width / width) * (self.centre - self.zero)
-            a_text = get_units(self.units, centre_real)
-
-        self.OnAnalyserUpdate.emit([a_pix, a_sample, a_zero, a_text])
 
     def get_cameras(self):
         cams = []
