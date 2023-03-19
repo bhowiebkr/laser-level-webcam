@@ -4,8 +4,7 @@ from PySide6.QtGui import QPixmap
 
 import numpy as np
 from Workers import FrameSender, FrameWorker, SampleWorker
-from curves import fit_gaussian
-from utils import get_units, samples_recalc
+from utils import samples_recalc
 
 
 class Sample:
