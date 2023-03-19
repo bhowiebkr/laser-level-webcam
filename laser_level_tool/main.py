@@ -1,8 +1,8 @@
 import sys
 import subprocess
-from PySide6.QtWidgets import QMainWindow, QMenu, QToolTip, QFileDialog, QHeaderView, QAbstractItemView, QButtonGroup, QDoubleSpinBox, QRadioButton, QLabel, QGridLayout, QSpinBox, QFormLayout, QSlider, QVBoxLayout, QTableWidget, QPushButton, QComboBox, QGroupBox, QWidget, QHBoxLayout, QSplitter, QApplication
+from PySide6.QtWidgets import QMainWindow, QMenu, QFileDialog, QHeaderView, QAbstractItemView, QButtonGroup, QDoubleSpinBox, QRadioButton, QLabel, QGridLayout, QSpinBox, QFormLayout, QSlider, QVBoxLayout, QTableWidget, QPushButton, QComboBox, QGroupBox, QWidget, QHBoxLayout, QSplitter, QApplication
 from PySide6.QtCore import Qt, QUrl
-from PySide6.QtGui import QAction, QDesktopServices, QPalette, QColor
+from PySide6.QtGui import QAction, QDesktopServices
 import csv
 import qdarktheme
 
