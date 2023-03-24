@@ -59,7 +59,8 @@ class SampleWorker(QObject):
             n_outliers = int(len(self.sample_array) * self.outlier_percent / 2.0)
 
             # Sort and remove the outliers
-            self.sample_array = self.sample_array[self.sample_array.argsort()][n_outliers:-n_outliers]
+            first, last = n_outliers, -n_outliers if n_outliers > 0 else None
+            self.sample_array = self.sample_array[self.sample_array.argsort()][first:last]
 
             # Calculate new mean as float
             mean = np.mean(self.sample_array).astype(float)
