@@ -3,7 +3,12 @@ from scipy.stats import linregress
 
 from PySide6.QtMultimedia import QMediaDevices
 
-units_of_measurements = {"μm": 1000, "mm": 1, '0.0000"': 0.0393701, '0.00000"': 0.0393701}
+units_of_measurements = {
+    "μm": 1000,
+    "mm": 1,
+    '0.0000"': 0.0393701,
+    '0.00000"': 0.0393701,
+}
 
 
 def get_units(unit, value):

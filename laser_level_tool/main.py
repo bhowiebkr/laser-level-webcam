@@ -1,6 +1,29 @@
 import sys
 import subprocess
-from PySide6.QtWidgets import QMainWindow, QMenu, QFileDialog, QHeaderView, QAbstractItemView, QButtonGroup, QDoubleSpinBox, QRadioButton, QLabel, QGridLayout, QSpinBox, QFormLayout, QSlider, QVBoxLayout, QTableWidget, QPushButton, QComboBox, QGroupBox, QWidget, QHBoxLayout, QSplitter, QApplication
+from PySide6.QtWidgets import (
+    QMainWindow,
+    QMenu,
+    QFileDialog,
+    QHeaderView,
+    QAbstractItemView,
+    QButtonGroup,
+    QDoubleSpinBox,
+    QRadioButton,
+    QLabel,
+    QGridLayout,
+    QSpinBox,
+    QFormLayout,
+    QSlider,
+    QVBoxLayout,
+    QTableWidget,
+    QPushButton,
+    QComboBox,
+    QGroupBox,
+    QWidget,
+    QHBoxLayout,
+    QSplitter,
+    QApplication,
+)
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QAction, QDesktopServices
 import csv
@@ -45,7 +68,9 @@ class MainWindow(QMainWindow):
 
         self.setting_zero = False  # state if the GUI is setting zero
         self.replace_sample = False  # state if we are replcing a sample
-        self.table_selected_index = 0  # we keep track of the index so we can reselect it
+        self.table_selected_index = (
+            0  # we keep track of the index so we can reselect it
+        )
 
         self.core = Core()  # where all the magic happens
 
@@ -119,16 +144,24 @@ class MainWindow(QMainWindow):
         self.sample_table = QTableWidget()
         self.sample_table.setToolTip(tt["table"])
         self.sample_table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.sample_table.setSelectionMode(QAbstractItemView.SingleSelection)  # limit selection to a single row
+        self.sample_table.setSelectionMode(
+            QAbstractItemView.SingleSelection
+        )  # limit selection to a single row
         sample_layout = QGridLayout()
         sample_layout.setContentsMargins(1, 1, 1, 1)
-        sample_layout.addWidget(QLabel("Sub Samples #"), 0, 0, 1, 1, alignment=Qt.AlignRight)
+        sample_layout.addWidget(
+            QLabel("Sub Samples #"), 0, 0, 1, 1, alignment=Qt.AlignRight
+        )
         sample_layout.addWidget(self.subsamples_spin, 0, 1, 1, 1)
-        sample_layout.addWidget(QLabel("Outlier Removal %"), 0, 2, 1, 1, alignment=Qt.AlignRight)
+        sample_layout.addWidget(
+            QLabel("Outlier Removal %"), 0, 2, 1, 1, alignment=Qt.AlignRight
+        )
         sample_layout.addWidget(self.outlier_spin, 0, 3, 1, 1)
         sample_layout.addWidget(QLabel("Units"), 1, 0, 1, 1, alignment=Qt.AlignRight)
         sample_layout.addWidget(self.units_combo, 1, 1, 1, 1)
-        sample_layout.addWidget(QLabel("Sensor Width (mm)"), 1, 2, 1, 1, alignment=Qt.AlignRight)
+        sample_layout.addWidget(
+            QLabel("Sensor Width (mm)"), 1, 2, 1, 1, alignment=Qt.AlignRight
+        )
         sample_layout.addWidget(self.sensor_width_spin, 1, 3, 1, 1)
         sample_layout.addWidget(self.zero_btn, 2, 0, 1, 1)
         sample_layout.addWidget(self.sample_btn, 2, 1, 1, 2)
@@ -178,14 +211,28 @@ class MainWindow(QMainWindow):
         # Signals
         # self.core.OnSensorFeedUpdate.connect(self.sensor_feed_widget.setPixmap)
         self.core.frameWorker.OnAnalyserUpdate.connect(self.analyser_widget.set_data)
-        self.sensor_feed_widget.OnHeightChanged.connect(self.analyser_widget.setMaximumHeight)
-        self.sensor_feed_widget.OnHeightChanged.connect(lambda value: setattr(self.core.frameWorker, "analyser_widget_height", value))
-        self.smoothing.valueChanged.connect(lambda value: setattr(self.core.frameWorker, "analyser_smoothing", value))
+        self.sensor_feed_widget.OnHeightChanged.connect(
+            self.analyser_widget.setMaximumHeight
+        )
+        self.sensor_feed_widget.OnHeightChanged.connect(
+            lambda value: setattr(
+                self.core.frameWorker, "analyser_widget_height", value
+            )
+        )
+        self.smoothing.valueChanged.connect(
+            lambda value: setattr(self.core.frameWorker, "analyser_smoothing", value)
+        )
         self.smoothing.valueChanged.connect(self.smoothing_value)
-        self.subsamples_spin.valueChanged.connect(lambda value: setattr(self.core, "subsamples", value))
-        self.outlier_spin.valueChanged.connect(lambda value: setattr(self.core, "outliers", value))
+        self.subsamples_spin.valueChanged.connect(
+            lambda value: setattr(self.core, "subsamples", value)
+        )
+        self.outlier_spin.valueChanged.connect(
+            lambda value: setattr(self.core, "outliers", value)
+        )
         self.units_combo.currentTextChanged.connect(self.core.set_units)
-        self.sensor_width_spin.valueChanged.connect(lambda value: setattr(self.core, "sensor_width", value))
+        self.sensor_width_spin.valueChanged.connect(
+            lambda value: setattr(self.core, "sensor_width", value)
+        )
         self.zero_btn.clicked.connect(self.zero_btn_cmd)
         self.sample_btn.clicked.connect(self.sample_btn_cmd)
         self.replace_btn.clicked.connect(self.replace_btn_cmd)
@@ -223,7 +270,9 @@ class MainWindow(QMainWindow):
 
     def export_csv(self):
         # get the file path from the user using a QFileDialog
-        file_path, _ = QFileDialog.getSaveFileName(self, "Export CSV", "", "CSV Files (*.csv)")
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "Export CSV", "", "CSV Files (*.csv)"
+        )
         if not file_path:
             return
 
@@ -254,7 +303,12 @@ class MainWindow(QMainWindow):
 
     def update_table(self):
         units = self.core.units
-        header_names = [f"Measured ({units})", f"Flattened ({units})", f"Scrape ({units})", f"Shim ({units})"]
+        header_names = [
+            f"Measured ({units})",
+            f"Flattened ({units})",
+            f"Scrape ({units})",
+            f"Shim ({units})",
+        ]
         self.sample_table.setColumnCount(len(header_names))
         self.sample_table.setHorizontalHeaderLabels(header_names)
         header = self.sample_table.horizontalHeader()
@@ -268,7 +322,9 @@ class MainWindow(QMainWindow):
             if sample.x >= self.sample_table.rowCount():
                 self.sample_table.insertRow(sample.x)
 
-            for col, val in enumerate([sample.y, sample.linYError, sample.shim, sample.scrape]):
+            for col, val in enumerate(
+                [sample.y, sample.linYError, sample.shim, sample.scrape]
+            ):
                 # measured value
                 cell = TableUnit()
                 cell.value = val
@@ -325,7 +381,9 @@ class MainWindow(QMainWindow):
 
         self.core.samples[:] = []  # clear list in-place without changing it's reference
         self.graph.update(self.zero_btn_cmd)
-        self.core.start_sample(self.setting_zero, replacing_sample=False, replacing_sample_index=None)
+        self.core.start_sample(
+            self.setting_zero, replacing_sample=False, replacing_sample_index=None
+        )
 
     def sample_btn_cmd(self):
         """
@@ -336,7 +394,9 @@ class MainWindow(QMainWindow):
         self.zero_btn.setDisabled(True)
         self.sample_btn.setDisabled(True)
         self.replace_btn.setDisabled(True)
-        self.core.start_sample(self.setting_zero, replacing_sample=False, replacing_sample_index=None)
+        self.core.start_sample(
+            self.setting_zero, replacing_sample=False, replacing_sample_index=None
+        )
 
     def replace_btn_cmd(self):
         """
@@ -349,7 +409,9 @@ class MainWindow(QMainWindow):
         self.replace_btn.setDisabled(True)
         self.replace_sample = True
         index = self.sample_table.currentRow()
-        self.core.start_sample(self.setting_zero, replacing_sample=True, replacing_sample_index=index)
+        self.core.start_sample(
+            self.setting_zero, replacing_sample=True, replacing_sample_index=index
+        )
 
     def closeEvent(self, event):
         self.core.workerThread.quit()

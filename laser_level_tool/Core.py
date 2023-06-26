@@ -1,5 +1,11 @@
 from PySide6.QtCore import QObject, QThread, Slot, Signal
-from PySide6.QtMultimedia import QMediaCaptureSession, QVideoSink, QVideoFrame, QMediaDevices, QCamera
+from PySide6.QtMultimedia import (
+    QMediaCaptureSession,
+    QVideoSink,
+    QVideoFrame,
+    QMediaDevices,
+    QCamera,
+)
 from PySide6.QtGui import QPixmap
 
 import numpy as np
@@ -31,16 +37,22 @@ class Core(QObject):
         self.camera = None  # camera being used
         self.centre = None  # The found centre of the histogram
         self.zero = None  # The zero point
-        self.analyser_widget_height = 0  # The height of the widget so we can calculate the offset
+        self.analyser_widget_height = (
+            0  # The height of the widget so we can calculate the offset
+        )
         self.subsamples = None  # total number of subsamples
-        self.outliers = None  # percentage value of how many outliers to remove from a sample
+        self.outliers = (
+            None  # percentage value of how many outliers to remove from a sample
+        )
         self.units = None  # string representing the units
         self.sensor_width = None  # width of the sensor in millimeters (mm)
         self.setting_zero_sample = False  # boolean if we are setting zero or a sample
         self.replacing_sample = False  # If we are replacing a sample
         self.replacing_sample_index = None  # the index of the sample we are replacing
         self.sample_data = np.empty(0)  # numpy array of raw samples
-        self.line_data = np.empty(0)  # numpy array of the fitted line through the samples
+        self.line_data = np.empty(
+            0
+        )  # numpy array of the fitted line through the samples
         self.samples = []
 
         # Frame worker
@@ -61,22 +73,30 @@ class Core(QObject):
         self.sample_worker.sample_in
 
         self.captureSession.setVideoSink(QVideoSink(self))
-        self.captureSession.videoSink().videoFrameChanged.connect(self.onFramePassedFromCamera)
+        self.captureSession.videoSink().videoFrameChanged.connect(
+            self.onFramePassedFromCamera
+        )
         self.frameSender.OnFrameChanged.connect(self.frameWorker.setVideoFrame)
         self.frameWorker.OnFrameChanged.connect(self.set_frame)
 
     def subsample_progress_update(self, subsample):
-        self.OnSubsampleProgressUpdate.emit([subsample, self.subsamples])  # current sample and total
+        self.OnSubsampleProgressUpdate.emit(
+            [subsample, self.subsamples]
+        )  # current sample and total
 
     def received_sample(self, val):
         if self.setting_zero_sample:
             self.zero = val
         else:
-            size_in_mm = (self.sensor_width / self.frameWorker.data_width) * (val - self.zero)
+            size_in_mm = (self.sensor_width / self.frameWorker.data_width) * (
+                val - self.zero
+            )
 
             if self.replacing_sample:
                 x_orig = self.samples[self.replacing_sample_index].x
-                self.samples[self.replacing_sample_index] = Sample(x=x_orig, y=size_in_mm)
+                self.samples[self.replacing_sample_index] = Sample(
+                    x=x_orig, y=size_in_mm
+                )
                 self.replacing_sample = False
 
             else:  # Append to samples

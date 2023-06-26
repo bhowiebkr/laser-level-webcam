@@ -1,3 +1,4 @@
+pre-commit
 numpy
 PySide6
 scipy

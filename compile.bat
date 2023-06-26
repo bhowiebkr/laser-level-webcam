@@ -1,1 +1,1 @@
-nuitka --enable-plugin=pyside6 --follow-imports --nofollow-import-to=tkinter --disable-console --onefile --windows-icon-from-ico=laser_level_tool\icon\laser-beam.ico --include-qt-plugins=sensible,multimedia  .\laser_level_tool\main.py 
+nuitka --enable-plugin=pyside6 --follow-imports --nofollow-import-to=tkinter --disable-console --onefile --windows-icon-from-ico=laser_level_tool\icon\laser-beam.ico --include-qt-plugins=sensible,multimedia  .\laser_level_tool\main.py
