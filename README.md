@@ -1,7 +1,5 @@
 # LaserVision: Real-time Laser Measurement with a Webcam
 
-For Binary Downloads see the [Releases](https://github.com/bhowiebkr/laser-level-webcam/releases) page.
-
 This is the software component in building a highly accurate measurement device primarily used in a similar way to a surface plate. Sofar measurements are attainable between 0.5um - 2um in repeated measurements.
 
 ![alt text](images/GUI.png)
@@ -20,31 +18,60 @@ Further improvements reaching sub-pixel noise can be done by multisampling the r
 
 This tool is based on the hard work of this original [Java tool](https://github.com/betzuka/laserlevel) but using a different base language Python and further changes to improve its accuracy and usability, and sample speed.
 
+## Installation Steps
 
+Follow these steps to install the Python program:
 
-## Running the compiled binary
-Currently please see the [zipped binary file builds folder](builds/) for pre compiled binaries using the nuitka
-Python to C compiler. In the future I’ll setup a Releases.
+### 1. Clone the Repository
 
-## Running from Python source
+Start by cloning the repository containing the Python program to your local machine. Open a terminal and run the following command:
 
-1. Install Python on your computer. You can download the latest version of Python from the official website: https://www.python.org/downloads/
+```bash
+git clone https://github.com/bhowiebkr/laser-level-webcam.git
+```
 
-2. Clone this repository or download the ZIP file and extract it to a folder on your computer.
+### 2. Create a Virtual Environment
 
-3. Open a terminal or command prompt and navigate to the folder where you extracted the files.
+Navigate to the cloned repository directory using the cd command:
 
-4. Install the required packages by running the following command:
+```bash
+cd laser-level-webcam
+```
 
-`pip install -r requirements.txt`
+Next, create a virtual environment for isolating the program's dependencies. Run the following commands:
 
-This command will install all the required packages listed in the `requirements.txt` file.
+2a. if you are missing virtualenv, install it with pip
+```bash
+pip install virtualenv
+```
+2b. Setup the virtualenv:
+```bash
+virtualenv venv
+```
 
-5. Once the packages are installed, run the application by running the following command:
+### 3. Activate the Virtual Environment
 
-`python main.py` from the **laser_level_tool** folder.
+Activate the virtual environment to start using it.
+```bash
+.\venv\Scripts\activate
+```
 
-This will launch the application and start capturing video from your webcam.
+### 4. Install Required Packages
+
+The program's required packages are listed in the requirements.txt file. This will install the packages into the virtual environmnent setup in step 2. To install these packages, run the following command:
+
+```bash
+pip install -r requirements.txt
+```
+This command uses `pip` to install the packages specified in the requirements.txt file.
+
+### 5. Run the Python Program
+After installing the required packages, you are ready to run the Python program:
+
+```bash
+python.exe laser_level_tool/main.py
+```
+We run the `main.py` file in the `laser_level_tool` directory
 
 ## Usage
 
