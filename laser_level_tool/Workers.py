@@ -3,6 +3,7 @@ from typing import Any
 import numpy as np
 import qimage2ndarray
 from curves import fit_gaussian
+from DataClasses import FrameData
 from PySide6.QtCore import QObject
 from PySide6.QtCore import Signal
 from PySide6.QtCore import Slot
@@ -86,7 +87,6 @@ class SampleWorker(QObject):  # type: ignore
             total_samples (int): The total number of subsamples to process before emitting the mean.
             outlier_percent (float): The percentage of outliers to remove from the subsamples (0-100).
         """
-        print(f"{total_samples=}, {outlier_percent=}")
         self.total_samples = total_samples
         self.outlier_percent = outlier_percent / 100.0
         self.started = True
@@ -108,7 +108,7 @@ class FrameWorker(QObject):  # type: ignore
     OnFrameChanged = Signal(list)
     OnCentreChanged = Signal(int)
     OnPixmapChanged = Signal(QPixmap)
-    OnAnalyserUpdate = Signal(list)
+    OnAnalyserUpdate = Signal(FrameData)
 
     def __init__(self, parent_obj: Any):
         super().__init__(None)
@@ -183,20 +183,21 @@ class FrameWorker(QObject):  # type: ignore
         width = self.histo.shape[0]
         self.data_width = width
 
-        a_sample = None
+        a_sample = 0
         self.centre = fit_gaussian(self.histo)  # Specify the y position of the line
         self.OnCentreChanged.emit(self.centre)
         if self.centre:
             # self.sample_worker.sample_in(self.centre)  # send the sample to the sample worker right away.
             a_sample = int(self.analyser_widget_height - self.centre * self.analyser_widget_height / width)
 
-        a_zero, a_text = None, None
+        a_zero, a_text = 0, ""
         if self.parent_obj.zero and self.centre:  # If we have zero, we can set it and the text
             a_zero = int(self.analyser_widget_height - self.parent_obj.zero * self.analyser_widget_height / width)
             centre_real = (self.parent_obj.sensor_width / width) * (self.centre - self.parent_obj.zero)
             a_text = get_units(self.parent_obj.units, centre_real)
 
-        self.OnAnalyserUpdate.emit([a_pix, a_sample, a_zero, a_text])
+        frame_data = FrameData(a_pix, a_sample, a_zero, a_text)
+        self.OnAnalyserUpdate.emit(frame_data)
 
         # self.OnFrameChanged.emit([pixmap, histo, a_pix])
         self.ready = True

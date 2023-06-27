@@ -1,4 +1,5 @@
 import numpy as np
+from DataClasses import Sample
 from PySide6.QtCore import QObject
 from PySide6.QtCore import QThread
 from PySide6.QtCore import Signal
@@ -13,15 +14,6 @@ from scipy.stats import linregress
 from Workers import FrameSender
 from Workers import FrameWorker
 from Workers import SampleWorker
-
-
-class Sample:
-    def __init__(self, x: int, y: float) -> None:
-        self.x = x
-        self.y = y
-        self.linYError = 0.0
-        self.shim = 0.0
-        self.scrape = 0.0
 
 
 def samples_recalc(samples: list[Sample]) -> None:

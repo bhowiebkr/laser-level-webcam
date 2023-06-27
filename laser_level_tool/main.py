@@ -7,6 +7,7 @@ from Core import Core
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QUrl
 from PySide6.QtGui import QAction
+from PySide6.QtGui import QCloseEvent
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QAbstractItemView
 from PySide6.QtWidgets import QApplication
@@ -39,8 +40,8 @@ from Widgets import TableUnit
 
 
 # Define the main window
-class MainWindow(QMainWindow):
-    def __init__(self):
+class MainWindow(QMainWindow):  # type: ignore
+    def __init__(self) -> None:
         super().__init__()
 
         self.setWindowTitle("Laser Level Webcam Tool")
@@ -241,14 +242,14 @@ class MainWindow(QMainWindow):
 
         self.status_bar.showMessage("Loading first camera", 1000)  # 3 seconds
 
-    def smoothing_value(self, val):
+    def smoothing_value(self, val: float) -> None:
         self.status_bar.showMessage(f"Smoothing: {val}", 1000)  # 3 seconds
 
-    def openSourceCode(self):
+    def openSourceCode(self) -> None:
         url = "https://github.com/bhowiebkr/laser-level-webcam"
         QDesktopServices.openUrl(QUrl(url))
 
-    def export_csv(self):
+    def export_csv(self) -> None:
         # get the file path from the user using a QFileDialog
         file_path, _ = QFileDialog.getSaveFileName(self, "Export CSV", "", "CSV Files (*.csv)")
         if not file_path:
@@ -267,19 +268,19 @@ class MainWindow(QMainWindow):
                         row_data.append("")
                 writer.writerow(row_data)
 
-    def hightlight_sample(self):
+    def hightlight_sample(self) -> None:
         index = self.sample_table.currentRow()
         self.graph.set_selected_index(index)
 
-    def extra_controls(self):
+    def extra_controls(self) -> None:
         cmd = f'ffmpeg -f dshow -show_video_device_dialog true -i video="{self.camera_combo.currentText()}"'
         subprocess.Popen(cmd, shell=True)
 
-    def update_graph_mode(self):
+    def update_graph_mode(self) -> None:
         checked_button = self.graph_mode_group.checkedButton()
         self.graph.set_mode(checked_button.text())
 
-    def update_table(self):
+    def update_table(self) -> None:
         units = self.core.units
         header_names = [
             f"Measured ({units})",
@@ -310,7 +311,7 @@ class MainWindow(QMainWindow):
         self.sample_table.selectRow(self.table_selected_index)
         self.graph.update_graph()
 
-    def finished_subsample(self):
+    def finished_subsample(self) -> None:
         """
         Sample complete. Reset the GUI back to the default state
         """
@@ -328,10 +329,11 @@ class MainWindow(QMainWindow):
             else:
                 self.sample_btn.setText("Take Sample")
 
-    def subsample_progress_update(self, sample_total):
+    def subsample_progress_update(self, sample_total: list[int]) -> None:
         """
         Progress update on either zero or sample button
         """
+
         sample = sample_total[0]
         total = sample_total[1]
 
@@ -343,7 +345,7 @@ class MainWindow(QMainWindow):
             else:
                 self.sample_btn.setText(f"{sample}/{total}")
 
-    def zero_btn_cmd(self):
+    def zero_btn_cmd(self) -> None:
         """
         Calls the sample button command but sets a flag so we know the GUI is in a state of setting the zero value
         """
@@ -357,9 +359,9 @@ class MainWindow(QMainWindow):
 
         self.core.samples[:] = []  # clear list in-place without changing it's reference
         self.graph.update_graph()
-        self.core.start_sample(self.setting_zero, replacing_sample=False, replacing_sample_index=None)
+        self.core.start_sample(self.setting_zero, replacing_sample=False, replacing_sample_index=0)
 
-    def sample_btn_cmd(self):
+    def sample_btn_cmd(self) -> None:
         """
         Calls on Core to take a sample
         """
@@ -368,9 +370,9 @@ class MainWindow(QMainWindow):
         self.zero_btn.setDisabled(True)
         self.sample_btn.setDisabled(True)
         self.replace_btn.setDisabled(True)
-        self.core.start_sample(self.setting_zero, replacing_sample=False, replacing_sample_index=None)
+        self.core.start_sample(self.setting_zero, replacing_sample=False, replacing_sample_index=0)
 
-    def replace_btn_cmd(self):
+    def replace_btn_cmd(self) -> None:
         """
         Call for when we are replacing a sample
         """
@@ -383,7 +385,7 @@ class MainWindow(QMainWindow):
         index = self.sample_table.currentRow()
         self.core.start_sample(self.setting_zero, replacing_sample=True, replacing_sample_index=index)
 
-    def closeEvent(self, event):
+    def closeEvent(self, event: QCloseEvent) -> None:
         self.core.workerThread.quit()
         self.core.workerThread.wait()
         self.core.sampleWorkerThread.quit()

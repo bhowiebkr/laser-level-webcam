@@ -1,6 +1,9 @@
+from typing import Any
+
 import matplotlib.pyplot as plt
 import numpy as np
-from Core import Sample
+from DataClasses import FrameData
+from DataClasses import Sample
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from PySide6.QtCore import Qt
 from PySide6.QtCore import Signal
@@ -18,6 +21,7 @@ from PySide6.QtWidgets import QWidget
 from scipy.interpolate import CubicSpline
 from utils import get_units
 from utils import units_of_measurements
+
 
 style = {
     "axes.grid": "True",
@@ -187,8 +191,8 @@ class AnalyserWidget(QWidget):  # type: ignore
         self.pixmap = QPixmap(100, 100)
         self.pixmap.fill(QColor(0, 0, 0))
         self.sample = 0  # location of the sample in pixel space on the widget
-        self.zero = None  # location of zero. if not set, it's None
-        self.text = None  # Text to display if zero is set. shows the distance from zero
+        self.zero = 0  # location of zero. if not set, it's None
+        self.text = ""  # Text to display if zero is set. shows the distance from zero
 
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
@@ -220,21 +224,25 @@ class AnalyserWidget(QWidget):  # type: ignore
             painter.setPen(Qt.green)
             painter.drawText(int(x), int(y), self.text)
 
-    def set_data(self, data) -> None:
-        self.pixmap, self.sample, self.zero, self.text = data
+    def set_data(self, data: FrameData) -> None:
+        self.pixmap = data.pixmap
+        self.sample = data.sample
+        self.zero = data.zero
+        self.text = data.text
         self.update()
 
 
 class TableUnit(QTableWidgetItem):  # type: ignore
     def __init__(self) -> None:
         super().__init__()
-        self.units = None
-        self.value = None
+        self.units = ""
+        self.value = 0.0
 
-    def set_units(self, units):
+    def set_units(self, units: str) -> None:
         self.units = units
 
-    def data(self, role):
+    def data(self, role: int) -> Any:
+        super().data(role)
         if role == Qt.DisplayRole:
             return get_units(self.units, self.value)
-        return super().data(role)
+        return None
