@@ -79,7 +79,7 @@ class Core(QObject):  # type: ignore
 
         self.pixmap = None  # pixmap used for the camera feed
         self.histo = None  # histogram values used in analyser
-        self.camera = None  # camera being used
+        self.camera = QCamera()  # camera being used
         self.centre = 0.0  # The found centre of the histogram
         self.zero = 0.0  # The zero point
         self.analyser_widget_height = 0  # The height of the widget so we can calculate the offset
@@ -114,7 +114,6 @@ class Core(QObject):  # type: ignore
         self.captureSession.setVideoSink(QVideoSink(self))
         self.captureSession.videoSink().videoFrameChanged.connect(self.onFramePassedFromCamera)
         self.frameSender.OnFrameChanged.connect(self.frameWorker.setVideoFrame)
-        self.frameWorker.OnFrameChanged.connect(self.set_frame)
 
     def subsample_progress_update(self, subsample: Sample) -> None:
         self.OnSubsampleProgressUpdate.emit([subsample, self.subsamples])  # current sample and total
@@ -154,28 +153,19 @@ class Core(QObject):  # type: ignore
         self.setting_zero_sample = zero
         self.sample_worker.start(self.subsamples, self.outliers)
 
-    @Slot(QVideoFrame)
+    @Slot(QVideoFrame)  # type: ignore
     def onFramePassedFromCamera(self, frame: QVideoFrame):
         if self.frameWorker.ready:
             self.frameSender.OnFrameChanged.emit(frame)
 
-    def set_frame(self, data):
-        """
-        This is where most of the data processing happens
-        """
-
-        # This method shouldn't exist anymore
-
-        self.pixmap, self.histo, a_pix = data
-        self.OnSensorFeedUpdate.emit(self.pixmap)
-
-    def get_cameras(self):
+    def get_cameras(self) -> list[str]:
         cams = []
         for cam in QMediaDevices.videoInputs():
             cams.append(cam.description())
+
         return cams
 
-    def set_camera(self, index):
+    def set_camera(self, index: int) -> None:
         if self.camera:
             self.camera.stop()
 

@@ -7,8 +7,10 @@ from PySide6.QtCore import Signal
 from PySide6.QtGui import QColor
 from PySide6.QtGui import QFont
 from PySide6.QtGui import QPainter
+from PySide6.QtGui import QPaintEvent
 from PySide6.QtGui import QPen
 from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import QSizePolicy
 from PySide6.QtWidgets import QTableWidgetItem
 from PySide6.QtWidgets import QVBoxLayout
@@ -61,22 +63,21 @@ class Graph(QWidget):  # type: ignore
         self.ax.set_ylabel(self.units)
         self.ax.autoscale_view("tight")
 
-        self.canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         main_layout.addWidget(self.canvas)
 
     def set_selected_index(self, index: int) -> None:
         self.selected_index = index + 1
-        self.update()
+        self.update_graph()
 
     def set_units(self, units: str) -> None:
         self.units = units
-        self.update()
+        self.update_graph()
 
     def set_mode(self, mode: str) -> None:
         self.mode = mode
-        self.update()
+        self.update_graph()
 
-    def update(self) -> None:
+    def update_graph(self) -> None:
         # Clear the axis and plot the data
         self.ax.clear()
 
@@ -150,18 +151,18 @@ class Graph(QWidget):  # type: ignore
         self.canvas.draw()
 
 
-class PixmapWidget(QWidget):
+class PixmapWidget(QWidget):  # type: ignore
     OnHeightChanged = Signal(int)
 
-    def __init__(self, parent=None):
-        super().__init__(parent)
+    def __init__(self) -> None:
+        super().__init__()
 
         self.pixmap = QPixmap(100, 100)
         self.pixmap.fill(QColor(0, 0, 0))
 
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
-    def paintEvent(self, event):
+    def paintEvent(self, event: QPaintEvent) -> None:
         super().paintEvent(event)
 
         if not self.pixmap:
@@ -170,19 +171,19 @@ class PixmapWidget(QWidget):
         painter = QPainter(self)
         painter.drawPixmap(self.rect(), self.pixmap)
 
-    def resizeEvent(self, event):
+    def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
         new_height = event.size().height()
         self.OnHeightChanged.emit(new_height)
 
-    def setPixmap(self, pixmap):
+    def setPixmap(self, pixmap: QPixmap) -> None:
         self.pixmap = pixmap
         self.update()
 
 
-class AnalyserWidget(QWidget):
-    def __init__(self, parent=None):
-        super().__init__(parent)
+class AnalyserWidget(QWidget):  # type: ignore
+    def __init__(self) -> None:
+        super().__init__()
         self.pixmap = QPixmap(100, 100)
         self.pixmap.fill(QColor(0, 0, 0))
         self.sample = 0  # location of the sample in pixel space on the widget
@@ -191,7 +192,7 @@ class AnalyserWidget(QWidget):
 
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
-    def paintEvent(self, event):
+    def paintEvent(self, event: QPaintEvent) -> None:
         super().paintEvent(event)
         painter = QPainter(self)
 
@@ -219,14 +220,14 @@ class AnalyserWidget(QWidget):
             painter.setPen(Qt.green)
             painter.drawText(int(x), int(y), self.text)
 
-    def set_data(self, data):
+    def set_data(self, data) -> None:
         self.pixmap, self.sample, self.zero, self.text = data
         self.update()
 
 
-class TableUnit(QTableWidgetItem):
-    def __init__(self, parent=None):
-        super().__init__(parent)
+class TableUnit(QTableWidgetItem):  # type: ignore
+    def __init__(self) -> None:
+        super().__init__()
         self.units = None
         self.value = None
 
