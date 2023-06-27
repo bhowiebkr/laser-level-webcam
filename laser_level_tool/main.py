@@ -308,7 +308,7 @@ class MainWindow(QMainWindow):
                 self.sample_table.setItem(sample.x, col, cell)
 
         self.sample_table.selectRow(self.table_selected_index)
-        self.graph.update(self.update_table)
+        self.graph.update()
 
     def finished_subsample(self):
         """
@@ -356,7 +356,7 @@ class MainWindow(QMainWindow):
         self.replace_btn.setDisabled(True)
 
         self.core.samples[:] = []  # clear list in-place without changing it's reference
-        self.graph.update(self.zero_btn_cmd)
+        self.graph.update()
         self.core.start_sample(self.setting_zero, replacing_sample=False, replacing_sample_index=None)
 
     def sample_btn_cmd(self):

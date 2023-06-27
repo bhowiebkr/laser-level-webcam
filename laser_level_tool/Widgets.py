@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
+from Core import Sample
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from PySide6.QtCore import Qt
 from PySide6.QtCore import Signal
@@ -39,14 +40,14 @@ style = {
 plt.style.use(style)
 
 
-class Graph(QWidget):
-    def __init__(self, samples):
+class Graph(QWidget):  # type: ignore
+    def __init__(self, samples: list[Sample]):
         super().__init__()
 
         self.samples = samples
-        self.units = None
-        self.mode = None
-        self.selected_index = None
+        self.units = ""
+        self.mode = ""
+        self.selected_index = 0
 
         # Layouts
         main_layout = QVBoxLayout()
@@ -63,19 +64,19 @@ class Graph(QWidget):
         self.canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         main_layout.addWidget(self.canvas)
 
-    def set_selected_index(self, index):
+    def set_selected_index(self, index: int) -> None:
         self.selected_index = index + 1
-        self.update(self.set_selected_index)
+        self.update()
 
-    def set_units(self, units):
+    def set_units(self, units: str) -> None:
         self.units = units
-        self.update(self.set_units)
+        self.update()
 
-    def set_mode(self, mode):
+    def set_mode(self, mode: str) -> None:
         self.mode = mode
-        self.update(self.set_mode)
+        self.update()
 
-    def update(self, sender):
+    def update(self) -> None:
         # Clear the axis and plot the data
         self.ax.clear()
 
@@ -88,8 +89,8 @@ class Graph(QWidget):
         x = np.arange(1, len(self.samples) + 1)
         y = []
 
-        min_sample = 0
-        max_sample = 0
+        min_sample = 0.0
+        max_sample = 0.0
         if self.mode == "Raw":
             # Raw points
             for s in self.samples:

@@ -9,53 +9,96 @@ from PySide6.QtMultimedia import QMediaCaptureSession
 from PySide6.QtMultimedia import QMediaDevices
 from PySide6.QtMultimedia import QVideoFrame
 from PySide6.QtMultimedia import QVideoSink
-from utils import samples_recalc
+from scipy.stats import linregress
 from Workers import FrameSender
 from Workers import FrameWorker
 from Workers import SampleWorker
 
 
 class Sample:
-    def __init__(self, x, y):
+    def __init__(self, x: int, y: float) -> None:
         self.x = x
         self.y = y
-        self.linYError = 0
-        self.shim = 0
-        self.scrape = 0
+        self.linYError = 0.0
+        self.shim = 0.0
+        self.scrape = 0.0
 
 
-class Core(QObject):
+def samples_recalc(samples: list[Sample]) -> None:
+    """
+    Recalculates the linear regression and errors of the given list of samples.
+
+    Args:
+    - samples (list): A list of Sample objects with x and y attributes.
+
+    Returns:
+    - None
+
+    Example:
+    - sample1 = Sample(1, 2)
+      sample2 = Sample(2, 4)
+      sample3 = Sample(3, 6)
+      samples_recalc([sample1, sample2, sample3])
+    """
+    # Ensure that there are at least 3 samples to calculate the linear regression and errors.
+    if len(samples) >= 3:
+        # Get the x and y values from the samples.
+        x = [s.x for s in samples]
+        y = [s.y for s in samples]
+
+        # Calculate the linear regression using the x and y values.
+        slope, intercept, r_value, p_value, std_err = linregress(x, y)
+
+        # Calculate the minimum and maximum y errors for each sample.
+        minYError = float("inf")
+        maxYError = float("-inf")
+        for s in samples:
+            s.linYError = s.y - (slope * s.x + intercept)
+            if s.linYError > maxYError:
+                maxYError = s.linYError
+            if s.linYError < minYError:
+                minYError = s.linYError
+
+        # Calculate the shim and scrape values for each sample.
+        for s in samples:
+            # Make highest point zero for shimming, we are going to shim up all the low points to this height.
+            s.shim = maxYError - s.linYError
+            # Make lowest point zero for scraping, we are going to scrape off all the high areas.
+            s.scrape = s.linYError - minYError
+
+
+class Core(QObject):  # type: ignore
     OnSensorFeedUpdate = Signal(QPixmap)
     OnAnalyserUpdate = Signal(list)
     OnSubsampleProgressUpdate = Signal(list)
     OnSampleComplete = Signal()
     OnUnitsChanged = Signal(str)
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
 
         self.pixmap = None  # pixmap used for the camera feed
         self.histo = None  # histogram values used in analyser
         self.camera = None  # camera being used
-        self.centre = None  # The found centre of the histogram
-        self.zero = None  # The zero point
+        self.centre = 0.0  # The found centre of the histogram
+        self.zero = 0.0  # The zero point
         self.analyser_widget_height = 0  # The height of the widget so we can calculate the offset
-        self.subsamples = None  # total number of subsamples
-        self.outliers = None  # percentage value of how many outliers to remove from a sample
-        self.units = None  # string representing the units
-        self.sensor_width = None  # width of the sensor in millimeters (mm)
+        self.subsamples = 0  # total number of subsamples
+        self.outliers = 0  # percentage value of how many outliers to remove from a sample
+        self.units = ""  # string representing the units
+        self.sensor_width = 0  # width of the sensor in millimeters (mm)
         self.setting_zero_sample = False  # boolean if we are setting zero or a sample
         self.replacing_sample = False  # If we are replacing a sample
-        self.replacing_sample_index = None  # the index of the sample we are replacing
+        self.replacing_sample_index = 0  # the index of the sample we are replacing
         self.sample_data = np.empty(0)  # numpy array of raw samples
         self.line_data = np.empty(0)  # numpy array of the fitted line through the samples
-        self.samples = []
+        self.samples: list[Sample] = []
 
         # Frame worker
         self.workerThread = QThread()
         self.captureSession = QMediaCaptureSession()
         self.frameSender = FrameSender()
-        self.frameWorker = FrameWorker(parent=self)
+        self.frameWorker = FrameWorker(parent_obj=self)
         self.frameWorker.moveToThread(self.workerThread)
         self.workerThread.start()
 
@@ -73,10 +116,10 @@ class Core(QObject):
         self.frameSender.OnFrameChanged.connect(self.frameWorker.setVideoFrame)
         self.frameWorker.OnFrameChanged.connect(self.set_frame)
 
-    def subsample_progress_update(self, subsample):
+    def subsample_progress_update(self, subsample: Sample) -> None:
         self.OnSubsampleProgressUpdate.emit([subsample, self.subsamples])  # current sample and total
 
-    def received_sample(self, val):
+    def received_sample(self, val: float) -> None:
         if self.setting_zero_sample:
             self.zero = val
         else:
@@ -94,19 +137,19 @@ class Core(QObject):
 
         self.OnSampleComplete.emit()
 
-    def set_units(self, units):
+    def set_units(self, units: str) -> None:
         self.units = units
 
         self.OnUnitsChanged.emit(self.units)
 
-    def start_sample(self, zero, replacing_sample, replacing_sample_index):
+    def start_sample(self, zero: bool, replacing_sample: bool, replacing_sample_index: int) -> None:
         self.replacing_sample = replacing_sample
         self.replacing_sample_index = replacing_sample_index
 
         if zero:  # if we are zero, we reset everything
             self.sample_data = np.empty(0)
             self.line_data = np.empty(0)
-            self.zero = None
+            self.zero = 0.0
 
         self.setting_zero_sample = zero
         self.sample_worker.start(self.subsamples, self.outliers)

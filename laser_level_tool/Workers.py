@@ -1,3 +1,5 @@
+from typing import Any
+
 import numpy as np
 import qimage2ndarray
 from curves import fit_gaussian
@@ -11,7 +13,7 @@ from PySide6.QtMultimedia import QVideoFrame
 from utils import get_units
 
 
-class SampleWorker(QObject):
+class SampleWorker(QObject):  # type: ignore
     """
     A worker class to process a stream of samples and emit the calculated mean.
 
@@ -27,16 +29,16 @@ class SampleWorker(QObject):
     OnSampleReady = Signal(float)
     OnSubsampleRecieved = Signal(int)
 
-    def __init__(self, parent=None):
-        super().__init__(parent)
+    def __init__(self) -> None:
+        super().__init__(None)
         self.ready = True
         self.sample_array = np.empty((0,))
         self.total_samples = 0
         self.running_total = 0
-        self.outlier_percent = 0
+        self.outlier_percent = 0.0
         self.started = False
 
-    def sample_in(self, sample):
+    def sample_in(self, sample: float) -> None:
         """
         Process a new subsample by appending it to the array and emitting OnSubsampleRecieved.
 
@@ -76,7 +78,7 @@ class SampleWorker(QObject):
             self.total_samples = 0
             self.started = False
 
-    def start(self, total_samples, outlier_percent):
+    def start(self, total_samples: int, outlier_percent: float) -> None:
         """
         Start the worker with a given number of total samples and outlier percentage to remove.
 
@@ -84,12 +86,13 @@ class SampleWorker(QObject):
             total_samples (int): The total number of subsamples to process before emitting the mean.
             outlier_percent (float): The percentage of outliers to remove from the subsamples (0-100).
         """
+        print(f"{total_samples=}, {outlier_percent=}")
         self.total_samples = total_samples
-        self.outlier_percent = outlier_percent / 100
+        self.outlier_percent = outlier_percent / 100.0
         self.started = True
 
 
-class FrameWorker(QObject):
+class FrameWorker(QObject):  # type: ignore
     """
     A worker class to process a QVideoFrame and emit the corresponding image data.
 
@@ -107,17 +110,17 @@ class FrameWorker(QObject):
     OnPixmapChanged = Signal(QPixmap)
     OnAnalyserUpdate = Signal(list)
 
-    def __init__(self, parent=None):
-        super().__init__()
+    def __init__(self, parent_obj: Any):
+        super().__init__(None)
         self.ready = True
         self.analyser_smoothing = 0
-        self.centre = None
+        self.centre = 0.0
         self.analyser_widget_height = 0
-        self.parent = parent
+        self.parent_obj = parent_obj
         self.data_width = 0
 
-    @Slot(QVideoFrame)
-    def setVideoFrame(self, frame: QVideoFrame):
+    @Slot(QVideoFrame)  # type: ignore
+    def setVideoFrame(self, frame: QVideoFrame) -> None:
         """
         Process a new QVideoFrame and emit the corresponding image data.
 
@@ -188,10 +191,10 @@ class FrameWorker(QObject):
             a_sample = int(self.analyser_widget_height - self.centre * self.analyser_widget_height / width)
 
         a_zero, a_text = None, None
-        if self.parent.zero and self.centre:  # If we have zero, we can set it and the text
-            a_zero = int(self.analyser_widget_height - self.parent.zero * self.analyser_widget_height / width)
-            centre_real = (self.parent.sensor_width / width) * (self.centre - self.parent.zero)
-            a_text = get_units(self.parent.units, centre_real)
+        if self.parent_obj.zero and self.centre:  # If we have zero, we can set it and the text
+            a_zero = int(self.analyser_widget_height - self.parent_obj.zero * self.analyser_widget_height / width)
+            centre_real = (self.parent_obj.sensor_width / width) * (self.centre - self.parent_obj.zero)
+            a_text = get_units(self.parent_obj.units, centre_real)
 
         self.OnAnalyserUpdate.emit([a_pix, a_sample, a_zero, a_text])
 
@@ -199,7 +202,7 @@ class FrameWorker(QObject):
         self.ready = True
 
 
-class FrameSender(QObject):
+class FrameSender(QObject):  # type: ignore
     """
     A class to send QVideoFrames.
 
