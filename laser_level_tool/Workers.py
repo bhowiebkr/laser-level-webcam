@@ -1,10 +1,13 @@
-from PySide6.QtCore import Signal, QObject, Slot
-from PySide6.QtGui import QImage, QPixmap, QTransform
-from PySide6.QtMultimedia import QVideoFrame
-
 import numpy as np
 import qimage2ndarray
 from curves import fit_gaussian
+from PySide6.QtCore import QObject
+from PySide6.QtCore import Signal
+from PySide6.QtCore import Slot
+from PySide6.QtGui import QImage
+from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QTransform
+from PySide6.QtMultimedia import QVideoFrame
 from utils import get_units
 
 
@@ -60,9 +63,7 @@ class SampleWorker(QObject):
 
             # Sort and remove the outliers
             first, last = n_outliers, -n_outliers if n_outliers > 0 else None
-            self.sample_array = self.sample_array[self.sample_array.argsort()][
-                first:last
-            ]
+            self.sample_array = self.sample_array[self.sample_array.argsort()][first:last]
 
             # Calculate new mean as float
             mean = np.mean(self.sample_array).astype(float)
@@ -141,20 +142,14 @@ class FrameWorker(QObject):
         self.OnPixmapChanged.emit(pixmap)
 
         # Smoothing
-        kernel = np.ones(2 * self.analyser_smoothing + 1) / (
-            2 * self.analyser_smoothing + 1
-        )
+        kernel = np.ones(2 * self.analyser_smoothing + 1) / (2 * self.analyser_smoothing + 1)
         histo = np.convolve(histo, kernel, mode="valid")
 
         # Find the min and max values
         min_value, max_value = histo.min(), histo.max()
 
         # Rescale the intensity values to have a range between 0 and 255
-        histo = (
-            ((histo - min_value) * (255.0 / (max_value - min_value)))
-            .clip(0, 255)
-            .astype(np.uint8)
-        )
+        histo = ((histo - min_value) * (255.0 / (max_value - min_value))).clip(0, 255).astype(np.uint8)
 
         # Generate the image
         # Define the scope image data as the width (long side) of the image x 256 for pixels
@@ -190,22 +185,12 @@ class FrameWorker(QObject):
         self.OnCentreChanged.emit(self.centre)
         if self.centre:
             # self.sample_worker.sample_in(self.centre)  # send the sample to the sample worker right away.
-            a_sample = int(
-                self.analyser_widget_height
-                - self.centre * self.analyser_widget_height / width
-            )
+            a_sample = int(self.analyser_widget_height - self.centre * self.analyser_widget_height / width)
 
         a_zero, a_text = None, None
-        if (
-            self.parent.zero and self.centre
-        ):  # If we have zero, we can set it and the text
-            a_zero = int(
-                self.analyser_widget_height
-                - self.parent.zero * self.analyser_widget_height / width
-            )
-            centre_real = (self.parent.sensor_width / width) * (
-                self.centre - self.parent.zero
-            )
+        if self.parent.zero and self.centre:  # If we have zero, we can set it and the text
+            a_zero = int(self.analyser_widget_height - self.parent.zero * self.analyser_widget_height / width)
+            centre_real = (self.parent.sensor_width / width) * (self.centre - self.parent.zero)
             a_text = get_units(self.parent.units, centre_real)
 
         self.OnAnalyserUpdate.emit([a_pix, a_sample, a_zero, a_text])

@@ -1,7 +1,3 @@
-from scipy.optimize import curve_fit
-import numpy as np
-
-
 import numpy as np
 from scipy.optimize import curve_fit
 
@@ -29,7 +25,8 @@ def fit_gaussian(curve):
     def gaussian(x, mean):
         return curve_max * np.exp(-(((x - mean) / curve_std) ** 2))
 
-    # Generate x data points and try to fit the curve using the defined Gaussian function
+    # Generate x data points and try to fit the curve using the defined
+    # Gaussian function
     x_data = np.arange(curve.size)
     try:
         popt, _ = curve_fit(gaussian, x_data, curve, p0=(np.mean(x_data),), maxfev=800)

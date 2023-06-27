@@ -10,12 +10,30 @@ repos:
     -   id: check-added-large-files
 
 -   repo: https://github.com/psf/black
-    rev: 22.10.0
+    rev: 23.3.0
     hooks:
     -   id: black
+        args: [--line-length=120]
 
 -   repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.4.1
     hooks:
     -   id: mypy
         #args: [--strict, --ignore-missing-imports]
+
+-   repo: https://github.com/pycqa/flake8
+    rev: 6.0.0
+    hooks:
+    -   id: flake8
+        additional_dependencies: [flake8-typing-imports==1.12.0]
+        args: [--max-line-length=120]
+
+-   repo: https://github.com/asottile/reorder_python_imports
+    rev: v3.10.0
+    hooks:
+    -   id: reorder-python-imports
+
+-   repo: https://github.com/asottile/setup-cfg-fmt
+    rev: v2.3.0
+    hooks:
+    -   id: setup-cfg-fmt

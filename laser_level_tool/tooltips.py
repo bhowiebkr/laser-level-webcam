@@ -2,16 +2,15 @@ tooltips = {}
 
 tooltips[
     "zero_btn"
-] = "This will set the zero position that we take measurements from.\n\nWarning:\n Pressing this button will always clear all the samples."
-tooltips[
-    "subsamples"
-] = "When taking a sample, this is the number of subsamples that we average together."
-tooltips[
-    "outliers"
-] = "This is the percentage of outliers we remove from the subsamples."
+] = """This will set the zero position that we take measurements from.\n\nWarning:\n
+Pressing this button will always clear all the samples."""
+tooltips["subsamples"] = "When taking a sample, this is the number of subsamples that we average together."
+tooltips["outliers"] = "This is the percentage of outliers we remove from the subsamples."
 tooltips[
     "sensor_width"
-] = "The physical sensor width (the longer length).\n\nIf this was a HD 1920x1080 sensor, this would be the 1920px side.\nMeasure by taking a top-down photo and calculating in software the size of the sensor from a known measured length with calipers. \nhat way you don't damage the sensor."
+] = """The physical sensor width (the longer length).\n\nIf this was a HD 1920x1080 sensor,
+this would be the 1920px side.\nMeasure by taking a top-down photo and calculating in software
+the size of the sensor from a known measured length with calipers. \nhat way you don't damage the sensor."""
 
 tooltips[
     "units"
@@ -73,11 +72,14 @@ tooltips[
 ] = """This button loads up all the available webcam device settings for the camera.
 
 Notable things to adjust:
-- disable auto exposure and auto white balance.  When we are taking samples we don`t want any part of the image changing.
-- If you have some lights on in the room, enabling powerline frequency filters can help with buzzing LED or fluorescent lights.
+- disable auto exposure and auto white balance.  When we are taking samples we don`t
+  want any part of the image changing.
+- If you have some lights on in the room, enabling powerline frequency filters can help
+  with buzzing LED or fluorescent lights.
 - Brightness, contrast, gamma are useful to help get the luminosity in a good range.
 
-These settings are not likely to be saved so it`s always best to check these settings out when using the tool."""
+These settings are not likely to be saved so it`s always best
+to check these settings out when using the tool."""
 
 
 tooltips[
@@ -106,14 +108,10 @@ get it to the lowest measured sample.
 Shim values is how much you would have to shim each sample up to the highest measured sample"""
 
 
-tooltips[
-    "raw"
-] = """This radio button will set the plot to display the raw measured values."""
+tooltips["raw"] = """This radio button will set the plot to display the raw measured values."""
 
 
-tooltips[
-    "flat"
-] = """This radio button will set the plot to display the derived flattened values."""
+tooltips["flat"] = """This radio button will set the plot to display the derived flattened values."""
 
 tooltips[
     "plot"

@@ -1,16 +1,20 @@
-from PySide6.QtWidgets import QSizePolicy, QTableWidgetItem, QVBoxLayout, QWidget
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QPainter, QPixmap, QColor
-from PySide6.QtGui import QPainter, QPixmap, QPen, QFont
-
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 import matplotlib.pyplot as plt
-from scipy.interpolate import CubicSpline
-from utils import units_of_measurements
-
 import numpy as np
-
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from PySide6.QtCore import Qt
+from PySide6.QtCore import Signal
+from PySide6.QtGui import QColor
+from PySide6.QtGui import QFont
+from PySide6.QtGui import QPainter
+from PySide6.QtGui import QPen
+from PySide6.QtGui import QPixmap
+from PySide6.QtWidgets import QSizePolicy
+from PySide6.QtWidgets import QTableWidgetItem
+from PySide6.QtWidgets import QVBoxLayout
+from PySide6.QtWidgets import QWidget
+from scipy.interpolate import CubicSpline
 from utils import get_units
+from utils import units_of_measurements
 
 style = {
     "axes.grid": "True",
@@ -25,7 +29,8 @@ style = {
     "xtick.color": "0.9",
     "ytick.color": "0.9",
     "grid.color": "2A3459",
-    "font.sans-serif": "Overpass, Helvetica, Helvetica Neue, Arial, Liberation Sans, DejaVu Sans, Bitstream Vera Sans, sans-serif",
+    "font.sans-serif": "Overpass, Helvetica, Helvetica Neue, Arial, Liberation \
+        Sans, DejaVu Sans, Bitstream Vera Sans, sans-serif",
     "figure.facecolor": "202124",
     "axes.facecolor": "101012",
     "savefig.facecolor": "212946",
@@ -74,7 +79,7 @@ class Graph(QWidget):
         # Clear the axis and plot the data
         self.ax.clear()
 
-        if self.units == None or self.mode == None or len(self.samples) == 0:
+        if self.units is None or self.mode is None or len(self.samples) == 0:
             self.canvas.draw()
             return
 

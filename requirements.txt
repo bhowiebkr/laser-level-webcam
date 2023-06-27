@@ -3,8 +3,5 @@ numpy
 PySide6
 scipy
 pyqtdarktheme
-nuitka
-ordered-set
-zstandard
 qimage2ndarray
 matplotlib

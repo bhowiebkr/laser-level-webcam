@@ -1,7 +1,4 @@
-import numpy as np
 from scipy.stats import linregress
-
-from PySide6.QtMultimedia import QMediaDevices
 
 units_of_measurements = {
     "μm": 1000,
