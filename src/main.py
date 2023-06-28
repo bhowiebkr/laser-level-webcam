@@ -3,7 +3,6 @@ import subprocess
 import sys
 
 import qdarktheme
-from Core import Core
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QUrl
 from PySide6.QtGui import QAction
@@ -31,12 +30,14 @@ from PySide6.QtWidgets import QSplitter
 from PySide6.QtWidgets import QTableWidget
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
-from tooltips import tooltips as tt
-from utils import units_of_measurements
-from Widgets import AnalyserWidget
-from Widgets import Graph
-from Widgets import PixmapWidget
-from Widgets import TableUnit
+
+from .Core import Core
+from .tooltips import tooltips as tt
+from .utils import units_of_measurements
+from .Widgets import AnalyserWidget
+from .Widgets import Graph
+from .Widgets import PixmapWidget
+from .Widgets import TableUnit
 
 
 # Define the main window
@@ -394,7 +395,7 @@ class MainWindow(QMainWindow):  # type: ignore
         super().closeEvent(event)
 
 
-if __name__ == "__main__":
+def start() -> None:
     app = QApplication(sys.argv)
     qdarktheme.setup_theme(additional_qss="QToolTip {color: black;}")
 
@@ -402,3 +403,7 @@ if __name__ == "__main__":
 
     window.show()
     sys.exit(app.exec())
+
+
+if __name__ == "__main__":
+    start()
