@@ -1,7 +1,8 @@
-pre-commit
-numpy
-PySide6
-scipy
-pyqtdarktheme
-qimage2ndarray
-matplotlib
+numpy>=1.25.0
+PySide6>=6.5.1.1
+PySide6-Addons>=6.5.1.1
+PySide6-Essentials>=6.5.1.1
+scipy>=1.11.0
+pyqtdarktheme>=2.1.0
+qimage2ndarray>=1.10.0
+matplotlib>=3.7.1
