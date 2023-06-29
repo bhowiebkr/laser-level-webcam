@@ -137,3 +137,4 @@ dmypy.json
 temp
 UML
 *.csv
+coverage/*
