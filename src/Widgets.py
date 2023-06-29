@@ -2,6 +2,8 @@ from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
+from DataClasses import FrameData
+from DataClasses import Sample
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from PySide6.QtCore import Qt
 from PySide6.QtCore import Signal
@@ -17,11 +19,8 @@ from PySide6.QtWidgets import QTableWidgetItem
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 from scipy.interpolate import CubicSpline
-
-from .DataClasses import FrameData
-from .DataClasses import Sample
-from .utils import get_units
-from .utils import units_of_measurements
+from utils import get_units
+from utils import units_of_measurements
 
 
 style = {

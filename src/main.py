@@ -3,6 +3,7 @@ import subprocess
 import sys
 
 import qdarktheme
+from Core import Core
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QUrl
 from PySide6.QtGui import QAction
@@ -30,14 +31,12 @@ from PySide6.QtWidgets import QSplitter
 from PySide6.QtWidgets import QTableWidget
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
-
-from .Core import Core
-from .tooltips import tooltips as tt
-from .utils import units_of_measurements
-from .Widgets import AnalyserWidget
-from .Widgets import Graph
-from .Widgets import PixmapWidget
-from .Widgets import TableUnit
+from tooltips import tooltips as tt
+from utils import units_of_measurements
+from Widgets import AnalyserWidget
+from Widgets import Graph
+from Widgets import PixmapWidget
+from Widgets import TableUnit
 
 
 # Define the main window
