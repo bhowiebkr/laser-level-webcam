@@ -18,7 +18,18 @@ Further improvements reaching sub-pixel noise can be done by multisampling the r
 
 This tool is based on the hard work of this original [Java tool](https://github.com/betzuka/laserlevel) but using a different base language Python and further changes to improve its accuracy and usability, and sample speed.
 
-## Installation Steps
+# Install
+
+Binary installer can be downloaded on PiPI
+```shell
+pip install laser-level-webcam==1.0.0
+```
+and than running the command:
+```shell
+laser-level-webcam
+```
+
+# Build from source
 
 Follow these steps to install the Python program:
 
@@ -89,4 +100,4 @@ I’ll make a video explaining this tool and the workflow in greater detail, but
 
 ## License
 
-This project is licensed under the GNU Public License 3.0. See the `LICENSE` file for details.
+This project is licensed under the MIT License. See the `LICENSE` file for details.
