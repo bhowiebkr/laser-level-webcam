@@ -1,8 +1,8 @@
-numpy>=1.25.0
+numpy>=1.21.6
 PySide6>=6.5.1.1
 PySide6-Addons>=6.5.1.1
 PySide6-Essentials>=6.5.1.1
-scipy>=1.11.0
+scipy>=1.7.3
 pyqtdarktheme>=2.1.0
 qimage2ndarray>=1.10.0
-matplotlib>=3.7.1
+matplotlib>=3.5.3
