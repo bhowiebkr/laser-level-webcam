@@ -1,5 +1,5 @@
 numpy>=1.21.6
-PySide6>=6.5.1.1
+PySide6>=6.3.2
 PySide6-Addons>=6.5.1.1
 PySide6-Essentials>=6.5.1.1
 scipy>=1.7.3
