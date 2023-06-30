@@ -3,5 +3,5 @@ requires =  [
     'setuptools>=54',
     'wheel'
 ]
-
+requires-python = ">=3.7"
 build-backend = 'setuptools.build_meta'
