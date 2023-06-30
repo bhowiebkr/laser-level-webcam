@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import shutil
 import subprocess
 import sys
 
@@ -24,6 +25,7 @@ from PySide6.QtWidgets import QHeaderView
 from PySide6.QtWidgets import QLabel
 from PySide6.QtWidgets import QMainWindow
 from PySide6.QtWidgets import QMenu
+from PySide6.QtWidgets import QMessageBox
 from PySide6.QtWidgets import QPushButton
 from PySide6.QtWidgets import QRadioButton
 from PySide6.QtWidgets import QSlider
@@ -280,8 +282,18 @@ class MainWindow(QMainWindow):  # type: ignore
         self.graph.set_selected_index(index)
 
     def extra_controls(self) -> None:
-        cmd = f'ffmpeg -f dshow -show_video_device_dialog true -i video="{self.camera_combo.currentText()}"'
-        subprocess.Popen(cmd, shell=True)
+        # If the command exists
+        if shutil.which("ffmpeg"):
+            cmd = f'ffmpeg -f dshow -show_video_device_dialog true -i video="{self.camera_combo.currentText()}"'
+            subprocess.Popen(cmd, shell=True)
+        else:
+            print("missing!")
+            msg = QMessageBox()
+            msg.setWindowTitle("Missing FFMPEG")
+            msg_str = "FFMPEG is not installed or is not found in the Windows path. "
+            msg_str += "Please download, install, and add it to your Windows path"
+            msg.setText(msg_str)
+            msg.exec_()
 
     def update_graph_mode(self) -> None:
         checked_button = self.graph_mode_group.checkedButton()
