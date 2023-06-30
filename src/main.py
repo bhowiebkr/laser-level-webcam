@@ -133,7 +133,7 @@ class MainWindow(QMainWindow):  # type: ignore
         self.outlier_spin.setRange(0, 99)
         self.units_combo = QComboBox()
         self.units_combo.setToolTip(tt["units"])
-        self.units_combo.addItems(units_of_measurements.keys())
+        self.units_combo.addItems(list(units_of_measurements.keys()))
         self.units_combo.setCurrentIndex(1)
         self.sensor_width_spin = QDoubleSpinBox()
         self.sensor_width_spin.setToolTip(tt["sensor_width"])
@@ -310,6 +310,10 @@ class MainWindow(QMainWindow):  # type: ignore
                 cell.value = val
                 cell.units = self.core.units
                 self.sample_table.setItem(sample.x, col, cell)
+
+        # if there are rows and nothing is selected: select an index
+        if self.sample_table.rowCount() and not self.sample_table.selectedIndexes():
+            self.sample_table.selectRow(0)
 
         self.sample_table.selectRow(self.table_selected_index)
         self.graph.update_graph()
