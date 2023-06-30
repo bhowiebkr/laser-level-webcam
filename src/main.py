@@ -288,8 +288,8 @@ class MainWindow(QMainWindow):  # type: ignore
         header_names = [
             f"Measured ({units})",
             f"Flattened ({units})",
-            f"Scrape ({units})",
-            f"Shim ({units})",
+            f"Below Max ({units})",
+            f"Above Min ({units})",
         ]
         self.sample_table.setColumnCount(len(header_names))
         self.sample_table.setHorizontalHeaderLabels(header_names)
