@@ -85,7 +85,6 @@ class Core(QObject):  # type: ignore
         self.setting_zero_sample = False  # boolean if we are setting zero or a sample
         self.replacing_sample = False  # If we are replacing a sample
         self.replacing_sample_index = 0  # the index of the sample we are replacing
-        self.sample_data = np.empty(0)  # numpy array of raw samples
         self.line_data = np.empty(0)  # numpy array of the fitted line through the samples
         self.samples: list[Sample] = []
 
@@ -109,6 +108,21 @@ class Core(QObject):  # type: ignore
         self.captureSession.setVideoSink(QVideoSink(self))
         self.captureSession.videoSink().videoFrameChanged.connect(self.onFramePassedFromCamera)
         self.frameSender.OnFrameChanged.connect(self.frameWorker.setVideoFrame)
+
+    def delete_sample(self, index: int) -> None:
+        debug = False
+        if debug:
+            print(f"num samples = {len(self.samples)}")
+            print(f"Before: {self.samples=}")
+
+        del self.samples[index]
+
+        # Fix the indexes
+        for index, sample in enumerate(self.samples):
+            sample.x = index
+
+        if debug:
+            print(f"After: {self.samples=}")
 
     def subsample_progress_update(self, subsample: Sample) -> None:
         self.OnSubsampleProgressUpdate.emit([subsample, self.subsamples])  # current sample and total
@@ -141,7 +155,6 @@ class Core(QObject):  # type: ignore
         self.replacing_sample_index = replacing_sample_index
 
         if zero:  # if we are zero, we reset everything
-            self.sample_data = np.empty(0)
             self.line_data = np.empty(0)
             self.zero = 0.0
 

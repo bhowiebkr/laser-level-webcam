@@ -141,8 +141,10 @@ class MainWindow(QMainWindow):  # type: ignore
         self.zero_btn.setToolTip(tt["zero_btn"])
         self.sample_btn = QPushButton("Take Sample")
         self.sample_btn.setToolTip(tt["samples"])
-        self.replace_btn = QPushButton("Replace Sample")
+        self.replace_btn = QPushButton("Replace")
         self.replace_btn.setToolTip(tt["replace"])
+        self.delete_btn = QPushButton("Delete")
+        self.delete_btn.setDisabled(True)
         self.sample_btn.setDisabled(True)
         self.replace_btn.setDisabled(True)
         self.sample_table = QTableWidget()
@@ -153,16 +155,17 @@ class MainWindow(QMainWindow):  # type: ignore
         sample_layout.setContentsMargins(1, 1, 1, 1)
         sample_layout.addWidget(QLabel("Sub Samples #"), 0, 0, 1, 1, alignment=Qt.AlignRight)
         sample_layout.addWidget(self.subsamples_spin, 0, 1, 1, 1)
-        sample_layout.addWidget(QLabel("Outlier Removal %"), 0, 2, 1, 1, alignment=Qt.AlignRight)
-        sample_layout.addWidget(self.outlier_spin, 0, 3, 1, 1)
+        sample_layout.addWidget(QLabel("Outlier Removal %"), 0, 2, 1, 2, alignment=Qt.AlignRight)
+        sample_layout.addWidget(self.outlier_spin, 0, 4, 1, 1)
         sample_layout.addWidget(QLabel("Units"), 1, 0, 1, 1, alignment=Qt.AlignRight)
         sample_layout.addWidget(self.units_combo, 1, 1, 1, 1)
-        sample_layout.addWidget(QLabel("Sensor Width (mm)"), 1, 2, 1, 1, alignment=Qt.AlignRight)
-        sample_layout.addWidget(self.sensor_width_spin, 1, 3, 1, 1)
+        sample_layout.addWidget(QLabel("Sensor Width (mm)"), 1, 2, 1, 2, alignment=Qt.AlignRight)
+        sample_layout.addWidget(self.sensor_width_spin, 1, 4, 1, 1)
         sample_layout.addWidget(self.zero_btn, 2, 0, 1, 1)
         sample_layout.addWidget(self.sample_btn, 2, 1, 1, 2)
         sample_layout.addWidget(self.replace_btn, 2, 3, 1, 1)
-        sample_layout.addWidget(self.sample_table, 3, 0, 1, 4)
+        sample_layout.addWidget(self.delete_btn, 2, 4, 1, 1)
+        sample_layout.addWidget(self.sample_table, 3, 0, 1, 5)
         sampler_widget.setLayout(sample_layout)
 
         # -- Plot --
@@ -220,6 +223,7 @@ class MainWindow(QMainWindow):  # type: ignore
         self.zero_btn.clicked.connect(self.zero_btn_cmd)
         self.sample_btn.clicked.connect(self.sample_btn_cmd)
         self.replace_btn.clicked.connect(self.replace_btn_cmd)
+        self.delete_btn.clicked.connect(self.delete_btn_cmd)
         self.core.OnSubsampleProgressUpdate.connect(self.subsample_progress_update)
         self.core.OnSampleComplete.connect(self.finished_subsample)
         self.core.OnSampleComplete.connect(self.update_table)
@@ -325,6 +329,7 @@ class MainWindow(QMainWindow):  # type: ignore
         self.zero_btn.setEnabled(True)
         self.sample_btn.setEnabled(True)
         self.replace_btn.setEnabled(True)
+        self.delete_btn.setEnabled(True)
 
         if self.setting_zero is True:
             self.zero_btn.setText("Zero")
@@ -391,6 +396,14 @@ class MainWindow(QMainWindow):  # type: ignore
         self.replace_sample = True
         index = self.sample_table.currentRow()
         self.core.start_sample(self.setting_zero, replacing_sample=True, replacing_sample_index=index)
+
+    def delete_btn_cmd(self) -> None:
+        self.table_selected_index = self.sample_table.currentRow()
+
+        self.core.delete_sample(self.table_selected_index)
+
+        self.table_selected_index -= 1
+        self.update_table()
 
     def closeEvent(self, event: QCloseEvent) -> None:
         self.core.workerThread.quit()
