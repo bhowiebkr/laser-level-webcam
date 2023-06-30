@@ -127,7 +127,7 @@ class MainWindow(QMainWindow):  # type: ignore
         # -- Sampler --
         self.subsamples_spin = QSpinBox()
         self.subsamples_spin.setToolTip(tt["subsamples"])
-        self.subsamples_spin.setRange(0, 9999)
+        self.subsamples_spin.setRange(1, 9999)
         self.outlier_spin = QSpinBox()
         self.outlier_spin.setToolTip(tt["outliers"])
         self.outlier_spin.setRange(0, 99)
