@@ -22,3 +22,6 @@ class Sample:
         self.linYError = 0.0
         self.shim = 0.0
         self.scrape = 0.0
+
+    def __repr__(self) -> str:
+        return f"index: {self.x}, value: ({self.y:.4f})"
