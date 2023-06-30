@@ -7,7 +7,6 @@ This is the software component in building a highly accurate measurement device 
 
 ![alt text](images/GUI.png)
 
-Video on the usage of this tool:
 [![Video](http://img.youtube.com/vi/hnHjrz_inQU/0.jpg)](http://www.youtube.com/watch?v=hnHjrz_inQU)
 
 </div>
