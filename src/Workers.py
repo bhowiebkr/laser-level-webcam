@@ -2,6 +2,8 @@ from typing import Any
 
 import numpy as np
 import qimage2ndarray
+from curves import fit_gaussian
+from DataClasses import FrameData
 from PySide6.QtCore import QObject
 from PySide6.QtCore import Signal
 from PySide6.QtCore import Slot
@@ -9,10 +11,7 @@ from PySide6.QtGui import QImage
 from PySide6.QtGui import QPixmap
 from PySide6.QtGui import QTransform
 from PySide6.QtMultimedia import QVideoFrame
-
-from .curves import fit_gaussian
-from .DataClasses import FrameData
-from .utils import get_units
+from utils import get_units
 
 
 class SampleWorker(QObject):  # type: ignore

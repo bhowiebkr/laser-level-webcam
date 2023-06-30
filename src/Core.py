@@ -1,4 +1,5 @@
 import numpy as np
+from DataClasses import Sample
 from PySide6.QtCore import QObject
 from PySide6.QtCore import QThread
 from PySide6.QtCore import Signal
@@ -10,11 +11,9 @@ from PySide6.QtMultimedia import QMediaDevices
 from PySide6.QtMultimedia import QVideoFrame
 from PySide6.QtMultimedia import QVideoSink
 from scipy.stats import linregress
-
-from .DataClasses import Sample
-from .Workers import FrameSender
-from .Workers import FrameWorker
-from .Workers import SampleWorker
+from Workers import FrameSender
+from Workers import FrameWorker
+from Workers import SampleWorker
 
 
 def samples_recalc(samples: list[Sample]) -> None:
