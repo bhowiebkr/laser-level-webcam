@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import check_code
 import check_coverage
 

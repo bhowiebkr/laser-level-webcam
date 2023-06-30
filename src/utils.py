@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 units_of_measurements = {
     "μm": 1000,
     "mm": 1,

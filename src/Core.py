@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import numpy as np
 from DataClasses import Sample
 from PySide6.QtCore import QObject
