@@ -42,7 +42,7 @@ Follow these steps to install the Python program:
 
 Start by cloning the repository containing the Python program to your local machine. Open a terminal and run the following command:
 
-```bash
+```sh
 git clone https://github.com/bhowiebkr/laser-level-webcam.git
 ```
 
@@ -50,25 +50,25 @@ git clone https://github.com/bhowiebkr/laser-level-webcam.git
 
 Navigate to the cloned repository directory using the cd command:
 
-```bash
+```sh
 cd laser-level-webcam
 ```
 
 Next, create a virtual environment for isolating the program's dependencies. Run the following commands:
 
 2a. if you are missing virtualenv, install it with pip
-```bash
+```sh
 pip install virtualenv
 ```
 2b. Setup the virtualenv:
-```bash
+```sh
 virtualenv venv
 ```
 
 ### 3. Activate the Virtual Environment
 
 Activate the virtual environment to start using it.
-```bash
+```sh
 .\venv\Scripts\activate
 ```
 
@@ -76,7 +76,7 @@ Activate the virtual environment to start using it.
 
 The program's required packages are listed in the requirements.txt file. This will install the packages into the virtual environmnent setup in step 2. To install these packages, run the following command:
 
-```bash
+```sh
 pip install -r requirements.txt
 ```
 This command uses `pip` to install the packages specified in the requirements.txt file.
@@ -84,7 +84,7 @@ This command uses `pip` to install the packages specified in the requirements.tx
 ### 5. Run the Python Program
 After installing the required packages, you are ready to run the Python program:
 
-```bash
+```sh
 python.exe laser_level_tool/main.py
 ```
 We run the `main.py` file in the `laser_level_tool` directory
