@@ -25,7 +25,7 @@ This tool is based on the hard work of this original [Java tool](https://github.
 
 # Install
 
-Binary installer can be downloaded on PyPI
+Binary installer can be downloaded on PyPI https://pypi.org/project/laser-level-webcam/
 ```shell
 pip install laser-level-webcam==1.0.0
 ```
