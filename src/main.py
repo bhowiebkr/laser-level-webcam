@@ -60,6 +60,7 @@ class MainWindow(QMainWindow):  # type: ignore
         export_action.triggered.connect(self.export_csv)
         file_menu.addAction(export_action)
 
+        # create "File->Cyclic measurement" action
         cycle_action = QAction("Cyclic measurement", self)
         cycle_action.triggered.connect(self.cycle_measurement_action)
         self.cycle_dialog = CyclicMeasurementSetupWindow(self)
@@ -286,10 +287,11 @@ class MainWindow(QMainWindow):  # type: ignore
                 writer.writerow(row_data)
 
     def cycle_measurement_action(self) -> None:
+        """Displays the cyclic measurement dialog"""
         self.cycle_dialog.show()
 
     def on_cyclic_measurement(self) -> None:
-        """Acquires sample (or zero, if not yet acquired)"""
+        """Executed on each cyclic measurement- acquires a sample (if zeroed), zeroes measurements otherwise."""
         if self.sample_btn.isEnabled():
             self.sample_btn.click()
         else:
