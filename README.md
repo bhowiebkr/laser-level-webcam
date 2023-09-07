@@ -96,7 +96,7 @@ I’ll make a video explaining this tool and the workflow in greater detail, but
 - About 100 sub-samples. I tried up to 1000 sub-samples and didn’t find much more of a difference.
 - remove 50% of the outliers
 - crank the smoothing way up
-- let the tool stay on for at least 5 minutes so the webcam sensor stays at a consistent temp. It will drift while getting up to temp. It might be best to test this on your own sensor by taking the same measurement from a cold start and time how long it takes before the samples stop drifting.
+- let the tool stay on for at least 5 minutes so the webcam sensor stays at a consistent temp. It will drift while getting up to temp. It might be best to test this on your own sensor by taking the same measurement from a cold start and time how long it takes before the samples stop drifting. File->Cyclic measurement feature can be used to achieve this easily.
 - Make sure nobody is walking around.
 - Don’t stand when taking a sample because it’ll pick up your leg muscles. Sit and don’t move.
 - Disable auto exposure and auto color temp. Disable anything that says auto in the device config with the extra attribute button (bottom left)

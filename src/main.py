@@ -42,10 +42,11 @@ from src.Widgets import AnalyserWidget
 from src.Widgets import Graph
 from src.Widgets import PixmapWidget
 from src.Widgets import TableUnit
-
+from src.cycle import CyclicMeasurementSetupWindow
 
 # Define the main window
 class MainWindow(QMainWindow):  # type: ignore
+    cycle_dialog: CyclicMeasurementSetupWindow
     def __init__(self) -> None:
         super().__init__()
 
@@ -58,6 +59,14 @@ class MainWindow(QMainWindow):  # type: ignore
         export_action = QAction("Export CSV", self)
         export_action.triggered.connect(self.export_csv)
         file_menu.addAction(export_action)
+
+        # create "File->Cyclic measurement" action
+        cycle_action = QAction("Cyclic measurement", self)
+        cycle_action.triggered.connect(self.cycle_measurement_action)
+        self.cycle_dialog = CyclicMeasurementSetupWindow(self)
+        self.cycle_dialog.onMeasurementTrigger.connect(self.on_cyclic_measurement)
+        file_menu.addAction(cycle_action)
+
 
         # create a QAction for the "Exit" option
         exit_action = QAction("Exit", self)
@@ -276,6 +285,17 @@ class MainWindow(QMainWindow):  # type: ignore
                     else:
                         row_data.append("")
                 writer.writerow(row_data)
+
+    def cycle_measurement_action(self) -> None:
+        """Displays the cyclic measurement dialog"""
+        self.cycle_dialog.show()
+
+    def on_cyclic_measurement(self) -> None:
+        """Executed on each cyclic measurement- acquires a sample (if zeroed), zeroes measurements otherwise."""
+        if self.sample_btn.isEnabled():
+            self.sample_btn.click()
+        else:
+            self.zero_btn.click()
 
     def hightlight_sample(self) -> None:
         index = self.sample_table.currentRow()
