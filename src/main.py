@@ -36,17 +36,19 @@ from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 
 from src.Core import Core
+from src.cycle import CyclicMeasurementSetupWindow
 from src.tooltips import tooltips as tt
 from src.utils import units_of_measurements
 from src.Widgets import AnalyserWidget
 from src.Widgets import Graph
 from src.Widgets import PixmapWidget
 from src.Widgets import TableUnit
-from src.cycle import CyclicMeasurementSetupWindow
+
 
 # Define the main window
 class MainWindow(QMainWindow):  # type: ignore
     cycle_dialog: CyclicMeasurementSetupWindow
+
     def __init__(self) -> None:
         super().__init__()
 
@@ -66,7 +68,6 @@ class MainWindow(QMainWindow):  # type: ignore
         self.cycle_dialog = CyclicMeasurementSetupWindow(self)
         self.cycle_dialog.onMeasurementTrigger.connect(self.on_cyclic_measurement)
         file_menu.addAction(cycle_action)
-
 
         # create a QAction for the "Exit" option
         exit_action = QAction("Exit", self)

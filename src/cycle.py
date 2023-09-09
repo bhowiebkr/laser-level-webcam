@@ -1,15 +1,24 @@
-from PySide6.QtCore import QTimer, Signal
-from PySide6.QtWidgets import QDialog, QFormLayout, QSpinBox, QPushButton
+from __future__ import annotations
+
+from typing import Any
+
+from PySide6.QtCore import QTimer
+from PySide6.QtCore import Signal
+from PySide6.QtWidgets import QDialog
+from PySide6.QtWidgets import QFormLayout
+from PySide6.QtWidgets import QPushButton
+from PySide6.QtWidgets import QSpinBox
 
 
-class CyclicMeasurementSetupWindow(QDialog):
+class CyclicMeasurementSetupWindow(QDialog):  # type: ignore
     """
-    Represents a non-modal dialog that allows to start/stop cyclic measurements and adjust the interval between measurements
+    Represents a non-modal dialog that allows to start/stop cyclic measurements and adjust the interval
+    between measurements
 
-    Also handles starting/stopping the timer. Parent class is expected to actually perform the measurements when onMeasurementTrigger signal
-    is emitted.
-
+    Also handles starting/stopping the timer. Parent class is expected to actually perform the
+    measurements when onMeasurementTrigger signal is emitted.
     """
+
     cycle_time_sb: QSpinBox
     cycle_timer: QTimer
     pb_start: QPushButton
@@ -17,7 +26,7 @@ class CyclicMeasurementSetupWindow(QDialog):
 
     onMeasurementTrigger = Signal()
 
-    def __init__(self, parent) -> None:
+    def __init__(self, parent: Any) -> None:
         super().__init__(parent)
         self.setWindowTitle("Cyclic measurement setup")
         self.setModal(False)
