@@ -43,6 +43,7 @@ from src.Widgets import AnalyserWidget
 from src.Widgets import Graph
 from src.Widgets import PixmapWidget
 from src.Widgets import TableUnit
+from src.ws_server import WebsocketWindow
 
 
 # Define the main window
@@ -68,6 +69,12 @@ class MainWindow(QMainWindow):  # type: ignore
         self.cycle_dialog = CyclicMeasurementSetupWindow(self)
         self.cycle_dialog.onMeasurementTrigger.connect(self.on_cyclic_measurement)
         file_menu.addAction(cycle_action)
+
+        # websocket server action
+        websocket_action = QAction("Websocket Server", self)
+        websocket_action.triggered.connect(self.websocket_server_action)
+        self.websocket_dialog = WebsocketWindow(self)
+        file_menu.addAction(websocket_action)
 
         # create a QAction for the "Exit" option
         exit_action = QAction("Exit", self)
@@ -286,6 +293,10 @@ class MainWindow(QMainWindow):  # type: ignore
                     else:
                         row_data.append("")
                 writer.writerow(row_data)
+
+    def websocket_server_action(self) -> None:
+        """Show the dialog for the websocket server"""
+        self.websocket_dialog.show()
 
     def cycle_measurement_action(self) -> None:
         """Displays the cyclic measurement dialog"""

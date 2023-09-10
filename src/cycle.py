@@ -30,22 +30,28 @@ class CyclicMeasurementSetupWindow(QDialog):  # type: ignore
         super().__init__(parent)
         self.setWindowTitle("Cyclic measurement setup")
         self.setModal(False)
+
+        # Layouts
         fl = QFormLayout(self)
+
+        # Widgets
         self.cycle_time_sb = QSpinBox(self)
         self.cycle_time_sb.setValue(60)
         self.cycle_time_sb.setMinimum(10)
         self.cycle_time_sb.setMaximum(3600)
-        fl.addRow("Cycle time (s)", self.cycle_time_sb)
 
-        self.pb_start = QPushButton(self)
-        self.pb_start.setText("Start")
-        self.pb_start.released.connect(self.start_cycle)
+        self.pb_start = QPushButton("Start", self)
 
-        self.pb_stop = QPushButton(self)
-        self.pb_stop.setText("Stop")
+        self.pb_stop = QPushButton("Stop", self)
         self.pb_stop.setEnabled(False)
-        self.pb_stop.released.connect(self.stop_cycle)
+
+        # Add Widgets
+        fl.addRow("Cycle time (s)", self.cycle_time_sb)
         fl.addRow(self.pb_start, self.pb_stop)
+
+        # Logic
+        self.pb_start.released.connect(self.start_cycle)
+        self.pb_stop.released.connect(self.stop_cycle)
         self.cycle_timer = QTimer(self)
         self.cycle_timer.timeout.connect(self.onMeasurementTrigger)
 
