@@ -30,7 +30,7 @@ def cmd(cmd: str) -> None:
     run_and_wait(str)
 
 
-def main() -> None:
+def run() -> None:
     if ready():
         c.mode(linuxcnc.MODE_MDI)
         c.wait_complete()  # wait until mode switch executed
@@ -60,4 +60,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    run()
