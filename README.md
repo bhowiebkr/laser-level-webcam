@@ -60,9 +60,16 @@ Next, create a virtual environment for isolating the program's dependencies. Run
 ```sh
 pip install virtualenv
 ```
+
+**Pick 2b or 2c** 
+
 2b. Setup the virtualenv:
 ```sh
 virtualenv venv
+```
+2c. Setup the virtualenv with support for linuxcnc
+```sh
+virtualenv --system-site-packages venv
 ```
 
 ### 3. Activate the Virtual Environment
@@ -76,9 +83,16 @@ Activate the virtual environment to start using it.
 
 The program's required packages are listed in the requirements.txt file. This will install the packages into the virtual environmnent setup in step 2. To install these packages, run the following command:
 
+**Without linuxcnc support**
 ```sh
 pip install -r requirements.txt
 ```
+
+**With linuxcnc support**
+```sh
+pip install -r requirements.txt -I
+```
+
 This command uses `pip` to install the packages specified in the requirements.txt file.
 
 ### 5. Run the Python Program
