@@ -1,33 +1,21 @@
 from __future__ import annotations
+
 import linuxcnc
 
 s = linuxcnc.stat()
 c = linuxcnc.command()
 
 
-def ready() -> None:
+def ready() -> bool:
     s.poll()
-    return (
-        not s.estop
-        and s.enabled
-        and (s.homed.count(1) == s.joints)
-        and (s.interp_state == linuxcnc.INTERP_IDLE)
-    )
+    return not s.estop and s.enabled and (s.homed.count(1) == s.joints) and (s.interp_state == linuxcnc.INTERP_IDLE)
 
 
-def run_and_wait(func: function) -> function:
-    def dec_func(*args, **kwargs):
-        func(*args, **kwargs)
-        c.wait_complete()  # wait until mode switch executed
-
-    return dec_func
-
-
-@run_and_wait
+# @run_and_wait
 def cmd(cmd: str) -> None:
     c.mdi(cmd)
     print(f"Sent: {cmd}")
-    run_and_wait(str)
+    c.wait_complete()  # wait until mode switch executed
 
 
 def run() -> None:

@@ -61,7 +61,7 @@ Next, create a virtual environment for isolating the program's dependencies. Run
 pip install virtualenv
 ```
 
-**Pick 2b or 2c** 
+**Pick 2b or 2c**
 
 2b. Setup the virtualenv:
 ```sh
