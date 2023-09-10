@@ -6,3 +6,4 @@ scipy>=1.7.3
 pyqtdarktheme>=2.1.0
 qimage2ndarray>=1.10.0
 matplotlib>=3.5.3
+websockets
