@@ -298,7 +298,19 @@ class MainWindow(QMainWindow):  # type: ignore
         """Show the dialog for the websocket server"""
         self.socket_dialog.message_server.message_received.connect(self.socket_dialog.update_text_edit)
         self.socket_dialog.message_server.take_sample.connect(self.sample_btn_cmd)
+        self.socket_dialog.message_server.zero.connect(self.zero_btn_cmd)
+        self.core.OnSampleComplete.connect(self.socket_server_sample_complete)
+
         self.socket_dialog.show()
+
+    def socket_server_sample_complete(self) -> None:
+        # Zeroing out samples
+        if self.core.setting_zero_sample:
+            self.socket_dialog.message_server.send_message("ZERO_COMPLETE")
+        # Sample finished
+        else:
+            sample_val = self.core.samples[-1].y
+            self.socket_dialog.message_server.send_message(f"SAMPLE {sample_val}")
 
     def cycle_measurement_action(self) -> None:
         """Displays the cyclic measurement dialog"""
@@ -452,6 +464,7 @@ class MainWindow(QMainWindow):  # type: ignore
         self.update_table()
 
     def closeEvent(self, event: QCloseEvent) -> None:
+        self.socket_dialog.closeEvent(event)  # Make sure the socket server is close to not hang the system
         self.core.workerThread.quit()
         self.core.workerThread.wait()
         self.core.sampleWorkerThread.quit()

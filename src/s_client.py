@@ -1,32 +1,18 @@
+#!/usr/bin/python           # This is client.py file
 from __future__ import annotations
 
-import pickle
-import socket
+import socket  # Import socket module
 
-HEADER_SIZE = 10
+s = socket.socket()  # Create a socket object
 
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-s.connect(("192.168.1.140", 1234))
+host = socket.gethostname()  # Get local machine name
+port = 1234  # Reserve a port for your service.
 
+s.connect((host, port))
 while True:
-    full_msg = b""
-    new_msg = True
+    a = input("Enter Command (ZERO, TAKE_SAMPLE):")
+    s.send(bytes(a, "ascii"))
+    recv = s.recv(1024).decode("utf-8")
+    print(recv)
 
-    while True:
-        msg = s.recv(16)
-        if new_msg:
-            print(f"new message length: {msg[:HEADER_SIZE].decode('utf-8')}")
-            msglen = int(msg[:HEADER_SIZE])
-            new_msg = False
-
-        full_msg += msg
-
-        if len(full_msg) - HEADER_SIZE == msglen:
-            print("full msg recieved")
-            print(full_msg[HEADER_SIZE:])
-
-            d = pickle.loads(full_msg[HEADER_SIZE:])
-            print(d)
-
-            new_msg = True
-            full_msg = b""
+s.close()

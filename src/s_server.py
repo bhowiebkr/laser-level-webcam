@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import socket
 import threading
+import time
 
 from PySide6.QtCore import QObject
 from PySide6.QtCore import Signal
@@ -12,45 +13,70 @@ from PySide6.QtWidgets import QPushButton
 from PySide6.QtWidgets import QTextEdit
 from PySide6.QtWidgets import QVBoxLayout
 
+HEADER_LENGTH = 10
+IP = socket.gethostname()
+PORT = 1234
+
 
 class MessageServer(QObject):  # type: ignore
     message_received = Signal(str)
     take_sample = Signal()
+    zero = Signal()
 
     def __init__(self, host: str, port: int) -> None:
         super().__init__()
-        self.host = host
-        self.port = port
+
         self.socket_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        # Allow to reconnect:
+        self.socket_server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.running = False
+        self.out_message = ""
 
     def start_server(self) -> None:
-        self.socket_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.socket_server.bind((self.host, self.port))
-        self.socket_server.listen(1)
+        self.socket_server.bind((IP, PORT))
+        self.socket_server.listen()
         self.running = True
 
-        while self.running:
-            print("running")
-            try:
-                client_socket, client_address = self.socket_server.accept()
-                data = client_socket.recv(1024).decode("utf-8")
-                self.message_received.emit(data)
+        client_socket, client_address = self.socket_server.accept()
 
-                if data == "TAKE_SAMPLE":
+        while self.running:
+            try:
+                print("Start of loop")
+
+                msg = client_socket.recv(1024).decode("utf-8")
+                print(f"Got msg: {msg}")
+                self.message_received.emit(msg)  # back to the GUI
+
+                if msg == "TAKE_SAMPLE":
                     self.take_sample.emit()
-                client_socket.close()
+                if msg == "ZERO":
+                    self.zero.emit()
+
+                # Waiting for the tool to do something
+                while not self.out_message and self.running:
+                    time.sleep(0.1)
+
+                client_socket.sendall(self.out_message.encode("utf-8"))
+                self.out_message = ""  # reset the message
+                print("Message Sent. restarting loop")
+
             except Exception as e:
                 print(f"Error: {str(e)}")
 
     def stop_server(self) -> None:
         self.running = False
-        if self.socket_server:
-            try:
-                self.socket_server.shutdown(socket.SHUT_RDWR)
-            except OSError:
-                pass
-            self.socket_server.close()
+        time.sleep(0.1)
+        self.socket_server.shutdown(socket.SHUT_RDWR)
+        self.socket_server.close()
+
+    def send_message(self, msg: str) -> None:
+        print(f"Sending message: {msg}")
+        self.out_message = msg
+
+    def __del__(self) -> None:
+        # print("Closing server socket:", self.sock)
+        self.socket_server.shutdown(socket.SHUT_RDWR)
+        self.socket_server.close()
 
 
 class SocketWindow(QDialog):  # type: ignore
