@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+import sys
+
 import linuxcnc
+import qdarktheme
+from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QMainWindow
 
 s = linuxcnc.stat()
 c = linuxcnc.command()
@@ -47,5 +52,36 @@ def run() -> None:
                 cmd(f"G0 X{x*dist} Y{y*dist} Z{height}")
 
 
+# Define the main window
+class MainWindow(QMainWindow):  # type: ignore
+    def __init__(self) -> None:
+        super().__init__()
+
+        self.setWindowTitle("LinuxCNC Remote Driver")
+        self.resize(1100, 650)
+
+        # Layouts
+
+        # Widgets
+        """
+        start, pause, stop
+        start client, check client, server ip address
+        grid length, width, sample density
+
+        """
+
+        # Attach Widgets
+
+
+def start() -> None:
+    app = QApplication(sys.argv)
+    qdarktheme.setup_theme(additional_qss="QToolTip {color: black;}")
+
+    window = MainWindow()
+
+    window.show()
+    sys.exit(app.exec())
+
+
 if __name__ == "__main__":
-    run()
+    start()
