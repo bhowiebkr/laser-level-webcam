@@ -37,13 +37,13 @@ from PySide6.QtWidgets import QWidget
 
 from src.Core import Core
 from src.cycle import CyclicMeasurementSetupWindow
+from src.s_server import SocketWindow
 from src.tooltips import tooltips as tt
 from src.utils import units_of_measurements
 from src.Widgets import AnalyserWidget
 from src.Widgets import Graph
 from src.Widgets import PixmapWidget
 from src.Widgets import TableUnit
-from src.ws_server import WebsocketWindow
 
 
 # Define the main window
@@ -71,9 +71,9 @@ class MainWindow(QMainWindow):  # type: ignore
         file_menu.addAction(cycle_action)
 
         # websocket server action
-        websocket_action = QAction("Websocket Server", self)
-        websocket_action.triggered.connect(self.websocket_server_action)
-        self.websocket_dialog = WebsocketWindow(self)
+        websocket_action = QAction("Socket Server", self)
+        websocket_action.triggered.connect(self.socket_server_action)
+        self.socket_dialog = SocketWindow(self)
         file_menu.addAction(websocket_action)
 
         # create a QAction for the "Exit" option
@@ -294,9 +294,11 @@ class MainWindow(QMainWindow):  # type: ignore
                         row_data.append("")
                 writer.writerow(row_data)
 
-    def websocket_server_action(self) -> None:
+    def socket_server_action(self) -> None:
         """Show the dialog for the websocket server"""
-        self.websocket_dialog.show()
+        self.socket_dialog.message_server.message_received.connect(self.socket_dialog.update_text_edit)
+        self.socket_dialog.message_server.take_sample.connect(self.sample_btn_cmd)
+        self.socket_dialog.show()
 
     def cycle_measurement_action(self) -> None:
         """Displays the cyclic measurement dialog"""
