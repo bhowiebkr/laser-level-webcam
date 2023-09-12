@@ -3,15 +3,24 @@ from __future__ import annotations
 
 import socket  # Import socket module
 import sys
+from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
+import plotly
+import plotly.graph_objects as go
+import plotly.io as io
 import qdarktheme
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from PySide6.QtCore import QUrl
 from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QMainWindow
+from PySide6.QtWidgets import QPushButton
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
+
+io.templates.default = "plotly_dark"
+from PySide6.QtWebEngineWidgets import QWebEngineView
 
 
 IP = "192.168.1.140"  # Get local machine name
@@ -30,6 +39,9 @@ if sys.platform == "linux":
     c = linuxcnc.command()
 
 
+CONTINUE = False
+
+
 def send_recieve(cmd: str) -> str:
     server.send(cmd.encode("utf-8"))
     recv = server.recv(1024).decode("utf-8")
@@ -42,12 +54,19 @@ def ready() -> bool:
 
 
 def cmd(cmd: str) -> None:
-    c.mdi(cmd)
-    print(f"Sent: {cmd}")
-    c.wait_complete()  # wait until mode switch executed
+    global CONTINUE
+    if CONTINUE:
+        c.mdi(cmd)
+        print(f"Sent: {cmd}")
+        c.wait_complete()  # wait until mode switch executed
 
 
 def main() -> None:
+    if sys.platform != "linux":
+        print("This must be run on LinuxCNC")
+        return
+
+    global CONTINUE
     if ready():
         c.mode(linuxcnc.MODE_MDI)
         c.wait_complete()  # wait until mode switch executed
@@ -65,18 +84,30 @@ def main() -> None:
 
         for y in range(y_holes):
             for x in range(x_holes):
-                # Move down
-                sample = float(send_recieve("TAKE_SAMPLE").split(" ")[1])
-                cmd(f"G0 X{x*dist} Y{y*dist} Z{height + (sample * 100)}")
-                cmd(f"G0 X{x*dist} Y{y*dist} Z0")
+                if CONTINUE:
+                    # Move down
+                    sample = float(send_recieve("TAKE_SAMPLE").split(" ")[1])
+                    cmd(f"G0 X{x*dist} Y{y*dist} Z{height + (sample * 100)}")
+                    cmd(f"G0 X{x*dist} Y{y*dist} Z0")
 
-                # Circle
-                cmd(f"G0 X{x*dist -radius} Y{y*dist} Z0")
-                cmd(f"G02 X{x*dist -radius} Y{y*dist} I{radius} J0 F{feed}")
-                cmd(f"G0 X{x*dist } Y{y*dist} Z0")
+                    # Circle
+                    cmd(f"G0 X{x*dist -radius} Y{y*dist} Z0")
+                    cmd(f"G02 X{x*dist -radius} Y{y*dist} I{radius} J0 F{feed}")
+                    cmd(f"G0 X{x*dist } Y{y*dist} Z0")
 
-                # Move up
-                cmd(f"G0 X{x*dist} Y{y*dist} Z{height}")
+                    # Move up
+                    cmd(f"G0 X{x*dist} Y{y*dist} Z{height}")
+
+
+def start_btn_cmd() -> None:
+    global CONTINUE
+    CONTINUE = True
+    main()
+
+
+def stop_btn_cmd() -> None:
+    global CONTINUE
+    CONTINUE = False
 
 
 # Define the main window
@@ -85,38 +116,60 @@ class MainWindow(QMainWindow):  # type: ignore
         super().__init__()
 
         self.setWindowTitle("LinuxCNC Remote Driver")
-        self.resize(1100, 650)
+        self.resize(869, 839)
 
         central_widget = QWidget(self)
         self.setCentralWidget(central_widget)
+        main_layout = QVBoxLayout()
+        central_widget.setLayout(main_layout)
+        btn_layout = QHBoxLayout()
 
-        layout = QVBoxLayout(central_widget)
+        self.data = pd.read_csv(
+            "https://raw.githubusercontent.com/plotly/datasets/master/api_docs/mt_bruno_elevation.csv"
+        )
 
-        # Create a Matplotlib Figure and Axes
-        self.figure = plt.figure()
-        self.canvas = FigureCanvas(self.figure)
-        layout.addWidget(self.canvas)
+        graph = go.Surface(z=self.data.values)
 
-        # Create a 3D subplot
-        self.ax = self.figure.add_subplot(111, projection="3d")
+        fig = go.Figure(
+            data=[graph],
+        )
 
-        # Generate some sample data
-        x = np.linspace(-5, 5, 100)
-        y = np.linspace(-5, 5, 100)
-        X, Y = np.meshgrid(x, y)
-        Z = np.sin(np.sqrt(X**2 / 10 + Y**2))
+        fig.update_layout(
+            title="Surface Height",
+            autosize=False,
+            width=800,
+            height=800,
+            margin=dict(l=65, r=50, b=65, t=90),
+        )
 
-        # Plot the 3D surface
-        self.ax.plot_surface(X, Y, Z, cmap="viridis")
-        self.ax.set_xlabel("X Label")
-        self.ax.set_ylabel("Y Label")
-        self.ax.set_zlabel("Z Label")
+        # we create html code of the figure
+        html = '<html><script src="plotly.js"></script><body style = "background:black">'
+        html += plotly.offline.plot(
+            fig,
+            output_type="div",
+            image_width="100%",
+            image_height="100%",
+            include_plotlyjs=False,
+        )
+        html += "</body></html>"
 
-        # Adjust the layout
-        self.ax.view_init(elev=20, azim=-45)
-        self.ax.dist = 10
+        # we create an instance of QWebEngineView and set the html code
+        plot_widget = QWebEngineView()
+        base = QUrl.fromLocalFile(str(Path(__file__).resolve()))
+        plot_widget.setHtml(html, baseUrl=base)
 
-        self.canvas.draw()
+        self.start_btn = QPushButton("Start")
+        self.stop_btn = QPushButton("Stop")
+
+        btn_layout.addWidget(self.start_btn)
+        btn_layout.addWidget(self.stop_btn)
+
+        # set the QWebEngineView instance as main widget
+        main_layout.addLayout(btn_layout)
+        main_layout.addWidget(plot_widget)
+
+        self.start_btn.clicked.connect(start_btn_cmd)
+        self.stop_btn.clicked.connect(stop_btn_cmd)
 
 
 def start() -> None:
