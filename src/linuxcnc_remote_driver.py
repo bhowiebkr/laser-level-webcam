@@ -1,14 +1,39 @@
+#!/usr/bin/python           # This is client.py file
 from __future__ import annotations
 
+import socket  # Import socket module
 import sys
 
-import linuxcnc
+import matplotlib.pyplot as plt
+import numpy as np
 import qdarktheme
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from PySide6.QtWidgets import QApplication
 from PySide6.QtWidgets import QMainWindow
+from PySide6.QtWidgets import QVBoxLayout
+from PySide6.QtWidgets import QWidget
 
-s = linuxcnc.stat()
-c = linuxcnc.command()
+
+IP = "192.168.1.140"  # Get local machine name
+PORT = 1234  # Reserve a port for your service.
+
+if sys.platform == "linux":
+    import linuxcnc
+
+    try:
+        server = socket.socket()  # Create a socket object
+        server.connect((IP, PORT))
+    except Exception:
+        pass
+
+    s = linuxcnc.stat()
+    c = linuxcnc.command()
+
+
+def send_recieve(cmd: str) -> str:
+    server.send(cmd.encode("utf-8"))
+    recv = server.recv(1024).decode("utf-8")
+    return recv
 
 
 def ready() -> bool:
@@ -16,14 +41,13 @@ def ready() -> bool:
     return not s.estop and s.enabled and (s.homed.count(1) == s.joints) and (s.interp_state == linuxcnc.INTERP_IDLE)
 
 
-# @run_and_wait
 def cmd(cmd: str) -> None:
     c.mdi(cmd)
     print(f"Sent: {cmd}")
     c.wait_complete()  # wait until mode switch executed
 
 
-def run() -> None:
+def main() -> None:
     if ready():
         c.mode(linuxcnc.MODE_MDI)
         c.wait_complete()  # wait until mode switch executed
@@ -37,10 +61,13 @@ def run() -> None:
         y_holes = 3
         feed = 5000
 
+        print(send_recieve("ZERO"))
+
         for y in range(y_holes):
             for x in range(x_holes):
                 # Move down
-                cmd(f"G0 X{x*dist} Y{y*dist} Z{height}")
+                sample = float(send_recieve("TAKE_SAMPLE").split(" ")[1])
+                cmd(f"G0 X{x*dist} Y{y*dist} Z{height + (sample * 100)}")
                 cmd(f"G0 X{x*dist} Y{y*dist} Z0")
 
                 # Circle
@@ -60,17 +87,36 @@ class MainWindow(QMainWindow):  # type: ignore
         self.setWindowTitle("LinuxCNC Remote Driver")
         self.resize(1100, 650)
 
-        # Layouts
+        central_widget = QWidget(self)
+        self.setCentralWidget(central_widget)
 
-        # Widgets
-        """
-        start, pause, stop
-        start client, check client, server ip address
-        grid length, width, sample density
+        layout = QVBoxLayout(central_widget)
 
-        """
+        # Create a Matplotlib Figure and Axes
+        self.figure = plt.figure()
+        self.canvas = FigureCanvas(self.figure)
+        layout.addWidget(self.canvas)
 
-        # Attach Widgets
+        # Create a 3D subplot
+        self.ax = self.figure.add_subplot(111, projection="3d")
+
+        # Generate some sample data
+        x = np.linspace(-5, 5, 100)
+        y = np.linspace(-5, 5, 100)
+        X, Y = np.meshgrid(x, y)
+        Z = np.sin(np.sqrt(X**2 / 10 + Y**2))
+
+        # Plot the 3D surface
+        self.ax.plot_surface(X, Y, Z, cmap="viridis")
+        self.ax.set_xlabel("X Label")
+        self.ax.set_ylabel("Y Label")
+        self.ax.set_zlabel("Z Label")
+
+        # Adjust the layout
+        self.ax.view_init(elev=20, azim=-45)
+        self.ax.dist = 10
+
+        self.canvas.draw()
 
 
 def start() -> None:
