@@ -14,7 +14,9 @@ from PySide6.QtWidgets import QTextEdit
 from PySide6.QtWidgets import QVBoxLayout
 
 HEADER_LENGTH = 10
-IP = socket.gethostname()
+IP = "192.168.1.232"
+
+print(f"IP is: {IP}")
 PORT = 1234
 
 
