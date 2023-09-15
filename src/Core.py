@@ -103,7 +103,6 @@ class Core(QObject):  # type: ignore
         self.sampleWorkerThread = QThread()
         self.sample_worker.moveToThread(self.sampleWorkerThread)
         self.sampleWorkerThread.start()
-        self.sample_worker.sample_in
 
         self.captureSession.setVideoSink(QVideoSink(self))
         self.captureSession.videoSink().videoFrameChanged.connect(self.onFramePassedFromCamera)
