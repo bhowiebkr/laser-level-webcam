@@ -36,21 +36,23 @@ io.templates.default = "plotly_dark"
 
 IN_LINUXCNC = False
 if sys.platform == "linux":
+    print('In LinuxCNC')
     IN_LINUXCNC = True
     import linuxcnc
 
 
-DEV_MODE = True  # Use a bunch of dummy things such as fake linuxcnc module
+DEV_MODE = False  # Use a bunch of dummy things such as fake linuxcnc module
 SKIP_CONNECTION = False  # Work without connecting to a socket
 
 
 class Server(QObject):  # type: ignore
     server = socket.socket()  # Create a socket object
-    IP = "192.168.1.140"  # Get local machine name
-    PORT = 1234  # Reserve a port for your service.
 
     def __init__(self) -> None:
         super().__init__()
+
+        self.port = 0
+        self.ip = ''
 
     def connect_socket(self) -> bool:
         print("Connecting")
@@ -60,13 +62,13 @@ class Server(QObject):  # type: ignore
             if num_fails >= 3:
                 break
             try:
-                self.server.connect((self.IP, self.PORT))
+                self.server.connect((self.ip, self.port))
                 connected = True
                 return True
             except Exception as e:
                 print(
-                    f"Failed to connect with the following: {e}. Using IP {self.IP}, Port: \
-                        {self.PORT}, Try: {num_fails+1}/3"
+                    f"Failed to connect with the following: {e}. Using IP {self.ip}, Port: \
+                        {self.port}, Try: {num_fails+1}/3"
                 )  # print why and try again
                 num_fails += 1
                 continue
@@ -80,7 +82,15 @@ class Server(QObject):  # type: ignore
             self.server.send(cmd.encode("utf-8"))
             recv = self.server.recv(1024).decode("utf-8")
         return recv
+    
+    def set_IP(self, ip):
+        
+        self.ip = ip
+        print('Set IP to:', self.ip)
 
+    def set_port(self, port):
+        self.port = port
+        print('Set port to:', self.port)
 
 class LinuxDriver(QObject):  # type: ignore
     OnSampleReceived = Signal(list)
@@ -168,18 +178,20 @@ class LinuxDriver(QObject):  # type: ignore
 
     def start(self) -> None:
         print("Running")
-        if DEV_MODE:
-            self.loop()
-            return
+        # if DEV_MODE:
+        #     self.loop()
+        #     return
 
-        if not self.is_LinuxCNC():
-            return
+        # if not IN_LINUXCNC():
+        #     return
         self.loop()
         print("Finished")
 
 
 # Define the main window
 class MainWindow(QMainWindow):  # type: ignore
+    OnIPChanged = Signal(str)
+    OnPortChanged = Signal(int)
     def __init__(self) -> None:
         super().__init__()
 
@@ -264,6 +276,12 @@ class MainWindow(QMainWindow):  # type: ignore
         self.sample_Y_line.valueChanged.connect(self.update_data_shape)
         self.sample_distance.valueChanged.connect(self.update_data_shape)
         self.start_btn.clicked.connect(self.update_data_shape)  # resets the shape too
+        self.ip_line.textChanged.connect(self.IP_changed)
+        self.port_line.textChanged.connect(self.port_changed)
+
+        self.OnIPChanged.connect(self.lcnc_driver.server.set_IP)
+        self.OnPortChanged.connect(self.lcnc_driver.server.set_port)
+
 
         # Load GUI saved defaults
         settings = QSettings("linuxcnc_remote_driver", "LinuxCNCRemoteDriver")
@@ -279,6 +297,17 @@ class MainWindow(QMainWindow):  # type: ignore
             self.sample_Y_line.setValue(float(settings.value("sample_y_length")))
         if settings.contains("sample_distance"):
             self.sample_distance.setValue(float(settings.value("sample_distance")))
+
+        #self.OnIPChanged.emit()
+        #self.OnPortChanged.emit()
+
+    def IP_changed(self):
+        ip = self.ip_line.text()
+        self.OnIPChanged.emit(str(ip))
+
+    def port_changed(self):
+        port = self.port_line.text()
+        self.OnPortChanged.emit(int(port))
 
     def sample_in(self, sample: list[int | int | float]) -> None:
         print(f"Sample into the GUI is: {sample}")
