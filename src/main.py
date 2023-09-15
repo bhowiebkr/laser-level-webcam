@@ -6,6 +6,7 @@ import subprocess
 import sys
 
 import qdarktheme
+from PySide6.QtCore import QSettings
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QUrl
 from PySide6.QtGui import QAction
@@ -54,7 +55,7 @@ class MainWindow(QMainWindow):  # type: ignore
         super().__init__()
 
         self.setWindowTitle("Laser Level Webcam Tool")
-        self.resize(1100, 650)
+        # self.resize(1100, 650)
 
         # create a "File" menu and add an "Export CSV" action to it
         file_menu = QMenu("File", self)
@@ -104,9 +105,9 @@ class MainWindow(QMainWindow):  # type: ignore
         main_layout.setContentsMargins(0, 0, 0, 0)
 
         # Widgets
-        left_splitter = QSplitter()
-        middle_splitter = QSplitter()
-        right_splitter = QSplitter(Qt.Orientation.Vertical)
+        self.left_splitter = QSplitter()
+        self.middle_splitter = QSplitter()
+        self.right_splitter = QSplitter(Qt.Orientation.Vertical)
         sensor_feed_widget = QGroupBox("Sensor Feed")
         analyser_widget = QGroupBox("Analyser")
         sampler_widget = QGroupBox("Sampler")
@@ -206,18 +207,17 @@ class MainWindow(QMainWindow):  # type: ignore
         plot_layout.addLayout(radio_layout)
         plot_layout.addWidget(self.graph)
         plot_widget.setLayout(plot_layout)
-
         # Attach Widgets
-        left_splitter.addWidget(sensor_feed_widget)
-        left_splitter.addWidget(analyser_widget)
-        right_splitter.addWidget(sampler_widget)
-        right_splitter.addWidget(plot_widget)
-        middle_splitter.addWidget(left_splitter)
-        middle_splitter.addWidget(right_splitter)
-        main_layout.addWidget(middle_splitter)
+        self.left_splitter.addWidget(sensor_feed_widget)
+        self.left_splitter.addWidget(analyser_widget)
+        self.right_splitter.addWidget(sampler_widget)
+        self.right_splitter.addWidget(plot_widget)
+        self.middle_splitter.addWidget(self.left_splitter)
+        self.middle_splitter.addWidget(self.right_splitter)
+        main_layout.addWidget(self.middle_splitter)
 
         # Logic
-        middle_splitter.setSizes([300, 100])
+        self.middle_splitter.setSizes([300, 100])
 
         self.graph.samples = self.core.samples
 
@@ -264,6 +264,39 @@ class MainWindow(QMainWindow):  # type: ignore
         self.units_combo.setCurrentIndex(0)
         self.sensor_width_spin.setValue(5.9)
         self.raw_radio.setChecked(True)
+
+        settings = QSettings("laser-level-webcam", "LaserLevelWebcam")
+
+        if settings.contains("geometry"):
+            self.restoreGeometry(settings.value("geometry"))
+        if settings.contains("sensor_width"):
+            self.sensor_width_spin.setValue(float(settings.value("sensor_width")))
+        if settings.contains("smoothing"):
+            self.smoothing.setValue(int(settings.value("smoothing")))
+        if settings.contains("subsamples"):
+            self.subsamples_spin.setValue(int(settings.value("subsamples")))
+        if settings.contains("outlier"):
+            self.outlier_spin.setValue(int(settings.value("outlier")))
+        if settings.contains("units"):
+            self.units_combo.setCurrentIndex(int(settings.value("units")))
+        if settings.contains("raw"):
+            if settings.value("raw") == "true":
+                self.raw_radio.setChecked(True)
+            else:
+                self.flat_radio.setChecked(True)
+
+        if settings.contains("left_splitter"):
+            self.left_splitter.setSizes([int(i) for i in settings.value("left_splitter")])
+        if settings.contains("middle_splitter"):
+            self.middle_splitter.setSizes([int(i) for i in settings.value("middle_splitter")])
+        if settings.contains("right_splitter"):
+            self.right_splitter.setSizes([int(i) for i in settings.value("right_splitter")])
+
+        if settings.contains("ip_address"):
+            self.socket_dialog.ip_line.setText(settings.value("ip_address"))
+        if settings.contains("port"):
+            self.socket_dialog.port_line.setText(settings.value("port"))
+
         self.update_graph_mode()  # have to trigger it manually the first time
 
         self.status_bar.showMessage("Loading first camera", 1000)  # 3 seconds
@@ -464,6 +497,23 @@ class MainWindow(QMainWindow):  # type: ignore
         self.update_table()
 
     def closeEvent(self, event: QCloseEvent) -> None:
+        print("In close event")
+        self.settings = QSettings("laser-level-webcam", "LaserLevelWebcam")
+        self.settings.setValue("geometry", self.saveGeometry())
+        self.settings.setValue("sensor_width", self.sensor_width_spin.value())
+        self.settings.setValue("smoothing", self.smoothing.value())
+        self.settings.setValue("subsamples", self.subsamples_spin.value())
+        self.settings.setValue("outlier", self.outlier_spin.value())
+        self.settings.setValue("units", self.units_combo.currentIndex())
+        self.settings.setValue("raw", self.raw_radio.isChecked())
+
+        self.settings.setValue("left_splitter", self.left_splitter.sizes())
+        self.settings.setValue("middle_splitter", self.middle_splitter.sizes())
+        self.settings.setValue("right_splitter", self.right_splitter.sizes())
+
+        self.settings.setValue("ip_address", self.socket_dialog.ip_line.text())
+        self.settings.setValue("port", self.socket_dialog.port_line.text())
+
         self.socket_dialog.closeEvent(event)  # Make sure the socket server is close to not hang the system
         self.core.workerThread.quit()
         self.core.workerThread.wait()
