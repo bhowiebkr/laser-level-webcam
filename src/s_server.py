@@ -8,16 +8,14 @@ from PySide6.QtCore import QObject
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import QDialog
+from PySide6.QtWidgets import QFormLayout
+from PySide6.QtWidgets import QGroupBox
+from PySide6.QtWidgets import QHBoxLayout
+from PySide6.QtWidgets import QLineEdit
 from PySide6.QtWidgets import QMainWindow
 from PySide6.QtWidgets import QPushButton
 from PySide6.QtWidgets import QTextEdit
 from PySide6.QtWidgets import QVBoxLayout
-
-HEADER_LENGTH = 10
-IP = "192.168.1.232"
-
-print(f"IP is: {IP}")
-PORT = 1234
 
 
 class MessageServer(QObject):  # type: ignore
@@ -25,8 +23,10 @@ class MessageServer(QObject):  # type: ignore
     take_sample = Signal()
     zero = Signal()
 
-    def __init__(self, host: str, port: int) -> None:
-        super().__init__()
+    def __init__(self, parent: QObject = QObject()) -> None:
+        super().__init__(parent)
+        self.ip = ""
+        self.port = 0
 
         self.socket_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         # Allow to reconnect:
@@ -35,11 +35,12 @@ class MessageServer(QObject):  # type: ignore
         self.out_message = ""
 
     def start_server(self) -> None:
-        self.socket_server.bind((IP, PORT))
+        print("Starting server")
+        self.socket_server.bind((self.ip, self.port))
         self.socket_server.listen()
         self.running = True
 
-        client_socket, client_address = self.socket_server.accept()
+        client_socket, _ = self.socket_server.accept()
 
         while self.running:
             try:
@@ -51,8 +52,10 @@ class MessageServer(QObject):  # type: ignore
 
                 if msg == "TAKE_SAMPLE":
                     self.take_sample.emit()
-                if msg == "ZERO":
+                elif msg == "ZERO":
                     self.zero.emit()
+                else:
+                    self.send_message("Invalid command")
 
                 # Waiting for the tool to do something
                 while not self.out_message and self.running:
@@ -64,21 +67,16 @@ class MessageServer(QObject):  # type: ignore
 
             except Exception as e:
                 print(f"Error: {str(e)}")
+                break
 
     def stop_server(self) -> None:
         self.running = False
-        time.sleep(0.1)
-        self.socket_server.shutdown(socket.SHUT_RDWR)
         self.socket_server.close()
 
     def send_message(self, msg: str) -> None:
         print(f"Sending message: {msg}")
+        self.parent().update_text_edit(f"-> {msg}")
         self.out_message = msg
-
-    def __del__(self) -> None:
-        # print("Closing server socket:", self.sock)
-        self.socket_server.shutdown(socket.SHUT_RDWR)
-        self.socket_server.close()
 
 
 class SocketWindow(QDialog):  # type: ignore
@@ -88,72 +86,66 @@ class SocketWindow(QDialog):  # type: ignore
         self.setWindowTitle("Socket Server GUI")
         self.setGeometry(100, 100, 400, 300)
 
-        # self.setAttribute(Qt.WA_DeleteOnClose)  # This will break everything if we use it. so we don't
-
         layout = QVBoxLayout()
 
-        self.text_edit = QTextEdit()
-        layout.addWidget(self.text_edit)
+        self.history = QTextEdit()
+
+        self.ip_line = QLineEdit()
+        self.port_line = QLineEdit()
+        form = QFormLayout()
+        lookup_ip_btn = QPushButton("lookup")
+        lookup_ip_btn.clicked.connect(self.lookup_ip)
+        ip_layout = QHBoxLayout()
+        ip_layout.addWidget(self.ip_line)
+        ip_layout.addWidget(lookup_ip_btn)
+
+        cmd_history_box = QGroupBox("Command History")
+        history_layout = QVBoxLayout()
+        history_layout.addWidget(self.history)
+        history_layout.setContentsMargins(0, 5, 0, 0)
+        cmd_history_box.setLayout(history_layout)
+        layout.addWidget(cmd_history_box)
 
         self.start_button = QPushButton("Start Server")
-        layout.addWidget(self.start_button)
-        self.start_button.clicked.connect(self.start_server)
+        form.addRow("IP Address", ip_layout)
+        form.addRow("Port", self.port_line)
 
-        self.stop_button = QPushButton("Stop Server")
-        layout.addWidget(self.stop_button)
-        self.stop_button.clicked.connect(self.stop_server)
-        self.stop_button.setEnabled(False)
+        setup_box = QGroupBox("Setup")
+        setup_layout = QVBoxLayout()
+        setup_layout.addLayout(form)
+        setup_layout.addWidget(self.start_button)
+        setup_layout.setContentsMargins(0, 5, 0, 0)
+        setup_box.setLayout(setup_layout)
+        layout.addWidget(setup_box)
+
+        self.start_button.clicked.connect(self.start_server)
 
         self.setLayout(layout)
 
         # Setup but don't start. That way we can link up signals to the rest of the GUI
-        self.message_server = MessageServer(socket.gethostname(), 1234)
+        self.message_server = MessageServer(self)
         self.server_thread = threading.Thread(target=self.message_server.start_server)
 
+    def lookup_ip(self) -> None:
+        hostname = socket.gethostname()
+        ip_address = socket.gethostbyname(hostname)
+        self.ip_line.setText(ip_address)
+
     def start_server(self) -> None:
-        if not self.server_thread or not self.server_thread.is_alive():
-            self.server_thread.start()
-            self.start_button.setEnabled(False)
-            self.stop_button.setEnabled(True)
-            print("server started")
+        self.message_server.ip = str(self.ip_line.text())
+        self.message_server.port = int(self.port_line.text())
+        self.server_thread.start()
+        print("server started")
 
     def stop_server(self) -> None:
-        if self.server_thread and self.server_thread.is_alive():
-            self.message_server.stop_server()
+        self.message_server.stop_server()
+        if self.server_thread.is_alive():
             self.server_thread.join()
-            self.start_button.setEnabled(True)
-            self.stop_button.setEnabled(False)
-            print("server stopped")
+        print("server stopped")
 
     def update_text_edit(self, message: str) -> None:
-        self.text_edit.append(message)
+        self.history.append(message)
 
     def closeEvent(self, event: QCloseEvent) -> None:
-        self.message_server.stop_server()
-        self.start_button.setEnabled(True)
-        self.stop_button.setEnabled(False)
+        self.stop_server()
         super().closeEvent(event)
-
-
-"""
-from __future__ import annotations
-
-import pickle
-import socket
-
-HEADER_SIZE = 10
-
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-s.bind((socket.gethostname(), 1234))
-s.listen(5)
-
-while True:
-    client_socket, address = s.accept()
-    print(f"Connection from {address} has been established!")
-
-    d = {1: "Hey", 2: "There"}
-    msg = pickle.dumps(d)
-    msg = bytes(f"{len(msg):<{HEADER_SIZE}}", "utf-8") + msg
-
-    client_socket.send(msg)
-"""
