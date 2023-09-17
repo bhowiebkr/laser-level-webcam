@@ -12,7 +12,6 @@ import plotly
 import plotly.graph_objects as go
 import plotly.io as io
 import qdarktheme
-from PySide6.QtCore import QObject
 from PySide6.QtCore import QSettings
 from PySide6.QtCore import QThread
 from PySide6.QtCore import QUrl
@@ -30,162 +29,21 @@ from PySide6.QtWidgets import QPushButton
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 
+from src.CNC_jobs.test_job import TestJob
+
 
 io.templates.default = "plotly_dark"
 
 
-IN_LINUXCNC = False
-if sys.platform == "linux":
-    print('In LinuxCNC')
-    IN_LINUXCNC = True
-    import linuxcnc
+
 
 
 DEV_MODE = False  # Use a bunch of dummy things such as fake linuxcnc module
 SKIP_CONNECTION = False  # Work without connecting to a socket
 
 
-class Server(QObject):  # type: ignore
-    server = socket.socket()  # Create a socket object
 
-    def __init__(self) -> None:
-        super().__init__()
 
-        self.port = 0
-        self.ip = ''
-
-    def connect_socket(self) -> bool:
-        print("Connecting")
-        connected = False
-        num_fails = 0
-        while not connected:
-            if num_fails >= 3:
-                break
-            try:
-                self.server.connect((self.ip, self.port))
-                connected = True
-                return True
-            except Exception as e:
-                print(
-                    f"Failed to connect with the following: {e}. Using IP {self.ip}, Port: \
-                        {self.port}, Try: {num_fails+1}/3"
-                )  # print why and try again
-                num_fails += 1
-                continue
-        print("...Stopped")
-        return False
-
-    def send_recieve(self, cmd: str) -> str:
-        if SKIP_CONNECTION:
-            recv = f"Fake_Data: {random.uniform(-1.0, 1.0)}"
-        else:
-            self.server.send(cmd.encode("utf-8"))
-            recv = self.server.recv(1024).decode("utf-8")
-        return recv
-    
-    def set_IP(self, ip):
-        
-        self.ip = ip
-        print('Set IP to:', self.ip)
-
-    def set_port(self, port):
-        self.port = port
-        print('Set port to:', self.port)
-
-class LinuxDriver(QObject):  # type: ignore
-    OnSampleReceived = Signal(list)
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.server = Server()
-
-        self.sample_x_length = 0.0
-        self.sample_y_length = 0.0
-        self.sample_distance = 0.0
-
-        if IN_LINUXCNC:
-            self.s = linuxcnc.stat()  # type: ignore
-            self.c = linuxcnc.command()  # type: ignore
-
-    def loop(self) -> None:
-        if self.ready():
-            if not DEV_MODE:
-                self.c.mode(linuxcnc.MODE_MDI)  # type: ignore
-                self.c.wait_complete()  # wait until mode switch executed
-            self.cmd("G64")  # Path blending best possible speed
-
-            radius = 2  # milling radius
-            height = 4  # safe height
-            dist = self.sample_distance
-
-            x_holes = int(self.sample_x_length / self.sample_distance)
-            y_holes = int(self.sample_y_length / self.sample_distance)
-            feed = 5000
-
-            print(self.server.send_recieve("ZERO"))
-
-            for y in range(y_holes):
-                for x in range(x_holes):
-                    if QThread.currentThread().isInterruptionRequested():
-                        print("Job Stopped")
-                        return
-
-                    print(f"index x: {x} y: {y}")
-
-                    # Move down
-                    sample = float(self.server.send_recieve("TAKE_SAMPLE").split(" ")[1])
-                    self.OnSampleReceived.emit([x, y, sample])
-                    self.cmd(f"G0 X{x*dist} Y{y*dist} Z{height + (sample * 100)}")
-                    self.cmd(f"G0 X{x*dist} Y{y*dist} Z{height}")
-                    self.cmd(f"G0 X{x*dist} Y{y*dist} Z0")
-
-                    # Circle
-                    self.cmd(f"G0 X{x*dist -radius} Y{y*dist} Z0")
-                    self.cmd(f"G02 X{x*dist -radius} Y{y*dist} I{radius} J0 F{feed}")
-                    self.cmd(f"G0 X{x*dist } Y{y*dist} Z0")
-
-                    # Move up
-                    self.cmd(f"G0 X{x*dist} Y{y*dist} Z{height}")
-
-    def ready(self) -> bool:
-        if DEV_MODE:
-            return True
-        self.s.poll()
-        return (
-            not self.s.estop
-            and self.s.enabled
-            and (self.s.homed.count(1) == self.s.joints)
-            and (self.s.interp_state == linuxcnc.INTERP_IDLE)  # type: ignore
-        )
-
-    def set_sample_x_length(self, length: float) -> None:
-        self.sample_x_length = length
-
-    def set_sample_y_length(self, length: float) -> None:
-        self.sample_y_length = length
-
-    def set_sample_distance(self, distance: float) -> None:
-        self.sample_distance = distance
-
-    def cmd(self, cmd: str) -> None:
-        if DEV_MODE:
-            print(f"Sent: {cmd}")
-            time.sleep(0.1)
-        else:
-            self.c.mdi(cmd)
-            print(f"Sent: {cmd}")
-            self.c.wait_complete()  # wait until mode switch executed
-
-    def start(self) -> None:
-        print("Running")
-        # if DEV_MODE:
-        #     self.loop()
-        #     return
-
-        # if not IN_LINUXCNC():
-        #     return
-        self.loop()
-        print("Finished")
 
 
 # Define the main window
@@ -201,7 +59,7 @@ class MainWindow(QMainWindow):  # type: ignore
         self.graph_size = 800
 
         # Components
-        self.lcnc_driver = LinuxDriver()
+        self.lcnc_driver = TestJob()
         self.lcnc_driver_thread = QThread()
         self.lcnc_driver.moveToThread(self.lcnc_driver_thread)
         self.lcnc_driver_thread.start()
