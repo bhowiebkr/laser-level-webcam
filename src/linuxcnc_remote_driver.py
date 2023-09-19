@@ -6,13 +6,12 @@ import socket  # Import socket module
 import sys
 import time
 from pathlib import Path
-
+import re
 import numpy as np
 import plotly
 import plotly.graph_objects as go
 import plotly.io as io
 import qdarktheme
-from PySide6.QtCore import QObject
 from PySide6.QtCore import QSettings
 from PySide6.QtCore import QThread
 from PySide6.QtCore import QUrl
@@ -25,173 +24,30 @@ from PySide6.QtWidgets import QFormLayout
 from PySide6.QtWidgets import QGridLayout
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLineEdit
+from PySide6.QtWidgets import QComboBox
 from PySide6.QtWidgets import QMainWindow
 from PySide6.QtWidgets import QPushButton
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 
 
+from src.client import Client
+from src.CNC_jobs.test_job import TestJob
+from src.CNC_jobs.probe import ProbeJob
+from src.CNC_jobs.probe_and_machine import ProbeAndMachineJob
+
+
 io.templates.default = "plotly_dark"
-
-
-IN_LINUXCNC = False
-if sys.platform == "linux":
-    print('In LinuxCNC')
-    IN_LINUXCNC = True
-    import linuxcnc
 
 
 DEV_MODE = False  # Use a bunch of dummy things such as fake linuxcnc module
 SKIP_CONNECTION = False  # Work without connecting to a socket
 
 
-class Server(QObject):  # type: ignore
-    server = socket.socket()  # Create a socket object
-
-    def __init__(self) -> None:
-        super().__init__()
-
-        self.port = 0
-        self.ip = ''
-
-    def connect_socket(self) -> bool:
-        print("Connecting")
-        connected = False
-        num_fails = 0
-        while not connected:
-            if num_fails >= 3:
-                break
-            try:
-                self.server.connect((self.ip, self.port))
-                connected = True
-                return True
-            except Exception as e:
-                print(
-                    f"Failed to connect with the following: {e}. Using IP {self.ip}, Port: \
-                        {self.port}, Try: {num_fails+1}/3"
-                )  # print why and try again
-                num_fails += 1
-                continue
-        print("...Stopped")
-        return False
-
-    def send_recieve(self, cmd: str) -> str:
-        if SKIP_CONNECTION:
-            recv = f"Fake_Data: {random.uniform(-1.0, 1.0)}"
-        else:
-            self.server.send(cmd.encode("utf-8"))
-            recv = self.server.recv(1024).decode("utf-8")
-        return recv
-    
-    def set_IP(self, ip):
-        
-        self.ip = ip
-        print('Set IP to:', self.ip)
-
-    def set_port(self, port):
-        self.port = port
-        print('Set port to:', self.port)
-
-class LinuxDriver(QObject):  # type: ignore
-    OnSampleReceived = Signal(list)
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.server = Server()
-
-        self.sample_x_length = 0.0
-        self.sample_y_length = 0.0
-        self.sample_distance = 0.0
-
-        if IN_LINUXCNC:
-            self.s = linuxcnc.stat()  # type: ignore
-            self.c = linuxcnc.command()  # type: ignore
-
-    def loop(self) -> None:
-        if self.ready():
-            if not DEV_MODE:
-                self.c.mode(linuxcnc.MODE_MDI)  # type: ignore
-                self.c.wait_complete()  # wait until mode switch executed
-            self.cmd("G64")  # Path blending best possible speed
-
-            radius = 2  # milling radius
-            height = 4  # safe height
-            dist = self.sample_distance
-
-            x_holes = int(self.sample_x_length / self.sample_distance)
-            y_holes = int(self.sample_y_length / self.sample_distance)
-            feed = 5000
-
-            print(self.server.send_recieve("ZERO"))
-
-            for y in range(y_holes):
-                for x in range(x_holes):
-                    if QThread.currentThread().isInterruptionRequested():
-                        print("Job Stopped")
-                        return
-
-                    print(f"index x: {x} y: {y}")
-
-                    # Move down
-                    sample = float(self.server.send_recieve("TAKE_SAMPLE").split(" ")[1])
-                    self.OnSampleReceived.emit([x, y, sample])
-                    self.cmd(f"G0 X{x*dist} Y{y*dist} Z{height + (sample * 100)}")
-                    self.cmd(f"G0 X{x*dist} Y{y*dist} Z{height}")
-                    self.cmd(f"G0 X{x*dist} Y{y*dist} Z0")
-
-                    # Circle
-                    self.cmd(f"G0 X{x*dist -radius} Y{y*dist} Z0")
-                    self.cmd(f"G02 X{x*dist -radius} Y{y*dist} I{radius} J0 F{feed}")
-                    self.cmd(f"G0 X{x*dist } Y{y*dist} Z0")
-
-                    # Move up
-                    self.cmd(f"G0 X{x*dist} Y{y*dist} Z{height}")
-
-    def ready(self) -> bool:
-        if DEV_MODE:
-            return True
-        self.s.poll()
-        return (
-            not self.s.estop
-            and self.s.enabled
-            and (self.s.homed.count(1) == self.s.joints)
-            and (self.s.interp_state == linuxcnc.INTERP_IDLE)  # type: ignore
-        )
-
-    def set_sample_x_length(self, length: float) -> None:
-        self.sample_x_length = length
-
-    def set_sample_y_length(self, length: float) -> None:
-        self.sample_y_length = length
-
-    def set_sample_distance(self, distance: float) -> None:
-        self.sample_distance = distance
-
-    def cmd(self, cmd: str) -> None:
-        if DEV_MODE:
-            print(f"Sent: {cmd}")
-            time.sleep(0.1)
-        else:
-            self.c.mdi(cmd)
-            print(f"Sent: {cmd}")
-            self.c.wait_complete()  # wait until mode switch executed
-
-    def start(self) -> None:
-        print("Running")
-        # if DEV_MODE:
-        #     self.loop()
-        #     return
-
-        # if not IN_LINUXCNC():
-        #     return
-        self.loop()
-        print("Finished")
-
-
 # Define the main window
 class MainWindow(QMainWindow):  # type: ignore
-    OnIPChanged = Signal(str)
-    OnPortChanged = Signal(int)
+    OnConnect = Signal(dict)
+
     def __init__(self) -> None:
         super().__init__()
 
@@ -201,23 +57,19 @@ class MainWindow(QMainWindow):  # type: ignore
         self.graph_size = 800
 
         # Components
-        self.lcnc_driver = LinuxDriver()
-        self.lcnc_driver_thread = QThread()
-        self.lcnc_driver.moveToThread(self.lcnc_driver_thread)
-        self.lcnc_driver_thread.start()
+        self.client = Client()
+        self.client_thread = QThread()
+        self.client.moveToThread(self.client_thread)
+        self.client_thread.start()
 
         # Layouts
         central_widget = QWidget(self)
         self.setCentralWidget(central_widget)
         main_layout = QHBoxLayout()
         central_widget.setLayout(main_layout)
-        left_layout = QVBoxLayout()
+        self.left_layout = QVBoxLayout()
         btn_layout = QGridLayout()
         form = QFormLayout()
-
-        # Widgets
-
-        self.data = np.empty((2, 2))
 
         # we create an instance of QWebEngineView and set the html code
         self.plot_widget = QWebEngineView()
@@ -234,17 +86,23 @@ class MainWindow(QMainWindow):  # type: ignore
         self.stop_btn.setDisabled(True)
         self.ip_line = QLineEdit()
         self.port_line = QLineEdit()
-        self.sample_X_line = QDoubleSpinBox()
-        self.sample_Y_line = QDoubleSpinBox()
-        self.sample_distance = QDoubleSpinBox()
+
+        self.job_type_combo = QComboBox()
+
+        self.jobs_types = {}
+        self.job_GUI = ProbeJob(self.client)
+
+        for job in [ProbeJob, TestJob, ProbeAndMachineJob]:
+            job_name = str(job.__name__)
+            job_name = re.sub("([a-z])([A-Z])", "\g<1> \g<2>", job_name)
+            self.jobs_types[job_name] = job
+            self.job_type_combo.addItem(job_name)
 
         # Add layouts
         form.addRow("IP Address", self.ip_line)
         form.addRow("Port", self.port_line)
 
-        form.addRow("Sample X Length", self.sample_X_line)
-        form.addRow("Sample Y Length", self.sample_Y_line)
-        form.addRow("Sample Distance", self.sample_distance)
+        form.addRow("Job", self.job_type_combo)
 
         btn_layout.addWidget(self.connect_btn, 1, 1)
         btn_layout.addWidget(self.disconnect_btn, 1, 2)
@@ -252,36 +110,22 @@ class MainWindow(QMainWindow):  # type: ignore
         btn_layout.addWidget(self.stop_btn, 2, 2)
         btn_layout.addWidget(self.update_btn, 3, 1)
 
-        left_layout.addLayout(form)
-        left_layout.addStretch()
-        left_layout.addLayout(btn_layout)
+        self.left_layout.addLayout(form)
 
-        main_layout.addLayout(left_layout)
+        self.left_layout.addWidget(self.job_GUI)
+        self.left_layout.addStretch()
+        self.left_layout.addLayout(btn_layout)
+
+        main_layout.addLayout(self.left_layout)
         main_layout.addWidget(self.plot_widget)
 
         # Logic
-        self.connect_btn.clicked.connect(self.connect_update_GUI)
-        self.connect_btn.clicked.connect(self.lcnc_driver.server.connect_socket)
-        self.disconnect_btn.clicked.connect(self.lcnc_driver.server.disconnect)
+        self.connect_btn.clicked.connect(self.connect_client)
         self.start_btn.clicked.connect(self.start_btn_update_GUI)
-        self.start_btn.clicked.connect(self.lcnc_driver.start)
         self.stop_btn.clicked.connect(self.stop)
-        self.update_btn.clicked.connect(self.update_data)
-        self.lcnc_driver.OnSampleReceived.connect(self.sample_in)
-        self.sample_X_line.valueChanged.connect(self.lcnc_driver.set_sample_x_length)
-        self.sample_Y_line.valueChanged.connect(self.lcnc_driver.set_sample_y_length)
-        self.sample_distance.valueChanged.connect(self.lcnc_driver.set_sample_distance)
-
-        self.sample_X_line.valueChanged.connect(self.update_data_shape)
-        self.sample_Y_line.valueChanged.connect(self.update_data_shape)
-        self.sample_distance.valueChanged.connect(self.update_data_shape)
-        self.start_btn.clicked.connect(self.update_data_shape)  # resets the shape too
-        self.ip_line.textChanged.connect(self.IP_changed)
-        self.port_line.textChanged.connect(self.port_changed)
-
-        self.OnIPChanged.connect(self.lcnc_driver.server.set_IP)
-        self.OnPortChanged.connect(self.lcnc_driver.server.set_port)
-
+        self.job_type_combo.currentIndexChanged.connect(self.job_changed)
+        self.OnConnect.connect(self.client.connect_socket)
+        self.update_btn.clicked.connect(self.update_graph)
 
         # Load GUI saved defaults
         settings = QSettings("linuxcnc_remote_driver", "LinuxCNCRemoteDriver")
@@ -291,31 +135,34 @@ class MainWindow(QMainWindow):  # type: ignore
             self.ip_line.setText(settings.value("ip"))
         if settings.contains("port"):
             self.port_line.setText(settings.value("port"))
-        if settings.contains("sample_x_length"):
-            self.sample_X_line.setValue(float(settings.value("sample_x_length")))
-        if settings.contains("sample_y_length"):
-            self.sample_Y_line.setValue(float(settings.value("sample_y_length")))
-        if settings.contains("sample_distance"):
-            self.sample_distance.setValue(float(settings.value("sample_distance")))
 
-        #self.OnIPChanged.emit()
-        #self.OnPortChanged.emit()
+        # Load the current job GUI
+        self.job_changed()
+        self.update_graph()
 
-    def IP_changed(self):
+    def job_changed(self):
+        job_name = str(self.job_type_combo.currentText())
+        old_widget = self.job_GUI
+        new_widget = self.jobs_types[job_name](client=self.client)
+        self.left_layout.replaceWidget(old_widget, new_widget)
+        self.job_GUI = new_widget
+
+        old_widget.driver_thread.exit()
+        old_widget.deleteLater()
+
+        # Hook up the new connections
+        self.job_GUI.OnDataChanged.connect(self.update_data)
+        self.start_btn.clicked.connect(self.job_GUI.start_job)
+        self.job_GUI.update_data_shape()
+
+    def connect_client(self):
         ip = self.ip_line.text()
-        self.OnIPChanged.emit(str(ip))
+        port = int(self.port_line.text())
+        self.OnConnect.emit({"port": port, "ip": ip})
+        self.connect_update_GUI()
 
-    def port_changed(self):
-        port = self.port_line.text()
-        self.OnPortChanged.emit(int(port))
-
-    def sample_in(self, sample: list[int | int | float]) -> None:
-        print(f"Sample into the GUI is: {sample}")
-        x = sample[0]
-        y = sample[1]
-        val = sample[2]
-
-        self.data[x][y] = val
+    def update_data(self, data):
+        self.data = data
 
     def connect_update_GUI(self) -> None:
         self.connect_btn.setDisabled(True)
@@ -327,38 +174,26 @@ class MainWindow(QMainWindow):  # type: ignore
         self.stop_btn.setEnabled(True)
 
     def stop(self) -> None:
-        self.lcnc_driver_thread.requestInterruption()
+        self.job_GUI.driver_thread.requestInterruption()
         self.stop_btn.setDisabled(True)
         self.start_btn.setEnabled(True)
 
     def closeEvent(self, event: QCloseEvent) -> None:
+        self.stop()
+        print("in close event")
         self.settings = QSettings("linuxcnc_remote_driver", "LinuxCNCRemoteDriver")
         self.settings.setValue("geometry", self.saveGeometry())
         self.settings.setValue("ip", self.ip_line.text())
         self.settings.setValue("port", self.port_line.text())
-        self.settings.setValue("sample_x_length", self.sample_X_line.value())
-        self.settings.setValue("sample_y_length", self.sample_Y_line.value())
-        self.settings.setValue("sample_distance", self.sample_distance.value())
+        self.job_GUI.driver_thread.exit()
+
+        self.deleteLater()
+
         QWidget.closeEvent(self, event)
 
-    def update_data_shape(self) -> None:
-        x = self.sample_X_line.value()
-        y = self.sample_Y_line.value()
-        d = self.sample_distance.value()
-
-        if d == 0:
-            return
-
-        x_shape = int(x / d)
-        y_shape = int(y / d)
-
-        self.data = np.zeros((x_shape, y_shape), dtype=np.float64)
-
-        print(f"data shape: {self.data.shape} type: {self.data.dtype}")
-
-        self.update_data()
-
-    def update_data(self) -> None:
+    def update_graph(self) -> None:
+        print("Updating Graph")
+        print(self.data)
         graph = go.Surface(z=self.data)
         fig = go.Figure(
             data=[graph],
@@ -381,7 +216,9 @@ class MainWindow(QMainWindow):  # type: ignore
         )
 
         # we create html code of the figure
-        html = '<html><script src="plotly.js"></script><body style = "background:black">'
+        html = (
+            '<html><script src="plotly.js"></script><body style = "background:black">'
+        )
         html += self.plot
         html += "</body></html>"
         base = QUrl.fromLocalFile(str(Path(__file__).resolve()))
