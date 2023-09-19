@@ -59,6 +59,8 @@ class ProbeDriver(LinuxDriver):
         # Move W to lift height (Starting position)
         self.cmd(f"G0 W{lift}")
 
+        print("About to start loop")
+
         for y in range(y_holes):
             for x in range(x_holes):
                 # Exit early
@@ -67,16 +69,20 @@ class ProbeDriver(LinuxDriver):
                     print("Job Stopped")
                     return
 
+                # Goto next sample location
+                self.cmd(f"G0 X{x*dist} Y{y*dist}")
+
                 # Move down and take a sample
                 self.cmd("G1 F2000 W0")
                 sample = float(self.client.send_recieve("TAKE_SAMPLE").split(" ")[1])
-                self.OnSampleReceived.emit([x, y, sample * 1000])  # convert sample mm to um
+                self.OnSampleReceived.emit(
+                    [x, y, sample * 1000]
+                )  # convert sample mm to um
 
                 # Move up
                 self.cmd(f"G0 W{lift}")
 
-                # Goto next sample location
-                self.cmd(f"G0 X{x*dist} Y{y*dist}")
+                print("iteration done")
 
             print("not ready")
 
@@ -112,8 +118,8 @@ class ProbeJob(QGroupBox):  # type: ignore
         # Set some values
         self.sample_X_line.setValue(70)
         self.sample_Y_line.setValue(70)
-        self.sample_distance.setValue(10)
-        self.probe_height.setValue(5)
+        self.sample_distance.setValue(15)
+        self.probe_height.setValue(10)
 
         form.addRow("Sample X Length", self.sample_X_line)
         form.addRow("Sample Y Length", self.sample_Y_line)
