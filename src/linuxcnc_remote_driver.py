@@ -125,6 +125,7 @@ class MainWindow(QMainWindow):  # type: ignore
         self.stop_btn.clicked.connect(self.stop)
         self.job_type_combo.currentIndexChanged.connect(self.job_changed)
         self.OnConnect.connect(self.client.connect_socket)
+        self.update_btn.clicked.connect(self.update_graph)
 
         # Load GUI saved defaults
         settings = QSettings("linuxcnc_remote_driver", "LinuxCNCRemoteDriver")
@@ -137,6 +138,7 @@ class MainWindow(QMainWindow):  # type: ignore
 
         # Load the current job GUI
         self.job_changed()
+        self.update_graph()
 
     def job_changed(self):
         job_name = str(self.job_type_combo.currentText())
@@ -149,7 +151,7 @@ class MainWindow(QMainWindow):  # type: ignore
         old_widget.deleteLater()
 
         # Hook up the new connections
-        self.job_GUI.OnDataChanged.connect(self.update_graph)
+        self.job_GUI.OnDataChanged.connect(self.update_data)
         self.start_btn.clicked.connect(self.job_GUI.start_job)
         self.job_GUI.update_data_shape()
 
@@ -159,13 +161,8 @@ class MainWindow(QMainWindow):  # type: ignore
         self.OnConnect.emit({"port": port, "ip": ip})
         self.connect_update_GUI()
 
-    def sample_in(self, sample: list[int | int | float]) -> None:
-        print(f"Sample into the GUI is: {sample}")
-        x = sample[0]
-        y = sample[1]
-        val = sample[2]
-
-        self.data[x][y] = val
+    def update_data(self, data):
+        self.data = data
 
     def connect_update_GUI(self) -> None:
         self.connect_btn.setDisabled(True)
@@ -188,18 +185,16 @@ class MainWindow(QMainWindow):  # type: ignore
         self.settings.setValue("geometry", self.saveGeometry())
         self.settings.setValue("ip", self.ip_line.text())
         self.settings.setValue("port", self.port_line.text())
-        # self.settings.setValue("sample_x_length", self.sample_X_line.value())
-        # self.settings.setValue("sample_y_length", self.sample_Y_line.value())
-        # self.settings.setValue("sample_distance", self.sample_distance.value())
         self.job_GUI.driver_thread.exit()
 
         self.deleteLater()
 
         QWidget.closeEvent(self, event)
 
-    def update_graph(self, data) -> None:
-        print(f"data in: {data}")
-        graph = go.Surface(z=data)
+    def update_graph(self) -> None:
+        print("Updating Graph")
+        print(self.data)
+        graph = go.Surface(z=self.data)
         fig = go.Figure(
             data=[graph],
         )
