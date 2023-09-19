@@ -4,17 +4,20 @@ from PySide6.QtCore import QObject
 
 SKIP_CONNECTION = False
 
-class ClientServer(QObject):  # type: ignore
+
+class Client(QObject):  # type: ignore
     server = socket.socket()  # Create a socket object
 
     def __init__(self) -> None:
         super().__init__()
 
         self.port = 0
-        self.ip = ''
+        self.ip = ""
 
-    def connect_socket(self) -> bool:
-        print("Connecting")
+    def connect_socket(self, params) -> bool:
+        self.port = params["port"]
+        self.ip = params["ip"]
+        print(f"Connecting.. IP: {self.ip} Port: {self.port}")
         connected = False
         num_fails = 0
         while not connected:
@@ -23,11 +26,12 @@ class ClientServer(QObject):  # type: ignore
             try:
                 self.server.connect((self.ip, self.port))
                 connected = True
+                print("Connected.")
                 return True
             except Exception as e:
                 print(
                     f"Failed to connect with the following: {e}. Using IP {self.ip}, Port: \
-                        {self.port}, Try: {num_fails+1}/3"
+{self.port}, Try: {num_fails+1}/3"
                 )  # print why and try again
                 num_fails += 1
                 continue
@@ -41,12 +45,11 @@ class ClientServer(QObject):  # type: ignore
             self.server.send(cmd.encode("utf-8"))
             recv = self.server.recv(1024).decode("utf-8")
         return recv
-    
+
     def set_IP(self, ip):
-        
         self.ip = ip
-        print('Set IP to:', self.ip)
+        print("Set IP to:", self.ip)
 
     def set_port(self, port):
         self.port = port
-        print('Set port to:', self.port)
+        print("Set port to:", self.port)

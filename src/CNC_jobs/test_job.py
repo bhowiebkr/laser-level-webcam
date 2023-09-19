@@ -1,5 +1,14 @@
 from src.CNC_jobs.common import LinuxDriver
 from PySide6.QtCore import QThread
+from PySide6.QtCore import Qt
+import numpy as np
+
+from PySide6.QtWidgets import QFormLayout
+from PySide6.QtWidgets import QDoubleSpinBox
+from PySide6.QtWidgets import QGroupBox
+from PySide6.QtGui import QCloseEvent
+from PySide6.QtCore import Signal
+
 import sys
 
 IN_LINUXCNC = False
@@ -8,58 +17,122 @@ if sys.platform == "linux":
     import linuxcnc
 
 
-class TestJob(LinuxDriver):
-    def init(self):
-        super(TestJob).__init__()
+class TestDriver(LinuxDriver):
+    def init(self, client):
+        super().__init__()
 
-        self.sample_x_length = 0.0
-        self.sample_y_length = 0.0
-        self.sample_distance = 0.0
+        self.client = client
 
-    def loop(self) -> None:
-        if self.ready():
-            self.c.mode(linuxcnc.MODE_MDI)  # type: ignore
-            self.c.wait_complete()  # wait until mode switch executed
-            self.cmd("G64")  # Path blending best possible speed
+    def loop(self, params) -> None:
+        x_holes = params["x_holes"]
+        y_holes = params["y_holes"]
+        dist = params["dist"]
 
-            radius = 2  # milling radius
-            height = 4  # safe height
-            dist = self.sample_distance
+        print("Starting LinuxCNC job")
+        self.c.mode(linuxcnc.MODE_MDI)  # type: ignore
+        self.c.wait_complete()  # wait until mode switch executed
+        self.cmd("G64")  # Path blending best possible speed
 
-            x_holes = int(self.sample_x_length / self.sample_distance)
-            y_holes = int(self.sample_y_length / self.sample_distance)
-            feed = 5000
+        radius = 2  # milling radius
+        height = 4  # safe height
 
-            print(self.server.send_recieve("ZERO"))
+        feed = 5000
 
-            for y in range(y_holes):
-                for x in range(x_holes):
-                    if QThread.currentThread().isInterruptionRequested():
-                        print("Job Stopped")
-                        return
+        print(self.client.send_recieve("ZERO"))
 
-                    print(f"index x: {x} y: {y}")
+        for y in range(y_holes):
+            for x in range(x_holes):
+                if QThread.currentThread().isInterruptionRequested():
+                    print("Job Stopped")
+                    return
 
-                    # Move down
-                    sample = float(self.server.send_recieve("TAKE_SAMPLE").split(" ")[1])
-                    self.OnSampleReceived.emit([x, y, sample])
-                    self.cmd(f"G0 X{x*dist} Y{y*dist} Z{height + (sample * 100)}")
-                    self.cmd(f"G0 X{x*dist} Y{y*dist} Z{height}")
-                    self.cmd(f"G0 X{x*dist} Y{y*dist} Z0")
+                print(f"index x: {x} y: {y}")
 
-                    # Circle
-                    self.cmd(f"G0 X{x*dist -radius} Y{y*dist} Z0")
-                    self.cmd(f"G02 X{x*dist -radius} Y{y*dist} I{radius} J0 F{feed}")
-                    self.cmd(f"G0 X{x*dist } Y{y*dist} Z0")
+                # Move down
+                sample = float(self.client.send_recieve("TAKE_SAMPLE").split(" ")[1])
+                self.OnSampleReceived.emit([x, y, sample])
+                self.cmd(f"G0 X{x*dist} Y{y*dist} Z{height + (sample * 100)}")
+                self.cmd(f"G0 X{x*dist} Y{y*dist} Z{height}")
+                self.cmd(f"G0 X{x*dist} Y{y*dist} Z0")
 
-                    # Move up
-                    self.cmd(f"G0 X{x*dist} Y{y*dist} Z{height}")
+                # Circle
+                self.cmd(f"G0 X{x*dist -radius} Y{y*dist} Z0")
+                self.cmd(f"G02 X{x*dist -radius} Y{y*dist} I{radius} J0 F{feed}")
+                self.cmd(f"G0 X{x*dist } Y{y*dist} Z0")
 
-    def set_sample_x_length(self, length: float) -> None:
-        self.sample_x_length = length
+                # Move up
+                self.cmd(f"G0 X{x*dist} Y{y*dist} Z{height}")
 
-    def set_sample_y_length(self, length: float) -> None:
-        self.sample_y_length = length
+            print("not ready")
 
-    def set_sample_distance(self, distance: float) -> None:
-        self.sample_distance = distance
+
+class TestJob(QGroupBox):
+    OnDataChanged = Signal(np.ndarray)
+    OnStartJob = Signal(dict)
+
+    def __init__(self, client):
+        QGroupBox.__init__(self)
+        self.setTitle("Test/Dev Job")
+
+        self.driver = TestDriver(client)
+        self.driver_thread = QThread()
+        self.driver.moveToThread(self.driver_thread)
+        self.driver_thread.start()
+
+        form = QFormLayout()
+        self.setLayout(form)
+
+        self.sample_X_line = QDoubleSpinBox()
+        self.sample_Y_line = QDoubleSpinBox()
+        self.sample_distance = QDoubleSpinBox()
+
+        # Set some values
+        self.sample_X_line.setValue(10)
+        self.sample_Y_line.setValue(10)
+        self.sample_distance.setValue(1)
+
+        form.addRow("Sample X Length", self.sample_X_line)
+        form.addRow("Sample Y Length", self.sample_Y_line)
+        form.addRow("Sample Distance", self.sample_distance)
+
+        # Update the driver
+        self.OnStartJob.connect(self.driver.loop)
+
+        # update the GUI
+        self.sample_X_line.valueChanged.connect(self.update_data_shape)
+        self.sample_Y_line.valueChanged.connect(self.update_data_shape)
+        self.sample_distance.valueChanged.connect(self.update_data_shape)
+
+        self.update_data_shape()
+
+    def start_job(self):
+        sample_X_line = self.sample_X_line.value()
+        sample_X_line = self.sample_X_line.value()
+        dist = self.sample_distance.value()
+
+        x_holes = int(sample_X_line / dist)
+        y_holes = int(sample_X_line / dist)
+
+        self.OnStartJob.emit({"x_holes": x_holes, "y_holes": y_holes, "dist": dist})
+
+    def update_data_shape(self) -> None:
+        x = self.sample_X_line.value()
+        y = self.sample_Y_line.value()
+        d = self.sample_distance.value()
+
+        if d == 0:
+            return
+
+        x_shape = int(x / d)
+        y_shape = int(y / d)
+
+        self.data = np.zeros((x_shape, y_shape), dtype=np.float64)
+        print("emitting data")
+        self.OnDataChanged.emit(self.data)
+        print("data emitted")
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        print("inside close event for test job")
+        self.driver_thread.requestInterruption()
+
+        return super().closeEvent(event)
