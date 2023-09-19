@@ -1,8 +1,12 @@
-from PySide6.QtCore import Signal
-from PySide6.QtCore import QObject
-from PySide6.QtWidgets import QGroupBox
+from __future__ import annotations
+
 import sys
 import time
+
+from PySide6.QtCore import QObject
+from PySide6.QtCore import Signal
+
+from src.client import Client
 
 IN_LINUXCNC = False
 if sys.platform == "linux":
@@ -16,7 +20,7 @@ DEV_MODE = False
 class LinuxDriver(QObject):  # type: ignore
     OnSampleReceived = Signal(list)
 
-    def __init__(self, client) -> None:
+    def __init__(self, client: Client) -> None:
         super().__init__()
 
         self.client = client
@@ -24,10 +28,6 @@ class LinuxDriver(QObject):  # type: ignore
         if IN_LINUXCNC:
             self.s = linuxcnc.stat()  # type: ignore
             self.c = linuxcnc.command()  # type: ignore
-
-    def loop(self) -> None:
-        # Override this
-        pass
 
     def ready(self) -> bool:
         if DEV_MODE:
@@ -41,10 +41,11 @@ class LinuxDriver(QObject):  # type: ignore
         )
 
     def cmd(self, cmd: str) -> None:
-        if DEV_MODE:
-            print(f"Sent: {cmd}")
-            time.sleep(0.1)
-        else:
+        if IN_LINUXCNC:
             self.c.mdi(cmd)
             print(f"Sent: {cmd}")
             self.c.wait_complete()  # wait until mode switch executed
+
+        else:
+            print(f"Sent: {cmd}")
+            time.sleep(0.1)

@@ -1,5 +1,10 @@
-import socket
+from __future__ import annotations
+
 import random
+import socket
+from typing import Any
+from typing import Dict
+
 from PySide6.QtCore import QObject
 
 SKIP_CONNECTION = False
@@ -14,7 +19,7 @@ class Client(QObject):  # type: ignore
         self.port = 0
         self.ip = ""
 
-    def connect_socket(self, params) -> bool:
+    def connect_socket(self, params: Dict[str, Any]) -> bool:
         self.port = params["port"]
         self.ip = params["ip"]
         print(f"Connecting.. IP: {self.ip} Port: {self.port}")
@@ -46,13 +51,13 @@ class Client(QObject):  # type: ignore
             recv = self.server.recv(1024).decode("utf-8")
         return recv
 
-    def set_IP(self, ip):
+    def set_IP(self, ip: str) -> None:
         self.ip = ip
         print("Set IP to:", self.ip)
 
-    def set_port(self, port):
+    def set_port(self, port: int) -> None:
         self.port = port
         print("Set port to:", self.port)
 
-    def close_socket(self):
+    def close_socket(self) -> None:
         self.server.close()

@@ -1,13 +1,12 @@
 #!/usr/bin/python           # This is client.py file
 from __future__ import annotations
 
-import random
-import socket  # Import socket module
-import sys
-import time
-from pathlib import Path
 import re
-import numpy as np
+import sys
+from pathlib import Path
+from typing import Any
+from typing import Dict
+
 import plotly
 import plotly.graph_objects as go
 import plotly.io as io
@@ -19,29 +18,30 @@ from PySide6.QtCore import Signal
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import QApplication
-from PySide6.QtWidgets import QDoubleSpinBox
+from PySide6.QtWidgets import QComboBox
 from PySide6.QtWidgets import QFormLayout
 from PySide6.QtWidgets import QGridLayout
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLineEdit
-from PySide6.QtWidgets import QComboBox
 from PySide6.QtWidgets import QMainWindow
 from PySide6.QtWidgets import QPushButton
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 
-
 from src.client import Client
-from src.CNC_jobs.test_job import TestJob
 from src.CNC_jobs.probe import ProbeJob
 from src.CNC_jobs.probe_and_machine import ProbeAndMachineJob
-
+from src.CNC_jobs.test_job import TestJob
 
 io.templates.default = "plotly_dark"
 
 
 DEV_MODE = False  # Use a bunch of dummy things such as fake linuxcnc module
 SKIP_CONNECTION = False  # Work without connecting to a socket
+
+
+def camel_case_split(str: str) -> str:
+    return " ".join(re.findall(r"[A-Z](?:[a-z]+|[A-Z]*(?=[A-Z]|$))", str))
 
 
 # Define the main window
@@ -94,7 +94,8 @@ class MainWindow(QMainWindow):  # type: ignore
 
         for job in [ProbeJob, TestJob, ProbeAndMachineJob]:
             job_name = str(job.__name__)
-            job_name = re.sub("([a-z])([A-Z])", "\g<1> \g<2>", job_name)
+            job_name = camel_case_split(job_name)
+            # job_name = re.sub("([a-z])([A-Z])", "\g<1> \g<2>", job_name)
             self.jobs_types[job_name] = job
             self.job_type_combo.addItem(job_name)
 
@@ -140,12 +141,12 @@ class MainWindow(QMainWindow):  # type: ignore
         self.job_changed()
         self.update_graph()
 
-    def job_changed(self):
+    def job_changed(self) -> None:
         job_name = str(self.job_type_combo.currentText())
         old_widget = self.job_GUI
         new_widget = self.jobs_types[job_name](client=self.client)
         self.left_layout.replaceWidget(old_widget, new_widget)
-        self.job_GUI = new_widget
+        self.job_GUI = new_widget  # type: ignore
 
         old_widget.driver_thread.exit()
         old_widget.deleteLater()
@@ -155,13 +156,13 @@ class MainWindow(QMainWindow):  # type: ignore
         self.start_btn.clicked.connect(self.job_GUI.start_job)
         self.job_GUI.update_data_shape()
 
-    def connect_client(self):
+    def connect_client(self) -> None:
         ip = self.ip_line.text()
         port = int(self.port_line.text())
         self.OnConnect.emit({"port": port, "ip": ip})
         self.connect_update_GUI()
 
-    def update_data(self, data):
+    def update_data(self, data: Dict[str, Any]) -> None:
         self.data = data
 
     def connect_update_GUI(self) -> None:
@@ -216,9 +217,7 @@ class MainWindow(QMainWindow):  # type: ignore
         )
 
         # we create html code of the figure
-        html = (
-            '<html><script src="plotly.js"></script><body style = "background:black">'
-        )
+        html = '<html><script src="plotly.js"></script><body style = "background:black">'
         html += self.plot
         html += "</body></html>"
         base = QUrl.fromLocalFile(str(Path(__file__).resolve()))

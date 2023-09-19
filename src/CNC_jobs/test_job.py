@@ -1,15 +1,19 @@
-from src.CNC_jobs.common import LinuxDriver
-from PySide6.QtCore import QThread
-from PySide6.QtCore import Qt
-import numpy as np
-
-from PySide6.QtWidgets import QFormLayout
-from PySide6.QtWidgets import QDoubleSpinBox
-from PySide6.QtWidgets import QGroupBox
-from PySide6.QtGui import QCloseEvent
-from PySide6.QtCore import Signal
+from __future__ import annotations
 
 import sys
+from typing import Any
+from typing import Dict
+
+import numpy as np
+from PySide6.QtCore import QThread
+from PySide6.QtCore import Signal
+from PySide6.QtGui import QCloseEvent
+from PySide6.QtWidgets import QDoubleSpinBox
+from PySide6.QtWidgets import QFormLayout
+from PySide6.QtWidgets import QGroupBox
+
+from src.client import Client
+from src.CNC_jobs.common import LinuxDriver
 
 IN_LINUXCNC = False
 if sys.platform == "linux":
@@ -18,12 +22,12 @@ if sys.platform == "linux":
 
 
 class TestDriver(LinuxDriver):
-    def init(self, client):
-        super().__init__()
+    def init(self, client: Client) -> None:
+        super().__init__()  # type: ignore
 
         self.client = client
 
-    def loop(self, params) -> None:
+    def loop(self, params: Dict[str, Any]) -> None:
         x_holes = params["x_holes"]
         y_holes = params["y_holes"]
         dist = params["dist"]
@@ -66,11 +70,11 @@ class TestDriver(LinuxDriver):
             print("not ready")
 
 
-class TestJob(QGroupBox):
+class TestJob(QGroupBox):  # type: ignore
     OnDataChanged = Signal(np.ndarray)
     OnStartJob = Signal(dict)
 
-    def __init__(self, client):
+    def __init__(self, client: Client) -> None:
         QGroupBox.__init__(self)
         self.setTitle("Test/Dev Job")
 
@@ -105,7 +109,7 @@ class TestJob(QGroupBox):
 
         self.update_data_shape()
 
-    def start_job(self):
+    def start_job(self) -> None:
         sample_X_line = self.sample_X_line.value()
         sample_X_line = self.sample_X_line.value()
         dist = self.sample_distance.value()
@@ -131,7 +135,7 @@ class TestJob(QGroupBox):
         self.OnDataChanged.emit(self.data)
         print("data emitted")
 
-    def closeEvent(self, event: QCloseEvent) -> None:
+    def closeEvent(self, event: QCloseEvent) -> QCloseEvent:
         print("inside close event for test job")
         self.driver_thread.requestInterruption()
 

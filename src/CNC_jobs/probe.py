@@ -1,15 +1,19 @@
-from src.CNC_jobs.common import LinuxDriver
-from PySide6.QtCore import QThread
-from PySide6.QtCore import Qt
-import numpy as np
-
-from PySide6.QtWidgets import QFormLayout
-from PySide6.QtWidgets import QDoubleSpinBox
-from PySide6.QtWidgets import QGroupBox
-from PySide6.QtGui import QCloseEvent
-from PySide6.QtCore import Signal
+from __future__ import annotations
 
 import sys
+from typing import Any
+from typing import Dict
+
+import numpy as np
+from PySide6.QtCore import QThread
+from PySide6.QtCore import Signal
+from PySide6.QtGui import QCloseEvent
+from PySide6.QtWidgets import QDoubleSpinBox
+from PySide6.QtWidgets import QFormLayout
+from PySide6.QtWidgets import QGroupBox
+
+from src.client import Client
+from src.CNC_jobs.common import LinuxDriver
 
 IN_LINUXCNC = False
 if sys.platform == "linux":
@@ -20,26 +24,23 @@ if sys.platform == "linux":
 class ProbeDriver(LinuxDriver):
     OnSampleReceived = Signal(list)
 
-    def init(self, client):
-        super().__init__()
+    def init(self, client: Client) -> None:
+        super().__init__()  # type: ignore
 
         self.client = client
 
-    def loop(self, params) -> None:
+    def loop(self, params: Dict[str, Any]) -> None:
         x_holes = params["x_holes"]
         y_holes = params["y_holes"]
         dist = params["dist"]
         lift = params["lift_height"]
 
         print("Starting LinuxCNC job")
-        self.c.mode(linuxcnc.MODE_MDI)  # type: ignore
-        self.c.wait_complete()  # wait until mode switch executed
+        if IN_LINUXCNC:
+            self.c.mode(linuxcnc.MODE_MDI)  # type: ignore
+            self.c.wait_complete()  # wait until mode switch executed
         self.cmd("G64")  # Path blending best possible speed
 
-        radius = 2  # milling radius
-        height = 4  # safe height
-
-        feed = 5000
         # Move the W axis back to machine coord zero
         self.cmd("G53 G0 W0Z0")
 
@@ -50,7 +51,7 @@ class ProbeDriver(LinuxDriver):
         self.cmd(f"G0 W{lift}")
 
         # Move down to W zero for setting zero
-        self.cmd(f"G1 F2000 W0")
+        self.cmd("G1 F2000 W0")
 
         # Zero out the webcam sensor
         print(self.client.send_recieve("ZERO"))
@@ -67,11 +68,9 @@ class ProbeDriver(LinuxDriver):
                     return
 
                 # Move down and take a sample
-                self.cmd(f"G1 F2000 W0")
+                self.cmd("G1 F2000 W0")
                 sample = float(self.client.send_recieve("TAKE_SAMPLE").split(" ")[1])
-                self.OnSampleReceived.emit(
-                    [x, y, sample * 1000]
-                )  # convert sample mm to um
+                self.OnSampleReceived.emit([x, y, sample * 1000])  # convert sample mm to um
 
                 # Move up
                 self.cmd(f"G0 W{lift}")
@@ -87,11 +86,11 @@ class ProbeDriver(LinuxDriver):
         print("Finished")
 
 
-class ProbeJob(QGroupBox):
+class ProbeJob(QGroupBox):  # type: ignore
     OnDataChanged = Signal(np.ndarray)
     OnStartJob = Signal(dict)
 
-    def __init__(self, client):
+    def __init__(self, client: Client):
         QGroupBox.__init__(self)
         self.setTitle("Probe Job")
 
@@ -133,7 +132,7 @@ class ProbeJob(QGroupBox):
 
         self.update_data_shape()
 
-    def start_job(self):
+    def start_job(self) -> None:
         sample_X_line = self.sample_X_line.value()
         sample_X_line = self.sample_X_line.value()
         dist = self.sample_distance.value()
@@ -178,7 +177,7 @@ class ProbeJob(QGroupBox):
         self.OnDataChanged.emit(self.data)
         print("data emitted")
 
-    def closeEvent(self, event: QCloseEvent) -> None:
+    def closeEvent(self, event: QCloseEvent) -> QCloseEvent:
         print("inside close event for test job")
         self.driver_thread.requestInterruption()
 
