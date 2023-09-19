@@ -127,9 +127,11 @@ class SocketWindow(QDialog):  # type: ignore
         self.server_thread = threading.Thread(target=self.message_server.start_server)
 
     def lookup_ip(self) -> None:
-        hostname = socket.gethostname()
-        ip_address = socket.gethostbyname(hostname)
-        self.ip_line.setText(ip_address)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.connect(("8.8.8.8", 80))
+        address = sock.getsockname()[0]
+        sock.close()
+        self.ip_line.setText(address)
 
     def start_server(self) -> None:
         self.message_server.ip = str(self.ip_line.text())
