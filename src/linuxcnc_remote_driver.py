@@ -33,8 +33,8 @@ from PySide6.QtWidgets import QWidget
 
 from src.client import Client
 from src.CNC_jobs.test_job import TestJob
-from src.CNC_jobs.probe import Probe
-from src.CNC_jobs.probe_and_machine import ProbeAndMachine
+from src.CNC_jobs.probe import ProbeJob
+from src.CNC_jobs.probe_and_machine import ProbeAndMachineJob
 
 
 io.templates.default = "plotly_dark"
@@ -90,9 +90,9 @@ class MainWindow(QMainWindow):  # type: ignore
         self.job_type_combo = QComboBox()
 
         self.jobs_types = {}
-        self.job_GUI = TestJob(self.client)
+        self.job_GUI = ProbeJob(self.client)
 
-        for job in [TestJob, Probe, ProbeAndMachine]:
+        for job in [ProbeJob, TestJob, ProbeAndMachineJob]:
             job_name = str(job.__name__)
             job_name = re.sub("([a-z])([A-Z])", "\g<1> \g<2>", job_name)
             self.jobs_types[job_name] = job
@@ -110,8 +110,6 @@ class MainWindow(QMainWindow):  # type: ignore
         btn_layout.addWidget(self.stop_btn, 2, 2)
         btn_layout.addWidget(self.update_btn, 3, 1)
 
-        # btn_layout.addWidget(self.job_type_combo, 3, 2)
-
         self.left_layout.addLayout(form)
 
         self.left_layout.addWidget(self.job_GUI)
@@ -124,24 +122,9 @@ class MainWindow(QMainWindow):  # type: ignore
         # Logic
         self.connect_btn.clicked.connect(self.connect_client)
         self.start_btn.clicked.connect(self.start_btn_update_GUI)
-
-        # self.connect_btn.clicked.connect(self.client.connect_socket)
-        # self.disconnect_btn.clicked.connect(self.client.disconnect)
         self.stop_btn.clicked.connect(self.stop)
-        # self.update_btn.clicked.connect(self.update_graph)
-        # self.lcnc_driver.OnSampleReceived.connect(self.sample_in)
-
-        # self.sample_X_line.valueChanged.connect(self.update_data_shape)
-        # self.sample_Y_line.valueChanged.connect(self.update_data_shape)
-        # self.sample_distance.valueChanged.connect(self.update_data_shape)
-        # self.start_btn.clicked.connect(self.update_data_shape)  # resets the shape too
-        # self.ip_line.textChanged.connect(self.IP_changed)
-        # self.port_line.textChanged.connect(self.port_changed)
         self.job_type_combo.currentIndexChanged.connect(self.job_changed)
         self.OnConnect.connect(self.client.connect_socket)
-
-        # self.OnIPChanged.connect(self.lcnc_driver.server.set_IP)
-        # self.OnPortChanged.connect(self.lcnc_driver.server.set_port)
 
         # Load GUI saved defaults
         settings = QSettings("linuxcnc_remote_driver", "LinuxCNCRemoteDriver")
@@ -151,12 +134,6 @@ class MainWindow(QMainWindow):  # type: ignore
             self.ip_line.setText(settings.value("ip"))
         if settings.contains("port"):
             self.port_line.setText(settings.value("port"))
-        # if settings.contains("sample_x_length"):
-        # self.sample_X_line.setValue(float(settings.value("sample_x_length")))
-        # if settings.contains("sample_y_length"):
-        # self.sample_Y_line.setValue(float(settings.value("sample_y_length")))
-        # if settings.contains("sample_distance"):
-        # self.sample_distance.setValue(float(settings.value("sample_distance")))
 
         # Load the current job GUI
         self.job_changed()
