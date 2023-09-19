@@ -53,3 +53,6 @@ class Client(QObject):  # type: ignore
     def set_port(self, port):
         self.port = port
         print("Set port to:", self.port)
+
+    def close_socket(self):
+        self.server.close()
