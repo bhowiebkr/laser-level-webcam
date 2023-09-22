@@ -6,7 +6,6 @@ import time
 from PySide6.QtCore import QObject
 from PySide6.QtCore import Signal
 
-from src.client import Client
 
 IN_LINUXCNC = False
 if sys.platform == "linux":
@@ -20,10 +19,8 @@ DEV_MODE = False
 class LinuxDriver(QObject):  # type: ignore
     OnSampleReceived = Signal(list)
 
-    def __init__(self, client: Client) -> None:
+    def __init__(self) -> None:
         super().__init__()
-
-        self.client = client
 
         if IN_LINUXCNC:
             self.s = linuxcnc.stat()  # type: ignore
