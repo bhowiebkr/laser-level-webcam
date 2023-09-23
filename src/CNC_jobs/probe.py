@@ -25,7 +25,8 @@ DEV_MODE = False
 class ProbeDriver(QObject):  # type: ignore
     sample_received = Signal(list)
     connection_made = Signal()
-    sample_recieved = Signal(list)
+    sample_out = Signal(list)
+    job_stopped = Signal()
 
     def __init__(self) -> None:
         super().__init__()
@@ -33,6 +34,7 @@ class ProbeDriver(QObject):  # type: ignore
         self.socket.connected.connect(self.connected)
         self.socket.readyRead.connect(self.receive_message)
         self.message = ""
+        self.stopping = False
 
         if IN_LINUXCNC:
             self.s = linuxcnc.stat()  # type: ignore
@@ -43,7 +45,11 @@ class ProbeDriver(QObject):  # type: ignore
         self.dist = 0.0
         self.lift = 0.0
 
+    def stop(self) -> None:
+        self.stopping = True
+
     def loop(self) -> None:
+        self.stopping = False
         print("Starting LinuxCNC job")
         if IN_LINUXCNC:
             self.c.mode(linuxcnc.MODE_MDI)  # type: ignore
@@ -63,7 +69,7 @@ class ProbeDriver(QObject):  # type: ignore
         self.cmd("G1 F2000 W0")
 
         # Zero out the webcam sensor
-        self.send_message("ZERO")
+        print(self.send_and_receive("ZERO"))
 
         # Move W to lift height (Starting position)
         self.cmd(f"G0 W{self.lift}")
@@ -72,6 +78,9 @@ class ProbeDriver(QObject):  # type: ignore
 
         for y in range(self.y_holes):
             for x in range(self.x_holes):
+                if self.stopping:
+                    self.job_stopped.emit()
+                    return
                 # Goto next sample location
                 self.cmd(f"G0 X{x*self.dist} Y{y*self.dist}")
 
@@ -79,27 +88,20 @@ class ProbeDriver(QObject):  # type: ignore
                 self.cmd("G1 F2000 W0")
 
                 # Send the "TAKE_SAMPLE" message and wait for the response
-                self.send_message("TAKE_SAMPLE")
+                sample = float(self.send_and_receive("TAKE_SAMPLE").split(" ")[1])
+                # print("sample: {sample}")
 
-                while not self.message:
-                    QApplication.processEvents()  # Process events to prevent UI from freezing
-
-                sample = self.message
-                self.message = ""
-                print(f"I got: {sample}")
-
-                self.sample_recieved.emit([x, y, sample * 1000])  # convert sample mm to um
+                self.sample_out.emit([x, y, sample * 1000])  # convert sample mm to um
 
                 # Move up
                 self.cmd(f"G0 W{self.lift}")
-
-                print("iteration done")
 
             print("not ready")
 
         # Move the W axis back to machine coord zero
         self.cmd("G53 G0 W0Z0")
         print("Finished")
+        self.job_stopped.emit()
 
     def ready(self) -> bool:
         if DEV_MODE:
@@ -135,13 +137,23 @@ class ProbeDriver(QObject):  # type: ignore
         self.connection_made.emit()
         # self.text_edit.append("Connected to server.")
 
+    def send_and_receive(self, message: str) -> str:
+        self.send_message(message)
+
+        while not self.message:
+            QApplication.processEvents()  # Process events to prevent UI from freezing
+
+        result = self.message
+        self.message = ""
+        return result
+
     def send_message(self, message: str) -> None:
-        print(f"Sent a message to the server: {message}")
+        # print(f"Sent a message to the server: {message}")
         self.socket.write(f"{message}\n".encode())  # Ensure a newline after the message
 
     def receive_message(self) -> None:
         self.message = self.socket.readLine().data().decode()  # Read line instead of all data
-        print(f"recieved messge: {self.message}")
+        # print(f"recieved messge: {self.message}")
 
 
 class ProbeJob(QGroupBox):  # type: ignore
@@ -180,7 +192,7 @@ class ProbeJob(QGroupBox):  # type: ignore
         self.sample_Y_line.valueChanged.connect(self.update_data_shape)
         self.sample_distance.valueChanged.connect(self.update_data_shape)
         self.probe_height.valueChanged.connect(self.update_data_shape)
-        self.driver.sample_received.connect(self.sample_in)
+        self.driver.sample_out.connect(self.sample_in)
 
         self.start_job.connect(self.driver.loop)
 
@@ -223,5 +235,5 @@ class ProbeJob(QGroupBox):  # type: ignore
 
     def closeEvent(self, event: QCloseEvent) -> QCloseEvent:
         print("inside close event for test job")
-
+        self.driver.stopping = True
         return super().closeEvent(event)
