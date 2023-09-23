@@ -5,7 +5,11 @@
 
 This is the software component in building a highly accurate measurement device primarily used in a similar way to a surface plate. Sofar measurements are attainable between 0.5um - 2um in repeated measurements.
 
-![alt text](images/GUI.png)
+## Webcam sensor GUI
+![Webcam_Sensor_GUI](images/Webcam_Sensor_GUI.png)
+
+## LinuxCNC remote driver GUI
+![LinuxCNC_remote_driver_GUI](images/LinuxCNC_remote_driver_GUI.png)
 
 Current version on github has the linuxcnc remove driver seen in this video:
 [![Video](http://img.youtube.com/vi/wpInsrcQAus/0.jpg)](https://www.youtube.com/watch?v=wpInsrcQAus)
