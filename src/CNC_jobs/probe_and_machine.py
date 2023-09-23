@@ -23,7 +23,7 @@ if sys.platform == "linux":
 
 class ProbeAndMachineDriver(LinuxDriver):
     def init(self, client: Client) -> None:
-        super().__init__()  # type: ignore
+        super().__init__()
 
         self.client = client
 
@@ -78,7 +78,7 @@ class ProbeAndMachineJob(QGroupBox):  # type: ignore
         QGroupBox.__init__(self)
         self.setTitle("Probe And Machine Job")
 
-        self.driver = ProbeAndMachineDriver(client)
+        self.driver = ProbeAndMachineDriver()
         self.driver_thread = QThread()
         self.driver.moveToThread(self.driver_thread)
         self.driver_thread.start()

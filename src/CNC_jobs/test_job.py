@@ -23,7 +23,7 @@ if sys.platform == "linux":
 
 class TestDriver(LinuxDriver):
     def init(self, client: Client) -> None:
-        super().__init__()  # type: ignore
+        super().__init__()
 
         self.client = client
 
@@ -78,7 +78,7 @@ class TestJob(QGroupBox):  # type: ignore
         QGroupBox.__init__(self)
         self.setTitle("Test/Dev Job")
 
-        self.driver = TestDriver(client)
+        self.driver = TestDriver()
         self.driver_thread = QThread()
         self.driver.moveToThread(self.driver_thread)
         self.driver_thread.start()

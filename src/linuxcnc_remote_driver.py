@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 from typing import Dict
 
+import numpy as np
 import plotly
 import plotly.graph_objects as go
 import plotly.io as io
@@ -70,8 +71,6 @@ class MainWindow(QMainWindow):  # type: ignore
         self.plot_widget.setMinimumHeight(self.graph_size + 20)
 
         self.connect_btn = QPushButton("Connect")
-        self.disconnect_btn = QPushButton("Disconnect")
-        self.disconnect_btn.setDisabled(True)
         self.update_btn = QPushButton("Update")
         self.start_btn = QPushButton("Start")
         self.start_btn.setDisabled(True)
@@ -83,7 +82,9 @@ class MainWindow(QMainWindow):  # type: ignore
         self.job_type_combo = QComboBox()
 
         self.jobs_types = {}
-        self.job = ProbeJob(self)
+        self.job = ProbeJob()
+
+        self.data = np.zeros((5, 5), dtype=np.float64)
 
         for job in [ProbeJob]:
             job_name = str(job.__name__)
@@ -97,11 +98,10 @@ class MainWindow(QMainWindow):  # type: ignore
 
         form.addRow("Job", self.job_type_combo)
 
-        btn_layout.addWidget(self.connect_btn, 1, 1)
-        btn_layout.addWidget(self.disconnect_btn, 1, 2)
+        btn_layout.addWidget(self.connect_btn, 1, 1, 1, 2)
         btn_layout.addWidget(self.start_btn, 2, 1)
         btn_layout.addWidget(self.stop_btn, 2, 2)
-        btn_layout.addWidget(self.update_btn, 3, 1)
+        btn_layout.addWidget(self.update_btn, 3, 1, 1, 2)
 
         self.left_layout.addLayout(form)
 
@@ -135,25 +135,31 @@ class MainWindow(QMainWindow):  # type: ignore
     def job_changed(self) -> None:
         job_name = str(self.job_type_combo.currentText())
         old_widget = self.job
-        new_widget = self.jobs_types[job_name](self)
+        new_widget = self.jobs_types[job_name]()
         self.left_layout.replaceWidget(old_widget, new_widget)
-        self.job = new_widget  # type: ignore
+        self.job = new_widget
         old_widget.deleteLater()
 
         # Hook up the new connections
-        self.connect_btn.clicked.connect(self.job.driver.connect_to_host)
+        self.connect_btn.clicked.connect(
+            lambda ip=self.ip_line.text(), port=self.port_line.text(): self.job.driver.connect_to_host(ip, port)
+        )
+
+        self.job.driver.connection_made.connect(self.connect_update_GUI)
+
+        # button.clicked.connect(lambda state, x=idx: self.button_pushed(x))
 
         self.job.data_changed.connect(self.update_data)
-        self.start_btn.clicked.connect(self.job.driver.loop)
-        self.job.update_data_shape()
+        self.start_btn.clicked.connect(self.job.start_driver)
+        # self.job.update_data_shape()
 
     def update_data(self, data: Dict[str, Any]) -> None:
         self.data = data
 
     def connect_update_GUI(self) -> None:
+        print("updating the GUI that a connection was made")
         self.connect_btn.setDisabled(True)
         self.start_btn.setEnabled(True)
-        self.disconnect_btn.setEnabled(True)
 
     def start_btn_update_GUI(self) -> None:
         self.start_btn.setDisabled(True)
