@@ -2,6 +2,7 @@
 <div align="center">
 <h1>LaserVision: Real-time Laser Measurement with a Webcam</h1>
 
+See the GitHub Discussions tab for questions, comments, etc. I'll try to track progress updates over there now.
 
 This is the software component in building a highly accurate measurement device primarily used in a similar way to a surface plate. Sofar measurements are attainable between 0.5um - 2um in repeated measurements.
 
