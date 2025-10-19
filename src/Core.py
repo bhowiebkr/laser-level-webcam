@@ -120,6 +120,8 @@ class Core(QObject):  # type: ignore
         for index, sample in enumerate(self.samples):
             sample.x = index
 
+        samples_recalc(self.samples)
+
         if debug:
             print(f"After: {self.samples=}")
 
