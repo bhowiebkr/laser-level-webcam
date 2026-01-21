@@ -62,6 +62,15 @@ Navigate to the cloned repository directory using the cd command:
 cd laser-level-webcam
 ```
 
+Ensure you are running Python 3.11 by checking your running python version:
+```sh
+python --version
+```
+
+It should respond with a version containing `Python 3.11`. `Python 3.11.9` for instance would be acceptable.
+
+Python 3.12 cannot be used due to an incompatability with the currently used PySide6 version
+
 Next, create a virtual environment for isolating the program's dependencies. Run the following commands:
 
 2a. if you are missing virtualenv, install it with pip
@@ -107,9 +116,9 @@ This command uses `pip` to install the packages specified in the requirements.tx
 After installing the required packages, you are ready to run the Python program:
 
 ```sh
-python.exe laser_level_tool/main.py
+python.exe .\laser-level-webcam.py
 ```
-We run the `main.py` file in the `laser_level_tool` directory
+Running the `laser-level-webcam.py` file in the project root directory will boot up the PyQT application
 
 ## Usage
 
