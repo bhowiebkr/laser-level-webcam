@@ -109,7 +109,7 @@ class FrameWorker(QObject):  # type: ignore
     """
 
     OnFrameChanged = Signal(list)
-    OnCentreChanged = Signal(int)
+    OnCentreChanged = Signal(float)
     OnPixmapChanged = Signal(QPixmap)
     OnAnalyserUpdate = Signal(FrameData)
 
@@ -154,8 +154,9 @@ class FrameWorker(QObject):  # type: ignore
         # Find the min and max values
         min_value, max_value = histo.min(), histo.max()
 
-        # Rescale the intensity values to have a range between 0 and 255
-        histo = ((histo - min_value) * (255.0 / (max_value - min_value))).clip(0, 255).astype(np.uint8)
+        if max_value > min_value: # Only rescale if min and max are meaningful
+            # Rescale the intensity values to have a range between 0 and 255
+            histo = ((histo - min_value) * (255.0 / (max_value - min_value))).clip(0, 255).astype(np.uint8)
 
         # Generate the image
         # Define the scope image data as the width (long side) of the image x 256 for pixels
