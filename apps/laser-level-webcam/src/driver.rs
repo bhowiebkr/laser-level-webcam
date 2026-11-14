@@ -141,10 +141,13 @@ mod native {
                         repaint();
                     }
                 }
-                Ok(Event::Opened { device, modes, mode, controls, applied, usb }) => {
+                Ok(Event::Opened { device, modes, mode, controls, applied, usb, block }) => {
                     let mut e = lock(engine);
                     e.opened(device, modes, mode, controls, applied);
                     e.camera.usb = usb;
+                    if let Some(block) = block {
+                        e.simulate(block);
+                    }
                     drop(e);
                     repaint();
                 }
@@ -170,6 +173,56 @@ mod native {
     fn send(cap: Option<&Capture>, command: Command) {
         if let Some(c) = cap {
             c.send(command);
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use std::time::Instant;
+
+        use laser_camera::FrameSource;
+        use laser_camera::synthetic::{NAME, Synthetic};
+        use laser_core::reading::SampleRule;
+        use laser_core::scale::Scale;
+        use laser_core::survey::{DriftCorrection, Session};
+        use laser_core::synth::Surface;
+
+        use super::*;
+
+        /// Whether `done` comes true within `limit` s.
+        fn wait(engine: &Mutex<Engine>, limit: f64, done: impl Fn(&Engine) -> bool) -> bool {
+            let end = Instant::now() + Duration::from_secs_f64(limit);
+            while Instant::now() < end {
+                if done(&lock(engine)) {
+                    return true;
+                }
+                thread::sleep(Duration::from_millis(20));
+            }
+            false
+        }
+
+        #[test]
+        fn the_synthetic_camera_reads_its_surface_through_the_driver() {
+            let engine = Arc::new(Mutex::new(Engine::new(Session::new(Scale::from_pixel_pitch(3.0)))));
+            let mut driver = Driver::start(Arc::clone(&engine), || {});
+            let small = Synthetic::open(None).modes()[3];
+            driver.send(Request::Open(CameraSettings {
+                device: Some(NAME.into()),
+                mode: Some(small),
+                ..CameraSettings::default()
+            }));
+            assert!(wait(&engine, 10.0, |e| e.live.frames > 5), "no frames came");
+            lock(&engine).sample_rule = SampleRule { min_s: 0.5, max_s: 0.5, target_um: None };
+            for station in [0, 4, 0] {
+                lock(&engine).take_sample(station, None);
+                assert!(wait(&engine, 10.0, |e| e.sampling.is_none()), "the sample at {station} did not end");
+            }
+            let e = lock(&engine);
+            let run = e.current_run().unwrap();
+            let heights = run.heights(&e.session.scale, DriftCorrection::Interpolate).unwrap();
+            let got = heights.stations.iter().find(|h| h.station == 4).unwrap().height_um;
+            let want = Surface::default().seen_um(run, 4);
+            assert!(want.abs() > 2.0 && (got - want).abs() < 1.5, "{got} µm, not {want}");
         }
     }
 }
@@ -235,6 +288,9 @@ mod web {
                                 let (device, modes, mode) =
                                     (source.device().clone(), source.modes().to_vec(), source.mode());
                                 e.opened(device, modes, mode, source.controls(), applied);
+                                if let Some(block) = source.block() {
+                                    e.simulate(block);
+                                }
                                 self.opened_s = e.now();
                                 self.source = Some(source);
                                 self.paced = true;

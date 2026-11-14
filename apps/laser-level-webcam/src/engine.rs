@@ -8,14 +8,17 @@
 use std::collections::VecDeque;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
+use laser_camera::synthetic::Block;
 use laser_camera::{Applied, CameraError, DeviceInfo, Frame};
 use laser_core::beam::{self, FinderConfig, Fix, Inspection, NoBeam};
 use laser_core::camera::{ControlInfo, Sensor, VideoMode};
 use laser_core::frame::Luma;
 use laser_core::monitor::{Monitor, MonitorConfig, RunPlan, Status};
 use laser_core::reading::{Reading, SampleRule, Sampler};
+use laser_core::rng::Rng;
 use laser_core::scale::{Scale, ScaleSource};
 use laser_core::survey::{Run, Session};
+use laser_core::synth::Surface;
 
 /// Longest side of the preview image, px.
 const PREVIEW_PX: usize = 1280;
@@ -23,6 +26,8 @@ const PREVIEW_PX: usize = 1280;
 pub const TRACE_S: f64 = 30.0;
 /// How often the drift status is worked out again, s.
 const STATUS_EVERY_S: f64 = 1.0;
+/// Time for the frames from before the simulated block moved to pass, s.
+const BLOCK_SETTLE_S: f64 = 0.3;
 
 /// Unix time now, s.
 pub fn unix_now() -> f64 {
@@ -218,6 +223,26 @@ pub struct Sampling {
     pub started_s: f64,
 }
 
+/// What the synthetic camera measures: a surface a little out of flat, and the block on it. The
+/// block goes to each station as it is sampled, and the line moves by that station's height.
+struct Bench {
+    block: Block,
+    surface: Surface,
+    /// Where the block lands each time it is put down.
+    rng: Rng,
+    /// (run, station) the block is on.
+    at: Option<(usize, usize)>,
+    /// Session time the block last moved, s.
+    moved_s: f64,
+}
+
+impl Bench {
+    fn new(block: Block) -> Self {
+        block.place(0.0);
+        Self { block, surface: Surface::default(), rng: Rng::new(0xb10c), at: None, moved_s: f64::NEG_INFINITY }
+    }
+}
+
 pub struct Engine {
     pub finder: FinderConfig,
     pub sensor: Sensor,
@@ -239,6 +264,8 @@ pub struct Engine {
     pub survey_error: Option<String>,
     /// Session time of the camera's first frame.
     base_s: f64,
+    /// The synthetic camera is open.
+    bench: Option<Bench>,
 }
 
 impl Engine {
@@ -262,6 +289,7 @@ impl Engine {
             sampling: None,
             survey_error: None,
             base_s: 0.0,
+            bench: None,
         }
     }
 
@@ -296,6 +324,7 @@ impl Engine {
 
     pub fn opening(&mut self, name: Option<&str>) {
         self.camera.state = CameraState::Opening(name.unwrap_or("the first camera").to_owned());
+        self.bench = None;
     }
 
     pub fn opened(
@@ -307,6 +336,7 @@ impl Engine {
         applied: Vec<Applied>,
     ) {
         let size_changed = self.camera.mode.is_some_and(|m| (m.width, m.height) != (mode.width, mode.height));
+        self.bench = None;
         self.camera = CameraView {
             state: CameraState::Open,
             device: Some(device),
@@ -375,7 +405,9 @@ impl Engine {
             self.status = Some(self.monitor.status(&self.plan));
             self.status_t = t;
         }
-        if let Some(s) = &mut self.sampling {
+        if let Some(s) = &mut self.sampling
+            && t >= s.started_s
+        {
             s.sampler.push(t, &p.fix);
             if s.sampler.done(t, &self.sample_rule, um_per_px) {
                 self.finish_sample();
@@ -386,7 +418,12 @@ impl Engine {
 
     /// Start a sample at `station`, replacing visit `replace` when given.
     pub fn take_sample(&mut self, station: usize, replace: Option<usize>) {
-        let t = self.frame_time().unwrap_or_else(|| self.now());
+        let mut t = self.frame_time().unwrap_or_else(|| self.now());
+        self.place_block(station);
+        if let Some(b) = &self.bench {
+            // Leave out the frames from before the block moved.
+            t = t.max(b.moved_s + BLOCK_SETTLE_S);
+        }
         self.survey_error = None;
         self.sampling = Some(Sampling { sampler: Sampler::new(t), station, replace, started_s: t });
     }
@@ -408,17 +445,49 @@ impl Engine {
         if let Err(e) = result {
             self.survey_error = Some(e.to_string());
         }
+        if let Some(next) = self.current_run().map(Run::next_station) {
+            self.place_block(next);
+        }
     }
 
     pub fn current_run(&self) -> Option<&Run> {
         self.session.runs.get(self.run)
     }
 
+    /// Measure a simulated surface from now on: `block` moves the synthetic camera's line by the
+    /// height of each station sampled.
+    pub fn simulate(&mut self, block: Block) {
+        self.bench = Some(Bench::new(block));
+    }
+
+    /// Put the synthetic camera's block on `station` of the run being measured, when it is not
+    /// there already. The line moves by the station's height on the simulated surface.
+    fn place_block(&mut self, station: usize) {
+        // On the frames' clock: frames already on their way were made before the move.
+        let now = self.frame_time().unwrap_or_else(|| self.now());
+        let (Some(bench), Some(run)) = (&mut self.bench, self.session.runs.get(self.run)) else { return };
+        if bench.at == Some((self.run, station)) || station >= run.stations.len() {
+            return;
+        }
+        let surface = &bench.surface;
+        let um = surface.seen_um(run, station) + surface.placement_um * bench.rng.normal();
+        let scale = &self.session.scale;
+        let sign = if scale.invert { -1.0 } else { 1.0 };
+        bench.block.place(sign * um / scale.um_per_px);
+        bench.at = Some((self.run, station));
+        bench.moved_s = now;
+    }
+
     /// Work on `session` from now on: a saved one, or a new one. The clock carries on from when
     /// the session was started, so new visits fit in with its old ones.
     pub fn load_session(&mut self, session: Session) {
         let session = prepared(session);
-        self.base_s += self.session.started_unix - session.started_unix;
+        let shift = self.session.started_unix - session.started_unix;
+        self.base_s += shift;
+        if let Some(b) = &mut self.bench {
+            b.at = None;
+            b.moved_s += shift;
+        }
         self.run = session.runs.len() - 1;
         self.invert = session.scale.invert;
         self.session = session;
@@ -447,6 +516,7 @@ mod tests {
     use laser_camera::FrameSource;
     use laser_camera::synthetic::Synthetic;
     use laser_core::scale::Scale;
+    use laser_core::survey::DriftCorrection;
 
     use super::*;
 
@@ -484,5 +554,40 @@ mod tests {
         assert!(engine.sampling.is_none(), "the sample should have ended");
         assert_eq!(engine.current_run().unwrap().visits.len(), 1, "{:?}", engine.survey_error);
         assert!(engine.trace.len() >= 19);
+    }
+
+    #[test]
+    fn the_synthetic_camera_reads_a_surface_station_by_station() {
+        let small = Synthetic::open(None).modes()[3];
+        let mut cam = Synthetic::open(Some(small));
+        cam.paced = false;
+        let block = Block::default();
+        cam.block = Some(block.clone());
+        let mut engine = Engine::new(Session::new(Scale::from_pixel_pitch(3.0)));
+        let (device, modes, mode, controls) = (cam.device().clone(), cam.modes().to_vec(), cam.mode(), cam.controls());
+        engine.opened(device, modes, mode, controls, Vec::new());
+        engine.simulate(block.clone());
+        engine.sample_rule = SampleRule { min_s: 1.0, max_s: 1.0, target_um: None };
+        let stations = engine.current_run().unwrap().stations.len();
+        // The zero, every station, and the zero again.
+        for k in 0..stations + 1 {
+            let station = engine.current_run().unwrap().next_station();
+            engine.take_sample(station, None);
+            while engine.sampling.is_some() {
+                let frame = cam.next_frame().unwrap();
+                engine.absorb(process(&frame, &engine.finder, false));
+            }
+            assert_eq!(engine.current_run().unwrap().visits.len(), k + 1, "{:?}", engine.survey_error);
+        }
+        let run = engine.current_run().unwrap();
+        let heights = run.heights(&engine.session.scale, DriftCorrection::Interpolate).unwrap();
+        let surface = Surface::default();
+        let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);
+        for h in &heights.stations {
+            let want = surface.seen_um(run, h.station);
+            assert!((h.height_um - want).abs() < 1.5, "station {}: {} µm, not {want}", h.station, h.height_um);
+            (lo, hi) = (lo.min(h.height_um), hi.max(h.height_um));
+        }
+        assert!(hi - lo > 3.0, "the surface should show: {lo}..{hi} µm");
     }
 }

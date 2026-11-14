@@ -4,7 +4,12 @@
 //! sharpening rings beside the beam; room-light flicker rolls bands through the frame unless the
 //! exposure is a whole number of flicker periods.
 //!
-//! It runs anywhere, the browser included, so the whole tool can be tried with no camera.
+//! It runs anywhere, the browser included, so the whole tool can be tried with no camera. While
+//! measuring, the app moves a simulated [`Block`] over a surface, and the line moves with it, so
+//! runs and their results have a shape to show.
+
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use laser_core::camera::{
     ControlId, ControlInfo, ControlMode, ControlSetting, ControlUnit, Mains, PixelFormat, VideoMode, pick_mode,
@@ -28,6 +33,30 @@ const FLICKER_GREY: f64 = 6.0;
 /// Size of the table of normal deviates the noise is drawn from.
 const NOISE_LEN: usize = 1 << 20;
 
+/// A simulated block on a surface, under the laser. A synthetic camera and the app that moves the
+/// block share it; the app runs on another thread. Clones are the same block.
+#[derive(Clone, Debug, Default)]
+pub struct Block(Arc<AtomicU64>);
+
+impl Block {
+    /// Move the block: the line moves by `shift_px` from the next frame on, px across it in the
+    /// mode open.
+    pub fn place(&self, shift_px: f64) {
+        self.0.store(shift_px.to_bits(), Ordering::Relaxed);
+    }
+
+    /// The shift the block puts on the line, px.
+    pub fn shift_px(&self) -> f64 {
+        f64::from_bits(self.0.load(Ordering::Relaxed))
+    }
+}
+
+impl PartialEq for Block {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
 /// What is in front of the sensor.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Scene {
@@ -49,11 +78,12 @@ pub struct Scene {
 }
 
 impl Default for Scene {
-    /// Warming up from 40 px off to 960 px with a 10 minute time constant.
+    /// Warming up from 10 px off to 960 px with a 90 s time constant: at 3 µm per px, the drift
+    /// monitor says Ready after about 5 minutes, for a 10 minute run and 1 µm.
     fn default() -> Self {
         Self {
             axis: LineAxis::Vertical,
-            drift: WarmUp { start: 1000.0, settled: 960.0, tau_s: 600.0, steps: Vec::new(), jitter: 0.05 },
+            drift: WarmUp { start: 970.0, settled: 960.0, tau_s: 90.0, steps: Vec::new(), jitter: 0.05 },
             sigma_px: 60.0,
             tilt: 0.0,
             beam: 150.0,
@@ -76,6 +106,8 @@ pub struct Synthetic {
     seq: u64,
     /// Wait for each frame's time, like a camera. Off for tests and in the browser.
     pub paced: bool,
+    /// The simulated block the line moves with. [`crate::open`] gives the camera one.
+    pub block: Option<Block>,
     #[cfg(not(target_arch = "wasm32"))]
     started: Option<std::time::Instant>,
 }
@@ -102,6 +134,7 @@ impl Synthetic {
             rng,
             seq: 0,
             paced: !cfg!(test) && !cfg!(target_arch = "wasm32"),
+            block: None,
             #[cfg(not(target_arch = "wasm32"))]
             started: None,
         }
@@ -137,7 +170,8 @@ impl Synthetic {
             LineAxis::Horizontal => (h, w),
         };
         let px = across_len as f64 / SCENE_ACROSS_PX;
-        let centre = s.drift.sample(t_s, &mut self.rng) * px;
+        let block = self.block.as_ref().map_or(0.0, Block::shift_px);
+        let centre = s.drift.sample(t_s, &mut self.rng) * px + block;
         let sigma = s.sigma_px * px;
         let mid = (along_len as f64 - 1.0) / 2.0;
 
@@ -232,6 +266,10 @@ fn default_controls() -> Vec<ControlInfo> {
 impl FrameSource for Synthetic {
     fn device(&self) -> &DeviceInfo {
         &self.device
+    }
+
+    fn block(&self) -> Option<Block> {
+        self.block.clone()
     }
 
     fn modes(&self) -> &[VideoMode] {

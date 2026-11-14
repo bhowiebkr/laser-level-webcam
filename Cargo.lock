@@ -535,7 +535,7 @@ dependencies = [
 
 [[package]]
 name = "browser-check"
-version = "2.0.0-alpha.1"
+version = "2.0.0-alpha.2"
 dependencies = [
  "js-sys",
  "laser-camera",
@@ -1848,7 +1848,7 @@ dependencies = [
 
 [[package]]
 name = "laser"
-version = "2.0.0-alpha.1"
+version = "2.0.0-alpha.2"
 dependencies = [
  "anyhow",
  "clap",
@@ -1861,12 +1861,13 @@ dependencies = [
 
 [[package]]
 name = "laser-camera"
-version = "2.0.0-alpha.1"
+version = "2.0.0-alpha.2"
 dependencies = [
  "block2 0.6.2",
  "dispatch2",
  "js-sys",
  "laser-core",
+ "libc",
  "objc2 0.6.5",
  "objc2-av-foundation",
  "objc2-core-foundation",
@@ -1882,7 +1883,7 @@ dependencies = [
 
 [[package]]
 name = "laser-core"
-version = "2.0.0-alpha.1"
+version = "2.0.0-alpha.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -1890,7 +1891,7 @@ dependencies = [
 
 [[package]]
 name = "laser-level-webcam"
-version = "2.0.0-alpha.1"
+version = "2.0.0-alpha.2"
 dependencies = [
  "eframe",
  "js-sys",
@@ -2404,7 +2405,6 @@ checksum = "e3e0adef53c21f888deb4fa59fc59f7eb17404926ee8a6f59f5df0fd7f9f3272"
 dependencies = [
  "bitflags 2.13.2",
  "block2 0.6.2",
- "libc",
  "objc2 0.6.5",
  "objc2-core-foundation",
 ]
@@ -2612,7 +2612,7 @@ dependencies = [
 
 [[package]]
 name = "pack"
-version = "2.0.0-alpha.1"
+version = "2.0.0-alpha.2"
 dependencies = [
  "flate2",
  "png",

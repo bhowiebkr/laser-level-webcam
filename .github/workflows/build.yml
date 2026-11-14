@@ -1,0 +1,179 @@
+# Tests on Windows, Linux and macOS, and builds the release files for each.
+# Pushing a tag such as 2.0.0-alpha.2 (the version in Cargo.toml) also makes a draft release
+# with every file and their SHA-256 sums.
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["[0-9]*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  # The libraries winit and the window app link to, and pkg-config to find them.
+  LINUX_PACKAGES: >-
+    pkg-config libx11-dev libxcursor-dev libxrandr-dev libxi-dev libxkbcommon-dev
+    libwayland-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libgl1-mesa-dev
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-22.04, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Linux packages
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y $LINUX_PACKAGES
+      - name: Rust (the version in rust-toolchain.toml)
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Tests
+        run: cargo test --workspace --locked
+
+  windows:
+    name: Windows build
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Rust
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - name: WiX Toolset 5
+        run: |
+          $tools = "$env:USERPROFILE\.dotnet\tools"
+          $env:PATH = "$tools;$env:PATH"
+          Add-Content $env:GITHUB_PATH $tools
+          dotnet tool install --global wix --version 5.0.2
+          wix extension add --global WixToolset.UI.wixext/5.0.2
+          wix extension add --global WixToolset.Util.wixext/5.0.2
+      - name: Installer
+        run: powershell -ExecutionPolicy Bypass -File packaging/windows/build-msi.ps1
+      - name: Zip
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path Cargo.toml -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
+          Compress-Archive -Path target\release\laser-level-webcam.exe, target\release\laser.exe, LICENSE, README.md `
+            -DestinationPath "dist\laser-level-webcam-$version-windows-x64.zip"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows
+          path: |
+            dist/*.msi
+            dist/*.zip
+          if-no-files-found: error
+
+  linux:
+    name: Linux build
+    needs: test
+    # The oldest supported runner, so the programs run on any Linux with glibc 2.35 or newer.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Linux packages
+        run: sudo apt-get update && sudo apt-get install -y $LINUX_PACKAGES
+      - name: Rust
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - name: Archive
+        run: bash packaging/linux/build-tar.sh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  macos:
+    name: macOS build
+    needs: test
+    runs-on: macos-latest
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+    steps:
+      - uses: actions/checkout@v7
+      - name: Rust, for Apple silicon and Intel
+        run: |
+          rustup toolchain install
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+      - name: App
+        run: bash packaging/macos/build-app.sh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: macos
+          path: dist/*.zip
+          if-no-files-found: error
+
+  web:
+    name: Browser build
+    needs: test
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Rust, for WebAssembly
+        run: |
+          rustup toolchain install
+          rustup target add wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - name: trunk
+        run: |
+          curl -fsSL https://github.com/trunk-rs/trunk/releases/download/v0.22.1/trunk-x86_64-unknown-linux-gnu.tar.gz \
+            | tar -xz -C "$HOME/.cargo/bin"
+          trunk --version
+      - name: Clippy (WebAssembly)
+        run: cargo clippy -p laser-level-webcam -p laser-camera -p laser-core --target wasm32-unknown-unknown --locked -- -D warnings
+      - name: One-file page
+        run: cargo run --release --locked -p pack -- web
+      - uses: actions/upload-artifact@v7
+        with:
+          name: web
+          path: dist/*.html
+          if-no-files-found: error
+
+  release:
+    name: Draft release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [windows, linux, macos, web]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: The tag matches the version
+        run: |
+          version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)"
+          if [ "$version" != "$GITHUB_REF_NAME" ]; then
+            echo "The tag $GITHUB_REF_NAME is not the version in Cargo.toml ($version)."
+            exit 1
+          fi
+      - uses: actions/download-artifact@v8
+        with:
+          path: out
+          merge-multiple: true
+      - name: SHA-256 sums
+        working-directory: out
+        run: |
+          sha256sum -- * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flags=(--draft --title "$GITHUB_REF_NAME" --notes "Builds for Windows, macOS, Linux and the browser.")
+          case "$GITHUB_REF_NAME" in *-*) flags+=(--prerelease) ;; esac
+          gh release create "$GITHUB_REF_NAME" out/* --verify-tag "${flags[@]}"

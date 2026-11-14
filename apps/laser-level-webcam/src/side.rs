@@ -93,6 +93,16 @@ fn aspect(w: u32, h: u32) -> String {
 fn format_text(f: PixelFormat, source: Source) -> (&'static str, &'static str) {
     match (f, source) {
         #[cfg(target_os = "macos")]
+        (PixelFormat::Yuyv, Source::MacOS) => (
+            "YUYV source, macOS luma",
+            "AVFoundation reports a YUYV source format and supplies NV12 luma. USB transport descriptors are unavailable; this is not raw sensor data.",
+        ),
+        #[cfg(target_os = "macos")]
+        (PixelFormat::Mjpeg, Source::MacOS) => (
+            "MJPEG, decoded by macOS",
+            "AVFoundation decodes this source format and supplies NV12 luma. JPEG compression can change the beam profile.",
+        ),
+        #[cfg(target_os = "macos")]
         (PixelFormat::Nv12, Source::MacOS) => (
             "NV12, supplied by macOS",
             "Luma from AVFoundation. The camera's USB encoding is unknown and may include compression; this is not raw sensor data.",

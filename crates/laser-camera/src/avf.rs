@@ -1,25 +1,66 @@
-//! macOS capture. AVFoundation supplies decoded NV12, not USB transport descriptors or raw
-//! sensor data. Its macOS API exposes auto/lock modes, but not numeric exposure, focus or
-//! white-balance values. Report those honestly as mode-only controls.
+//! Mac cameras through AVFoundation.
+//!
+//! A camera is an `AVCaptureDevice` for video. The modes are its formats, each at the fastest and
+//! slowest ends of its frame rates. Frames come from an `AVCaptureVideoDataOutput` as bi-planar
+//! 4:2:0, so the luma is the first plane as it is: for a camera that sends YUV the luma is the
+//! camera's own, and only an MJPEG mode is decoded (by macOS) on the way. Supported exposure,
+//! focus and white-balance auto/lock modes are queried per device; numeric values are unavailable.
 #![allow(unsafe_code)]
 
-use std::sync::{Condvar, Mutex, mpsc};
+use std::sync::mpsc::{Receiver, RecvTimeoutError, SyncSender, sync_channel};
 use std::time::Duration;
 
 use block2::RcBlock;
 use dispatch2::{DispatchQueue, DispatchRetained};
-use objc2::rc::{Retained, autoreleasepool};
-use objc2::runtime::{Bool, ProtocolObject};
-use objc2::{AnyThread, DefinedClass, define_class, msg_send};
-use objc2_av_foundation::*;
-use objc2_core_media::{CMSampleBuffer, CMTime, CMVideoFormatDescriptionGetDimensions};
-use objc2_core_video::*;
-use objc2_foundation::{NSArray, NSBundle, NSDictionary, NSNumber, NSObject, NSObjectProtocol, NSString, ns_string};
-
-use crate::{Backend, CameraError, DeviceInfo, Frame, FrameSource};
 use laser_core::camera::{
     ControlId, ControlInfo, ControlMode, ControlSetting, ControlUnit, PixelFormat, VideoMode, pick_mode,
 };
+use objc2::rc::{Retained, autoreleasepool};
+use objc2::runtime::{AnyObject, Bool, NSObject, NSObjectProtocol, ProtocolObject};
+use objc2::{AnyThread, DefinedClass, define_class, msg_send};
+use objc2_av_foundation::{
+    AVAuthorizationStatus, AVCaptureConnection, AVCaptureDevice, AVCaptureDeviceFormat, AVCaptureDeviceInput,
+    AVCaptureExposureMode, AVCaptureFocusMode, AVCaptureOutput, AVCaptureSession, AVCaptureVideoDataOutput,
+    AVCaptureVideoDataOutputSampleBufferDelegate, AVCaptureWhiteBalanceMode, AVMediaTypeVideo,
+};
+use objc2_core_media::{CMSampleBuffer, CMTime, CMVideoFormatDescriptionGetDimensions};
+use objc2_core_video::{
+    CVPixelBufferGetBaseAddressOfPlane, CVPixelBufferGetBytesPerRowOfPlane, CVPixelBufferGetHeightOfPlane,
+    CVPixelBufferGetPixelFormatType, CVPixelBufferGetWidthOfPlane, CVPixelBufferLockBaseAddress,
+    CVPixelBufferLockFlags, CVPixelBufferUnlockBaseAddress, kCVPixelBufferHeightKey, kCVPixelBufferPixelFormatTypeKey,
+    kCVPixelBufferWidthKey, kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
+    kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
+};
+use objc2_foundation::{NSBundle, NSDictionary, NSNumber, NSString, ns_string};
+
+use crate::{Backend, CameraError, Clock, DeviceInfo, Frame, FrameSource};
+
+/// Frames waiting to be read. More than this and the newest are dropped, which the frame numbers show.
+const QUEUE: usize = 3;
+
+const fn fourcc(s: &[u8; 4]) -> u32 {
+    u32::from_be_bytes(*s)
+}
+
+/// What a format sends, as this tool names it. Formats it cannot read give `None`.
+fn format_of(subtype: u32) -> Option<PixelFormat> {
+    match subtype {
+        x if x == fourcc(b"420v") || x == fourcc(b"420f") => Some(PixelFormat::Nv12),
+        // YUY2 and UYVY: the luma is every other byte either way.
+        x if x == fourcc(b"yuvs") || x == fourcc(b"2vuy") => Some(PixelFormat::Yuyv),
+        x if x == fourcc(b"dmb1") || x == fourcc(b"jpeg") => Some(PixelFormat::Mjpeg),
+        _ => None,
+    }
+}
+
+fn video() -> &'static NSString {
+    // SAFETY: AVMediaTypeVideo is a constant string AVFoundation always defines.
+    unsafe { AVMediaTypeVideo }.expect("AVFoundation defines AVMediaTypeVideo")
+}
+
+fn seconds(t: CMTime) -> f64 {
+    if t.timescale > 0 { t.value as f64 / f64::from(t.timescale) } else { 0.0 }
+}
 
 fn os(message: impl ToString) -> CameraError {
     CameraError::Os(message.to_string())
@@ -48,380 +89,324 @@ impl Drop for ConfigurationLock {
     }
 }
 
-pub fn devices() -> Vec<DeviceInfo> {
-    autoreleasepool(|_| {
-        // SAFETY: discovery is synchronous; the returned objects stay alive while read. The
-        // external-unknown name is the pre-macOS-14 alias and also works on newer systems.
-        unsafe {
-            #[allow(deprecated)]
-            let types =
-                NSArray::from_slice(&[AVCaptureDeviceTypeBuiltInWideAngleCamera, AVCaptureDeviceTypeExternalUnknown]);
-            AVCaptureDeviceDiscoverySession::discoverySessionWithDeviceTypes_mediaType_position(
-                &types,
-                AVMediaTypeVideo,
-                AVCaptureDevicePosition::Unspecified,
-            )
-            .devices()
-            .iter()
-            .map(|d| DeviceInfo {
-                name: d.localizedName().to_string(),
-                id: d.uniqueID().to_string(),
-                backend: Backend::AvFoundation,
-            })
-            .collect()
-        }
-    })
-}
-
-fn authorize() -> Result<(), CameraError> {
-    // SAFETY: only video is requested. Both shipped executables embed NSCameraUsageDescription.
-    // The completion block owns its sender and can safely outlive a timed-out request.
-    unsafe {
-        let video = AVMediaTypeVideo.ok_or_else(|| os("AVFoundation video capture is unavailable"))?;
-        let status = AVCaptureDevice::authorizationStatusForMediaType(video);
-        if status == AVAuthorizationStatus::Authorized {
-            return Ok(());
-        }
-        if status == AVAuthorizationStatus::NotDetermined {
-            if NSBundle::mainBundle().objectForInfoDictionaryKey(ns_string!("NSCameraUsageDescription")).is_none() {
-                return Err(os(
-                    "This executable must include NSCameraUsageDescription before requesting camera access",
-                ));
-            }
-            let (tx, rx) = mpsc::channel();
-            let block = RcBlock::new(move |allowed: Bool| {
-                let _ = tx.send(allowed.as_bool());
-            });
-            AVCaptureDevice::requestAccessForMediaType_completionHandler(video, &block);
-            match rx.recv_timeout(Duration::from_secs(60)) {
-                Ok(true) => return Ok(()),
-                Err(_) => {
-                    return Err(os(
-                        "Camera permission is still pending. Allow access in the macOS prompt, then open the camera again.",
-                    ));
-                }
-                Ok(false) => {}
-            }
-        }
-        Err(os(
-            "Camera access is denied or restricted. Allow this app (or its terminal) in System Settings > Privacy & Security > Camera, then reopen it.",
-        ))
-    }
-}
-
-/// Pick common rates within each native format's advertised ranges, including both endpoints.
-fn rates(min: f64, max: f64) -> Vec<f64> {
-    if !min.is_finite() || !max.is_finite() || min <= 0.0 || max < min {
-        return Vec::new();
-    }
-    let mut out = vec![min, max];
-    out.extend([5., 10., 15., 24., 25., 30., 60.].into_iter().filter(|r| *r >= min && *r <= max));
-    out.sort_by(f64::total_cmp);
-    out.dedup_by(|a, b| (*a - *b).abs() < 0.001);
-    out
-}
-
-struct NativeMode {
+/// One mode, with the format and frame time that give it.
+struct Offer {
     mode: VideoMode,
     format: Retained<AVCaptureDeviceFormat>,
     duration: CMTime,
 }
 
-fn modes(device: &AVCaptureDevice) -> Vec<NativeMode> {
-    let mut out: Vec<NativeMode> = Vec::new();
-    // SAFETY: these getters return retained metadata; dimensions are read from a video device.
-    unsafe {
-        for format in device.formats() {
-            let size = CMVideoFormatDescriptionGetDimensions(&format.formatDescription());
-            if size.width <= 0 || size.height <= 0 {
-                continue;
-            }
-            for range in format.videoSupportedFrameRateRanges() {
-                for fps in rates(range.minFrameRate(), range.maxFrameRate()) {
-                    let mode = VideoMode {
-                        width: size.width as u32,
-                        height: size.height as u32,
-                        fps,
-                        format: PixelFormat::Nv12,
-                    };
-                    // Preserve exact endpoint rationals: USB cameras often advertise e.g.
-                    // 1000000/30000030 seconds, and reject a rounded value just outside it.
-                    let duration = if fps == range.maxFrameRate() {
-                        range.minFrameDuration()
-                    } else if fps == range.minFrameRate() {
-                        range.maxFrameDuration()
-                    } else {
-                        CMTime::with_seconds(1.0 / fps, 1_000_000_000)
-                    };
-                    if !out.iter().any(|m| m.mode == mode) {
-                        out.push(NativeMode { mode, format: format.clone(), duration });
-                    }
+fn offers(device: &AVCaptureDevice) -> Vec<Offer> {
+    let mut out: Vec<Offer> = Vec::new();
+    // SAFETY: plain property reads on a live device.
+    for format in unsafe { device.formats() }.iter() {
+        let desc = unsafe { format.formatDescription() };
+        let Some(pixel) = format_of(unsafe { desc.media_sub_type() }) else {
+            continue;
+        };
+        let dims = unsafe { CMVideoFormatDescriptionGetDimensions(&desc) };
+        let (Ok(width), Ok(height)) = (u32::try_from(dims.width), u32::try_from(dims.height)) else {
+            continue;
+        };
+        if width == 0 || height == 0 {
+            continue;
+        }
+        for range in unsafe { format.videoSupportedFrameRateRanges() }.iter() {
+            let ends = unsafe {
+                [(range.maxFrameRate(), range.minFrameDuration()), (range.minFrameRate(), range.maxFrameDuration())]
+            };
+            for (fps, duration) in ends {
+                if fps < 0.5 {
+                    continue;
+                }
+                let mode = VideoMode { width, height, fps, format: pixel };
+                let same = |o: &Offer| {
+                    o.mode.width == width
+                        && o.mode.height == height
+                        && o.mode.format == pixel
+                        && (o.mode.fps - fps).abs() < 0.5
+                };
+                if !out.iter().any(same) {
+                    out.push(Offer { mode, format: format.clone(), duration });
                 }
             }
         }
     }
+    // Some devices also advertise NV12 aliases of their packed-YUV modes. These can
+    // acknowledge a frame duration while continuing to deliver at another rate. Prefer
+    // the equivalent packed-YUV source; the output still supplies NV12 luma in either case.
+    let packed: Vec<_> = out.iter().filter(|o| o.mode.format == PixelFormat::Yuyv).map(|o| o.mode).collect();
+    out.retain(|o| {
+        o.mode.format != PixelFormat::Nv12
+            || !packed
+                .iter()
+                .any(|m| m.width == o.mode.width && m.height == o.mode.height && (m.fps - o.mode.fps).abs() < 0.5)
+    });
     out
 }
 
-#[derive(Default)]
-struct Mailbox {
-    latest: Option<Result<Frame, CameraError>>,
-    clock: FrameClock,
+fn video_devices() -> Vec<Retained<AVCaptureDevice>> {
+    // SAFETY: a class method with a valid media type. It is deprecated for the discovery
+    // session, which needs a list of device types per macOS version; this one lists them all.
+    #[allow(deprecated)]
+    let all = unsafe { AVCaptureDevice::devicesWithMediaType(video()) };
+    all.iter().collect()
 }
 
-/// Use presentation times, not callback arrival times, so lost frames remain visible as gaps.
-#[derive(Default)]
-struct FrameClock {
-    first: Option<f64>,
-    last_t: f64,
-    last_seq: u64,
+/// The cameras macOS lists, by name, with the ones this tool cannot read left out.
+pub fn devices() -> Vec<DeviceInfo> {
+    autoreleasepool(|_| {
+        let mut out: Vec<DeviceInfo> = Vec::new();
+        for d in video_devices() {
+            if offers(&d).is_empty() {
+                continue;
+            }
+            // SAFETY: plain property reads.
+            let (mut name, id) = unsafe { (d.localizedName().to_string(), d.uniqueID().to_string()) };
+            let base = name.clone();
+            let mut n = 2;
+            while out.iter().any(|o| o.name == name) {
+                name = format!("{base} ({n})");
+                n += 1;
+            }
+            out.push(DeviceInfo { name, id, backend: Backend::AvFoundation });
+        }
+        out
+    })
 }
 
-impl FrameClock {
-    fn stamp(&mut self, timestamp: f64, fps: f64) -> Result<(f64, u64), CameraError> {
-        if !timestamp.is_finite() {
-            return Err(os("The camera supplied an invalid frame timestamp"));
+/// Wait for macOS to say whether this app may use the camera, asking the user the first time.
+fn allowed() -> Result<(), CameraError> {
+    let denied = || {
+        CameraError::Os(
+            "macOS has not allowed this app the camera: turn it on in System Settings, Privacy & Security, Camera"
+                .into(),
+        )
+    };
+    // SAFETY: a class method with a valid media type.
+    match unsafe { AVCaptureDevice::authorizationStatusForMediaType(video()) } {
+        AVAuthorizationStatus::Authorized => Ok(()),
+        AVAuthorizationStatus::NotDetermined => {
+            if NSBundle::mainBundle().objectForInfoDictionaryKey(ns_string!("NSCameraUsageDescription")).is_none() {
+                return Err(os(
+                    "This executable must include NSCameraUsageDescription before requesting camera access",
+                ));
+            }
+            let (tx, rx) = sync_channel::<bool>(1);
+            let answer = RcBlock::new(move |granted: Bool| {
+                let _ = tx.try_send(granted.as_bool());
+            });
+            // SAFETY: the block lives until macOS calls it; it only sends on a channel.
+            unsafe { AVCaptureDevice::requestAccessForMediaType_completionHandler(video(), &answer) };
+            match rx.recv_timeout(Duration::from_secs(600)) {
+                Ok(true) => Ok(()),
+                _ => Err(denied()),
+            }
         }
-        let Some(first) = self.first else {
-            self.first = Some(timestamp);
-            return Ok((0.0, 0));
-        };
-        let t = timestamp - first;
-        if t <= self.last_t {
-            return Err(os("The camera's frame clock stopped or moved backwards"));
-        }
-        let seq = ((t * fps).round() as u64).max(self.last_seq + 1);
-        self.last_t = t;
-        self.last_seq = seq;
-        Ok((t, seq))
+        _ => Err(denied()),
     }
 }
 
-struct DelegateState {
-    mailbox: Mutex<Mailbox>,
-    ready: Condvar,
-    fps: f64,
+/// A frame as it left the capture queue.
+struct Shot {
+    width: usize,
+    height: usize,
+    data: Vec<u8>,
+    t_s: f64,
+}
+
+struct Ivars {
+    tx: SyncSender<Shot>,
 }
 
 define_class!(
+    // SAFETY: NSObject has no subclassing requirements, and Frames does not implement Drop.
     #[unsafe(super(NSObject))]
-    #[name = "LaserVideoDelegate"]
-    #[ivars = DelegateState]
-    struct VideoDelegate;
+    #[name = "LaserLevelWebcamFrames"]
+    #[ivars = Ivars]
+    struct Frames;
 
-    unsafe impl NSObjectProtocol for VideoDelegate {}
-    unsafe impl AVCaptureVideoDataOutputSampleBufferDelegate for VideoDelegate {
+    unsafe impl NSObjectProtocol for Frames {}
+
+    unsafe impl AVCaptureVideoDataOutputSampleBufferDelegate for Frames {
         #[unsafe(method(captureOutput:didOutputSampleBuffer:fromConnection:))]
-        unsafe fn frame(&self, _output: &AVCaptureOutput, sample: &CMSampleBuffer, _connection: &AVCaptureConnection) {
-            // SAFETY: AVFoundation lends the sample for this callback; copy pixels before returning.
-            let result = unsafe { copy_frame(sample) };
-            let state = self.ivars();
-            let Ok(mut mail) = state.mailbox.lock() else { return };
-            let result = result.and_then(|(mut frame, timestamp)| {
-                let (t, seq) = mail.clock.stamp(timestamp, state.fps)?;
-                frame.t_s = t;
-                frame.seq = seq;
-                Ok(frame)
-            });
-            // Keep at most one full frame. A slow reader gets the newest; timestamp gaps count loss.
-            mail.latest = Some(result);
-            state.ready.notify_one();
+        fn did_output(&self, _output: &AVCaptureOutput, buffer: &CMSampleBuffer, _connection: &AVCaptureConnection) {
+            if let Some(shot) = copy_luma(buffer) {
+                // Full: the reader is behind, so this frame is dropped.
+                let _ = self.ivars().tx.try_send(shot);
+            }
         }
     }
 );
 
-/// Copy a padded Y plane without interpreting its chroma or modifying its range.
-fn copy_rows(bytes: &[u8], width: usize, height: usize, stride: usize) -> Result<Vec<u8>, CameraError> {
-    let needed = height.checked_sub(1).and_then(|h| h.checked_mul(stride)).and_then(|n| n.checked_add(width));
-    if width == 0 || stride < width || needed.is_none_or(|n| n > bytes.len()) {
-        return Err(os("Invalid camera luma plane dimensions"));
+impl Frames {
+    fn new(tx: SyncSender<Shot>) -> Retained<Self> {
+        let this = Self::alloc().set_ivars(Ivars { tx });
+        // SAFETY: NSObject's init on a freshly allocated object.
+        unsafe { msg_send![super(this), init] }
     }
-    let mut data = Vec::with_capacity(width.checked_mul(height).ok_or_else(|| os("Camera frame is too large"))?);
-    for row in 0..height {
-        data.extend_from_slice(&bytes[row * stride..row * stride + width]);
-    }
-    Ok(data)
 }
 
-unsafe fn copy_frame(sample: &CMSampleBuffer) -> Result<(Frame, f64), CameraError> {
-    // SAFETY: called only with the live sample supplied by AVFoundation. A successful buffer
-    // lock is paired with an unlock even on validation failure; the borrowed bytes never escape.
+/// The luma plane of a bi-planar 4:2:0 frame, row by row without the padding.
+fn copy_luma(buffer: &CMSampleBuffer) -> Option<Shot> {
+    // SAFETY: the sample buffer is live for this call; the pixel buffer is locked while read.
     unsafe {
-        let buffer = sample.image_buffer().ok_or_else(|| os("The camera supplied no pixel buffer"))?;
-        let format = CVPixelBufferGetPixelFormatType(&buffer);
-        if ![kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange, kCVPixelFormatType_420YpCbCr8BiPlanarFullRange]
-            .contains(&format)
-            || CVPixelBufferGetPlaneCount(&buffer) != 2
+        let t_s = seconds(buffer.presentation_time_stamp());
+        let image = buffer.image_buffer()?;
+        let kind = CVPixelBufferGetPixelFormatType(&image);
+        if kind != kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
+            && kind != kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
         {
-            return Err(os("AVFoundation did not deliver the requested NV12 frames"));
+            return Some(Shot { width: 0, height: 0, data: Vec::new(), t_s });
         }
-        if CVPixelBufferLockBaseAddress(&buffer, CVPixelBufferLockFlags::ReadOnly) != 0 {
-            return Err(os("Could not lock camera pixels"));
+        if CVPixelBufferLockBaseAddress(&image, CVPixelBufferLockFlags::ReadOnly) != 0 {
+            return None;
         }
-        let result = (|| {
-            let width = CVPixelBufferGetWidthOfPlane(&buffer, 0);
-            let height = CVPixelBufferGetHeightOfPlane(&buffer, 0);
-            let stride = CVPixelBufferGetBytesPerRowOfPlane(&buffer, 0);
-            let ptr = CVPixelBufferGetBaseAddressOfPlane(&buffer, 0);
-            let len = height
-                .checked_sub(1)
-                .and_then(|h| h.checked_mul(stride))
-                .and_then(|n| n.checked_add(width))
-                .filter(|n| *n <= isize::MAX as usize)
-                .ok_or_else(|| os("Invalid camera frame size"))?;
-            if ptr.is_null() || stride < width {
-                return Err(os("Invalid camera pixel buffer"));
+        let width = CVPixelBufferGetWidthOfPlane(&image, 0);
+        let height = CVPixelBufferGetHeightOfPlane(&image, 0);
+        let stride = CVPixelBufferGetBytesPerRowOfPlane(&image, 0);
+        let base = CVPixelBufferGetBaseAddressOfPlane(&image, 0).cast::<u8>();
+        let mut data = Vec::new();
+        if !base.is_null() && stride >= width {
+            data.reserve_exact(width * height);
+            for y in 0..height {
+                data.extend_from_slice(std::slice::from_raw_parts(base.add(y * stride), width));
             }
-            let data = copy_rows(std::slice::from_raw_parts(ptr.cast::<u8>(), len), width, height, stride)?;
-            Ok((Frame { width, height, data, t_s: 0.0, seq: 0 }, sample.presentation_time_stamp().seconds()))
-        })();
-        CVPixelBufferUnlockBaseAddress(&buffer, CVPixelBufferLockFlags::ReadOnly);
-        result
+        }
+        CVPixelBufferUnlockBaseAddress(&image, CVPixelBufferLockFlags::ReadOnly);
+        Some(Shot { width, height, data, t_s })
     }
 }
 
-pub struct AvCamera {
+pub struct AvfCamera {
     device: DeviceInfo,
-    camera: Retained<AVCaptureDevice>,
-    session: Retained<AVCaptureSession>,
-    output: Retained<AVCaptureVideoDataOutput>,
-    delegate: Retained<VideoDelegate>,
-    queue: DispatchRetained<DispatchQueue>,
     modes: Vec<VideoMode>,
     mode: VideoMode,
-    // macOS may renegotiate the sensor format when capture starts if this lock is released.
-    // Measurement needs stable settings; release the lock only after stopping the session.
+    session: Retained<AVCaptureSession>,
+    output: Retained<AVCaptureVideoDataOutput>,
+    _frames: Retained<Frames>,
+    _queue: DispatchRetained<DispatchQueue>,
+    rx: Receiver<Shot>,
+    clock: Clock,
+    camera: Retained<AVCaptureDevice>,
     _configuration: ConfigurationLock,
 }
 
-impl AvCamera {
+impl AvfCamera {
     pub fn open(device: &DeviceInfo, wanted: Option<&VideoMode>) -> Result<Self, CameraError> {
-        native(authorize)?;
-        native(|| {
-            autoreleasepool(|_| {
-                // SAFETY: all configuration stays on the opening thread. Session, device, delegate
-                // and serial callback queue are retained for the whole capture lifetime.
-                unsafe {
-                    let camera = AVCaptureDevice::deviceWithUniqueID(&NSString::from_str(&device.id))
-                        .ok_or_else(|| CameraError::NotFound(device.name.clone()))?;
-                    let native = modes(&camera);
-                    let modes: Vec<_> = native.iter().map(|m| m.mode).collect();
-                    let mode = pick_mode(&modes, wanted).ok_or(CameraError::NoMode)?;
-                    if let Some(wanted) = wanted.filter(|w| laser_core::camera::find_mode(&modes, w).is_none()) {
-                        return Err(os(format!("The camera does not offer {wanted} through AVFoundation")));
-                    }
-                    let selected = native.iter().find(|m| m.mode == mode).ok_or(CameraError::NoMode)?;
-                    let input = AVCaptureDeviceInput::deviceInputWithDevice_error(&camera).map_err(os)?;
-                    let session = AVCaptureSession::new();
-                    let output = AVCaptureVideoDataOutput::new();
-                    session.beginConfiguration();
-                    if !session.canAddInput(&input) {
-                        return Err(os("Cannot add this camera to a capture session"));
-                    }
-                    session.addInput(&input);
-                    if !session.canAddOutput(&output) {
-                        return Err(os("Cannot add video output to the capture session"));
-                    }
-                    session.addOutput(&output);
-                    session.commitConfiguration();
-                    // InputPriority is an iOS-only preset. On macOS configure the device directly.
-                    let configuration = ConfigurationLock::new(&camera)?;
-                    camera.setActiveFormat(&selected.format);
-                    let duration = selected.duration;
-                    camera.setActiveVideoMinFrameDuration(duration);
-                    camera.setActiveVideoMaxFrameDuration(duration);
-                    let available = output.availableVideoCVPixelFormatTypes();
-                    let pixel = [
-                        kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
-                        kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
-                    ]
-                    .into_iter()
-                    .find(|p| available.iter().any(|v| v.unsignedIntValue() == *p))
-                    .ok_or(CameraError::NoMode)?;
-                    let key = NSString::from_str(&kCVPixelBufferPixelFormatTypeKey.to_string());
-                    let width_key = NSString::from_str(&kCVPixelBufferWidthKey.to_string());
-                    let height_key = NSString::from_str(&kCVPixelBufferHeightKey.to_string());
-                    let value = NSNumber::new_u32(pixel);
-                    let width = NSNumber::new_u32(mode.width);
-                    let height = NSNumber::new_u32(mode.height);
-                    output.setVideoSettings(Some(&NSDictionary::from_slices(
-                        &[&*key, &*width_key, &*height_key],
-                        &[&*value as &objc2::runtime::AnyObject, &*width, &*height],
-                    )));
-                    output.setAlwaysDiscardsLateVideoFrames(true);
-                    // On macOS the output connection has independent rate limits. Device-only
-                    // limits can still deliver 30 fps when the selected output mode is 5 fps.
-                    let connection = output
-                        .connectionWithMediaType(AVMediaTypeVideo.ok_or(CameraError::NoMode)?)
-                        .ok_or_else(|| os("No video connection for this camera"))?;
-                    #[allow(deprecated)] // Deprecated on iOS, supported on macOS.
-                    {
-                        if connection.isVideoMinFrameDurationSupported() {
-                            connection.setVideoMinFrameDuration(duration);
-                        }
-                        if connection.isVideoMaxFrameDurationSupported() {
-                            connection.setVideoMaxFrameDuration(duration);
-                        }
-                    }
-                    let queue = DispatchQueue::new("laser.camera.frames", None);
-                    let allocated = VideoDelegate::alloc().set_ivars(DelegateState {
-                        mailbox: Mutex::new(Mailbox::default()),
-                        ready: Condvar::new(),
-                        fps: mode.fps,
-                    });
-                    let delegate: Retained<VideoDelegate> = msg_send![super(allocated), init];
-                    output.setSampleBufferDelegate_queue(Some(ProtocolObject::from_ref(&*delegate)), Some(&queue));
-                    let capture = Self {
-                        device: device.clone(),
-                        camera,
-                        session,
-                        output,
-                        delegate,
-                        queue,
-                        modes,
-                        mode,
-                        _configuration: configuration,
-                    };
-                    capture.session.startRunning();
-                    if !capture.session.isRunning() {
-                        return Err(os("AVFoundation could not start the camera"));
-                    }
-                    let actual =
-                        CMVideoFormatDescriptionGetDimensions(&capture.camera.activeFormat().formatDescription());
-                    if (actual.width as u32, actual.height as u32) != (mode.width, mode.height) {
-                        return Err(os(format!(
-                            "The camera selected {}x{} instead of {}x{}",
-                            actual.width, actual.height, mode.width, mode.height
-                        )));
-                    }
-                    Ok(capture)
-                }
-            })
-        })
+        native(|| autoreleasepool(|_| Self::start(device, wanted)))
     }
-}
 
-impl Drop for AvCamera {
-    fn drop(&mut self) {
-        // SAFETY: stop new callbacks and drain the serial queue before releasing the delegate.
+    fn start(info: &DeviceInfo, wanted: Option<&VideoMode>) -> Result<Self, CameraError> {
+        // SAFETY: a class method with a valid string.
+        let device = unsafe { AVCaptureDevice::deviceWithUniqueID(&NSString::from_str(&info.id)) }
+            .ok_or_else(|| CameraError::NotFound(info.name.clone()))?;
+        let offers = offers(&device);
+        let modes: Vec<VideoMode> = offers.iter().map(|o| o.mode).collect();
+        let mode = pick_mode(&modes, wanted).ok_or(CameraError::NoMode)?;
+        let offer = offers.iter().find(|o| o.mode == mode).ok_or(CameraError::NoMode)?;
+        allowed()?;
+
+        let (tx, rx) = sync_channel(QUEUE);
+        let frames = Frames::new(tx);
+        let queue = DispatchQueue::new("laser-level-webcam.camera", None);
+        // SAFETY: the calls below configure objects this function owns, in the order AVFoundation
+        // documents: input and output inside a configuration, then the format with the device
+        // locked across startRunning, so the session does not put its own preset back.
         unsafe {
-            self.output.setSampleBufferDelegate_queue(None, None);
-            self.session.stopRunning();
+            let session = AVCaptureSession::new();
+            let input = AVCaptureDeviceInput::deviceInputWithDevice_error(&device).map_err(|e| os(&e))?;
+            let output = AVCaptureVideoDataOutput::new();
+            output.setAlwaysDiscardsLateVideoFrames(true);
+            let key = |k: &'static objc2_core_foundation::CFString| -> &'static NSString {
+                // CFString and NSString are the same object (toll-free bridged).
+                &*(std::ptr::from_ref(k).cast::<NSString>())
+            };
+            let pixel = NSNumber::new_u32(kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange);
+            let width = NSNumber::new_u32(mode.width);
+            let height = NSNumber::new_u32(mode.height);
+            let settings = NSDictionary::<NSString, AnyObject>::from_slices(
+                &[key(kCVPixelBufferPixelFormatTypeKey), key(kCVPixelBufferWidthKey), key(kCVPixelBufferHeightKey)],
+                &[&*pixel, &*width, &*height],
+            );
+            output.setVideoSettings(Some(&settings));
+            output.setSampleBufferDelegate_queue(Some(ProtocolObject::from_ref(&*frames)), Some(&queue));
+
+            session.beginConfiguration();
+            if !session.canAddInput(&input) {
+                session.commitConfiguration();
+                return Err(CameraError::Os(format!("{} cannot be opened (is another app using it?)", info.name)));
+            }
+            session.addInput(&input);
+            if !session.canAddOutput(&output) {
+                session.commitConfiguration();
+                return Err(CameraError::Os("macOS refused the frame output".into()));
+            }
+            session.addOutput(&output);
+            session.commitConfiguration();
+
+            let configuration = ConfigurationLock::new(&device)?;
+            device.setActiveFormat(&offer.format);
+            device.setActiveVideoMinFrameDuration(offer.duration);
+            device.setActiveVideoMaxFrameDuration(offer.duration);
+            let duration = offer.duration;
+            let capture = Self {
+                device: info.clone(),
+                modes,
+                mode,
+                session,
+                output,
+                _frames: frames,
+                _queue: queue,
+                rx,
+                clock: Clock::default(),
+                camera: device,
+                // Keep measurement settings stable until the session has stopped.
+                _configuration: configuration,
+            };
+            // macOS applies an independent frame-rate limit on the output connection.
+            let connection = capture
+                .output
+                .connectionWithMediaType(video())
+                .ok_or_else(|| os("No video connection for this camera"))?;
+            #[allow(deprecated)] // Deprecated on iOS; supported on macOS.
+            {
+                if connection.isVideoMinFrameDurationSupported() {
+                    connection.setVideoMinFrameDuration(duration);
+                }
+                if connection.isVideoMaxFrameDurationSupported() {
+                    connection.setVideoMaxFrameDuration(duration);
+                }
+            }
+            capture.session.startRunning();
+            if !capture.session.isRunning() {
+                return Err(os("AVFoundation could not start the camera"));
+            }
+            let actual = CMVideoFormatDescriptionGetDimensions(&capture.camera.activeFormat().formatDescription());
+            if (actual.width as u32, actual.height as u32) != (mode.width, mode.height) {
+                return Err(os(format!(
+                    "The camera selected {}x{} instead of {}x{}",
+                    actual.width, actual.height, mode.width, mode.height
+                )));
+            }
+            Ok(capture)
         }
-        self.queue.exec_sync(|| {});
     }
 }
 
-impl FrameSource for AvCamera {
+impl FrameSource for AvfCamera {
     fn device(&self) -> &DeviceInfo {
         &self.device
     }
+
     fn modes(&self) -> &[VideoMode] {
         &self.modes
     }
+
     fn mode(&self) -> VideoMode {
         self.mode
     }
+
     fn controls(&mut self) -> Vec<ControlInfo> {
         // SAFETY: getters only; unsupported modes are never exposed as settable controls.
         unsafe {
@@ -495,22 +480,43 @@ impl FrameSource for AvCamera {
         self.controls().into_iter().find(|c| c.id == setting.id).ok_or(CameraError::NoControl(setting.id))
     }
     fn next_frame(&mut self) -> Result<Frame, CameraError> {
-        let state = self.delegate.ivars();
-        let mail = state.mailbox.lock().map_err(|_| os("Camera frame queue failed"))?;
-        let (mut mail, _) = state
-            .ready
-            .wait_timeout_while(mail, Duration::from_secs(3), |m| m.latest.is_none())
-            .map_err(|_| os("Camera frame queue failed"))?;
-        let frame = mail.latest.take().ok_or_else(|| {
-            CameraError::Lost("no frames for 3 seconds; check the connection and camera permission".into())
-        })??;
-        if (frame.width, frame.height) != (self.mode.width as usize, self.mode.height as usize) {
-            return Err(os(format!(
-                "AVFoundation delivered {}x{} instead of {}x{}; select a supported camera mode again",
-                frame.width, frame.height, self.mode.width, self.mode.height
-            )));
+        // Long enough for the camera to start (and for the user to allow it), and for a few
+        // frames at its slowest.
+        let wait_s = if self.clock.started() { (5.0 / self.mode.fps.max(0.1)).max(3.0) } else { 10.0 };
+        let mut bad = 0;
+        loop {
+            let shot = match self.rx.recv_timeout(Duration::from_secs_f64(wait_s)) {
+                Ok(s) => s,
+                Err(RecvTimeoutError::Timeout) => return Err(CameraError::Lost(format!("no frame for {wait_s:.0} s"))),
+                Err(RecvTimeoutError::Disconnected) => return Err(CameraError::Lost("the capture stopped".into())),
+            };
+            if shot.width == 0 || shot.data.len() != shot.width * shot.height {
+                bad += 1;
+                if bad >= 10 {
+                    return Err(CameraError::Lost("macOS sends frames this tool cannot read".into()));
+                }
+                continue;
+            }
+            if (shot.width, shot.height) != (self.mode.width as usize, self.mode.height as usize) {
+                return Err(os(format!(
+                    "AVFoundation delivered {}x{} instead of {}x{}",
+                    shot.width, shot.height, self.mode.width, self.mode.height
+                )));
+            }
+            let (t_s, seq) = self.clock.stamp(shot.t_s, self.mode.fps);
+            return Ok(Frame { width: shot.width, height: shot.height, data: shot.data, t_s, seq });
         }
-        Ok(frame)
+    }
+}
+
+impl Drop for AvfCamera {
+    fn drop(&mut self) {
+        // SAFETY: stopRunning waits until the session has stopped; then no more frames come.
+        unsafe {
+            self.output.setSampleBufferDelegate_queue(None, None);
+            self.session.stopRunning();
+        }
+        self._queue.exec_sync(|| {});
     }
 }
 
@@ -530,29 +536,5 @@ mod tests {
         })
         .unwrap_err();
         assert!(error.to_string().contains("unsupported mode"));
-    }
-    #[test]
-    fn padded_luma_rows_are_copied_without_padding() {
-        assert_eq!(copy_rows(&[1, 2, 99, 99, 3, 4], 2, 2, 4).unwrap(), [1, 2, 3, 4]);
-        assert!(copy_rows(&[1, 2], 2, 2, 4).is_err());
-        assert!(copy_rows(&[1, 2], 2, 1, 1).is_err());
-        assert!(copy_rows(&[], 0, 0, 0).is_err());
-        assert!(copy_rows(&[], 2, usize::MAX, 4).is_err());
-    }
-    #[test]
-    fn presentation_clock_preserves_gaps_and_rejects_bad_times() {
-        let mut clock = FrameClock::default();
-        assert_eq!(clock.stamp(10.0, 30.).unwrap(), (0., 0));
-        assert_eq!(clock.stamp(10.1, 30.).unwrap().1, 3);
-        assert!(clock.stamp(10.1, 30.).is_err());
-        assert!(clock.stamp(9., 30.).is_err());
-        assert!(clock.stamp(f64::NAN, 30.).is_err());
-    }
-    #[test]
-    fn rates_stay_in_the_advertised_range() {
-        assert_eq!(rates(7.5, 29.97), [7.5, 10., 15., 24., 25., 29.97]);
-        assert_eq!(rates(30., 30.), [30.]);
-        assert!(rates(0., 30.).is_empty());
-        assert!(rates(30., 5.).is_empty());
     }
 }

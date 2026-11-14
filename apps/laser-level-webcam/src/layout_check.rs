@@ -99,6 +99,7 @@ fn busy_app(ctx: &egui::Context) -> (App, Synthetic) {
     let mut settings = AppSettings::default();
     settings.camera.device = Some("No such camera".into());
     let app = App::with(ctx, settings, None);
+    crate::app::wait_until_failed(&app);
     let small = Synthetic::open(None).modes()[3];
     let mut cam = Synthetic::open(Some(small));
     cam.paced = false;

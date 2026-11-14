@@ -74,13 +74,18 @@ def check(binary, camera, all_modes):
         with tempfile.TemporaryDirectory(prefix="laser-macos-check-") as directory:
             frame = Path(directory) / "frame.pgm"
             for mode in modes:
-                spec = f"{mode['width']}x{mode['height']}@{mode['fps']}:nv12"
+                spec = f"{mode['width']}x{mode['height']}@{mode['fps']}:{mode['format']}"
                 print(f"Checking {camera}: {spec}", file=sys.stderr, flush=True)
                 result = run(binary, camera, "--mode", spec, "--frames", "12", "--save", str(frame))
                 actual = result["mode"]
                 require((actual["width"], actual["height"]) == (mode["width"], mode["height"]), "wrong mode size")
                 require(abs(actual["fps"] - mode["fps"]) < 0.5, "wrong requested frame rate")
                 timing = verify_capture(result, 12)
+                if timing["delivered_fps"] > mode["fps"] * 1.15:
+                    # A short startup sample can be bursty. Confirm a suspected rate mismatch
+                    # over a longer window before rejecting the mode.
+                    result = run(binary, camera, "--mode", spec, "--frames", "60", "--save", str(frame))
+                    timing = verify_capture(result, 60)
                 require(timing["delivered_fps"] <= mode["fps"] * 1.15,
                         f"requested {mode['fps']} fps but received {timing['delivered_fps']}; output rate was not applied")
                 # PGM output verifies that the luma buffer has exactly the advertised dimensions.
