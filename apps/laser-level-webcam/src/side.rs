@@ -3,7 +3,7 @@
 
 use eframe::egui::{self, RichText};
 use laser_core::camera::{
-    self, ControlId, ControlInfo, ControlMode, ControlSetting, Mains, ModeScaling, PixelFormat, VideoMode,
+    self, ControlId, ControlInfo, ControlMode, ControlSetting, ControlUnit, Mains, ModeScaling, PixelFormat, VideoMode,
 };
 use laser_core::frame::Roi;
 
@@ -343,8 +343,12 @@ fn camera_section(app: &mut App, ui: &mut egui::Ui, e: &mut Engine) {
 
     ui.add_space(4.0);
     let lock = ui
-        .add(theme::primary("Lock for measuring"))
-        .on_hover_text("Every automatic control to manual, sharpening off, and the mains filter set. An automatic control moves the beam's brightness or shape while measuring.");
+        .add_enabled(!e.camera.controls.is_empty(), theme::primary("Lock for measuring"))
+        .on_hover_text("Every automatic control to manual, sharpening off, and the mains filter set. An automatic control moves the beam's brightness or shape while measuring.")
+        .on_disabled_hover_text("This camera gives no controls to lock.");
+    if e.camera.controls.is_empty() {
+        ui.label(theme::dim("This camera gives no controls, so it can change its exposure by itself.").small());
+    }
     if lock.clicked() {
         let settings = camera::for_measuring(&e.camera.controls, app.settings.camera.mains);
         for s in &settings {
@@ -415,6 +419,19 @@ fn control_row(app: &mut App, ui: &mut egui::Ui, info: &ControlInfo) {
             }
         });
     });
+    if info.unit == ControlUnit::ModeOnly {
+        // No number to set: automatic, or locked where it is.
+        let text = if auto_on {
+            "Automatic. Click Auto to lock it where it is."
+        } else {
+            "Locked where it is. The camera gives no value to set."
+        };
+        ui.label(theme::dim(text).small());
+        if let Some(mode) = asked {
+            set_control(app, id, mode);
+        }
+        return;
+    }
     let exposure = *info;
     let text = move |x: f64| match exposure.exposure_s(x as i64) {
         Some(s) if s < 1.0 => format!("{} ({:.2} ms)", x as i64, s * 1000.0),

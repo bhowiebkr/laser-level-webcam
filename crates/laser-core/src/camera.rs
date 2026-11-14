@@ -210,6 +210,8 @@ pub enum ControlUnit {
     Kelvin,
     /// 0 off, 1 is 50 Hz, 2 is 60 Hz, 3 is auto (USB video class).
     PowerLineMenu,
+    /// No number, only automatic or locked where it is (macOS). `Manual(0)` locks it.
+    ModeOnly,
 }
 
 /// A control as the camera reports it.
@@ -492,6 +494,18 @@ mod tests {
         assert_eq!(mode(ControlId::PowerLineFrequency), Some(ControlMode::Manual(2)));
         assert_eq!(mode(ControlId::Contrast), None);
         assert!(s.windows(2).all(|w| w[0].id < w[1].id));
+    }
+
+    #[test]
+    fn a_control_with_no_number_locks_where_it_is() {
+        let c = ControlInfo { auto: Some(true), unit: ControlUnit::ModeOnly, ..plain(ControlId::Exposure, 0, 0, 0) };
+        assert_eq!(
+            for_measuring(&[c], Mains::Hz50),
+            [ControlSetting { id: ControlId::Exposure, mode: ControlMode::Manual(0) }]
+        );
+        assert_eq!(c.exposure_s(0), None);
+        assert_eq!(next_exposure(&c, 0, 255.0, true), None);
+        assert_eq!(next_exposure(&c, 0, 10.0, false), None);
     }
 
     #[test]

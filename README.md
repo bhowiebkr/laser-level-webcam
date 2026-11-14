@@ -117,7 +117,7 @@ The zip file also contains `laser`, the [command-line tool](#the-command-line-to
 
 The differences from the Windows app are:
 
-- macOS gives the app no camera controls. Thus the Mac app has no exposure, gain or white balance settings, and no **Lock for measuring**. The camera keeps its automatic exposure.
+- macOS gives the app no values for the camera controls. **Exposure**, **White balance** and **Focus** are either **Auto** or locked where they are, if the camera allows both. **Lock for measuring** locks them. The Mac app has no gain and no other controls.
 - macOS decodes the frames of the camera. The app gets the luma from these frames. The **Format** list shows the formats that the camera sends.
 - macOS does not give the USB descriptors. Thus **What the camera reports** is not available, and the app finds a [saved sensor](#sensor) by the name of the camera.
 

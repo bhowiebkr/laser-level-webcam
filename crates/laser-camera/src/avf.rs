@@ -3,8 +3,13 @@
 //! A camera is an `AVCaptureDevice` for video. The modes are its formats, each at the fastest and
 //! slowest ends of its frame rates. Frames come from an `AVCaptureVideoDataOutput` as bi-planar
 //! 4:2:0, so the luma is the first plane as it is: for a camera that sends YUV the luma is the
-//! camera's own, and only an MJPEG mode is decoded (by macOS) on the way. macOS gives an app no
-//! way to set a USB camera's exposure, gain or white balance, so this camera has no controls.
+//! camera's own, and only an MJPEG mode is decoded (by macOS) on the way.
+//!
+//! macOS gives an app no numbers for a camera's exposure, focus or white balance, only automatic
+//! or locked where it is. Where the camera allows both, those are [`ControlUnit::ModeOnly`]
+//! controls. Gain and the rest are not offered. AVFoundation raises an Objective-C exception,
+//! which ends the program, for a mode the camera does not take, so every mode set here is one
+//! the camera says it allows.
 #![allow(unsafe_code)]
 
 use std::sync::mpsc::{Receiver, RecvTimeoutError, SyncSender, sync_channel};
@@ -12,14 +17,16 @@ use std::time::Duration;
 
 use block2::RcBlock;
 use dispatch2::{DispatchQueue, DispatchRetained};
-use laser_core::camera::{ControlInfo, ControlSetting, PixelFormat, VideoMode, pick_mode};
+use laser_core::camera::{
+    ControlId, ControlInfo, ControlMode, ControlSetting, ControlUnit, PixelFormat, VideoMode, pick_mode,
+};
 use objc2::rc::{Retained, autoreleasepool};
 use objc2::runtime::{AnyObject, Bool, NSObject, NSObjectProtocol, ProtocolObject};
 use objc2::{AnyThread, DefinedClass, define_class, msg_send};
 use objc2_av_foundation::{
     AVAuthorizationStatus, AVCaptureConnection, AVCaptureDevice, AVCaptureDeviceFormat, AVCaptureDeviceInput,
-    AVCaptureOutput, AVCaptureSession, AVCaptureVideoDataOutput, AVCaptureVideoDataOutputSampleBufferDelegate,
-    AVMediaTypeVideo,
+    AVCaptureExposureMode, AVCaptureFocusMode, AVCaptureOutput, AVCaptureSession, AVCaptureVideoDataOutput,
+    AVCaptureVideoDataOutputSampleBufferDelegate, AVCaptureWhiteBalanceMode, AVMediaTypeVideo,
 };
 use objc2_core_media::{CMSampleBuffer, CMTime, CMVideoFormatDescriptionGetDimensions};
 use objc2_core_video::{
@@ -62,6 +69,26 @@ fn seconds(t: CMTime) -> f64 {
 
 fn os(e: &objc2_foundation::NSError) -> CameraError {
     CameraError::Os(e.localizedDescription().to_string())
+}
+
+/// The camera, locked for configuration until this is dropped. It stays locked while the camera
+/// is open: unlocked, macOS can put its own format back once the capture runs, and the controls
+/// can be set only while it is locked.
+struct Locked(Retained<AVCaptureDevice>);
+
+impl Locked {
+    fn new(device: &Retained<AVCaptureDevice>) -> Result<Self, CameraError> {
+        // SAFETY: a plain call on a live device.
+        unsafe { device.lockForConfiguration() }.map_err(|e| os(&e))?;
+        Ok(Self(device.clone()))
+    }
+}
+
+impl Drop for Locked {
+    fn drop(&mut self) {
+        // SAFETY: this exists only once the lock was taken.
+        unsafe { self.0.unlockForConfiguration() };
+    }
 }
 
 /// One mode, with the format and frame time that give it.
@@ -240,6 +267,8 @@ fn copy_luma(buffer: &CMSampleBuffer) -> Option<Shot> {
 
 pub struct AvfCamera {
     device: DeviceInfo,
+    /// Dropped after `drop` has stopped the capture.
+    camera: Locked,
     modes: Vec<VideoMode>,
     mode: VideoMode,
     session: Retained<AVCaptureSession>,
@@ -303,15 +332,40 @@ impl AvfCamera {
             session.addOutput(&output);
             session.commitConfiguration();
 
-            device.lockForConfiguration().map_err(|e| os(&e))?;
+            // The format and its frame time are from the camera's own list.
+            let camera = Locked::new(&device)?;
             device.setActiveFormat(&offer.format);
             device.setActiveVideoMinFrameDuration(offer.duration);
             device.setActiveVideoMaxFrameDuration(offer.duration);
+            // The output has frame-time limits of its own. Without them a slow mode can still
+            // send frames at the camera's fastest rate.
+            if let Some(connection) = output.connectionWithMediaType(video()) {
+                #[allow(deprecated)] // For iOS; macOS still uses them.
+                {
+                    if connection.isVideoMinFrameDurationSupported() {
+                        connection.setVideoMinFrameDuration(offer.duration);
+                    }
+                    if connection.isVideoMaxFrameDurationSupported() {
+                        connection.setVideoMaxFrameDuration(offer.duration);
+                    }
+                }
+            }
             session.startRunning();
-            device.unlockForConfiguration();
+            if !session.isRunning() {
+                return Err(CameraError::Os(format!("macOS could not start {}", info.name)));
+            }
+            let now = CMVideoFormatDescriptionGetDimensions(&device.activeFormat().formatDescription());
+            if u32::try_from(now.width) != Ok(mode.width) || u32::try_from(now.height) != Ok(mode.height) {
+                session.stopRunning();
+                return Err(CameraError::Os(format!(
+                    "macOS opened {} at {}x{}, not {}x{}",
+                    info.name, now.width, now.height, mode.width, mode.height
+                )));
+            }
 
             Ok(Self {
                 device: info.clone(),
+                camera,
                 modes,
                 mode,
                 session,
@@ -339,11 +393,84 @@ impl FrameSource for AvfCamera {
     }
 
     fn controls(&mut self) -> Vec<ControlInfo> {
-        Vec::new()
+        let d = &*self.camera.0;
+        // SAFETY: plain property reads on a live device.
+        let found = unsafe {
+            [
+                (
+                    ControlId::Exposure,
+                    d.isExposureModeSupported(AVCaptureExposureMode::Locked)
+                        && d.isExposureModeSupported(AVCaptureExposureMode::ContinuousAutoExposure),
+                    d.exposureMode() == AVCaptureExposureMode::Locked,
+                ),
+                (
+                    ControlId::WhiteBalance,
+                    d.isWhiteBalanceModeSupported(AVCaptureWhiteBalanceMode::Locked)
+                        && d.isWhiteBalanceModeSupported(AVCaptureWhiteBalanceMode::ContinuousAutoWhiteBalance),
+                    d.whiteBalanceMode() == AVCaptureWhiteBalanceMode::Locked,
+                ),
+                (
+                    ControlId::Focus,
+                    d.isFocusModeSupported(AVCaptureFocusMode::Locked)
+                        && d.isFocusModeSupported(AVCaptureFocusMode::ContinuousAutoFocus),
+                    d.focusMode() == AVCaptureFocusMode::Locked,
+                ),
+            ]
+        };
+        found
+            .into_iter()
+            .filter(|&(_, both, _)| both)
+            .map(|(id, _, locked)| ControlInfo {
+                id,
+                min: 0,
+                max: 0,
+                step: 1,
+                default: 0,
+                value: 0,
+                auto: Some(!locked),
+                unit: ControlUnit::ModeOnly,
+            })
+            .collect()
     }
 
     fn set_control(&mut self, setting: ControlSetting) -> Result<ControlInfo, CameraError> {
-        Err(CameraError::NoControl(setting.id))
+        let auto = match setting.mode {
+            ControlMode::Auto => true,
+            ControlMode::Manual(0) => false,
+            ControlMode::Manual(_) => {
+                return Err(CameraError::Os(format!(
+                    "macOS gives no value for {}: it is automatic or locked where it is",
+                    setting.id.label().to_lowercase()
+                )));
+            }
+        };
+        let find = |s: &mut Self| s.controls().into_iter().find(|c| c.id == setting.id);
+        // Only a control the camera lists, so it allows both modes.
+        find(self).ok_or(CameraError::NoControl(setting.id))?;
+        let d = &*self.camera.0;
+        // SAFETY: the camera allows both modes of this control, and it is locked for
+        // configuration while it is open.
+        unsafe {
+            match setting.id {
+                ControlId::Exposure => d.setExposureMode(if auto {
+                    AVCaptureExposureMode::ContinuousAutoExposure
+                } else {
+                    AVCaptureExposureMode::Locked
+                }),
+                ControlId::WhiteBalance => d.setWhiteBalanceMode(if auto {
+                    AVCaptureWhiteBalanceMode::ContinuousAutoWhiteBalance
+                } else {
+                    AVCaptureWhiteBalanceMode::Locked
+                }),
+                ControlId::Focus => d.setFocusMode(if auto {
+                    AVCaptureFocusMode::ContinuousAutoFocus
+                } else {
+                    AVCaptureFocusMode::Locked
+                }),
+                _ => return Err(CameraError::NoControl(setting.id)),
+            }
+        }
+        find(self).ok_or(CameraError::NoControl(setting.id))
     }
 
     fn next_frame(&mut self) -> Result<Frame, CameraError> {
