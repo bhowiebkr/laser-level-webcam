@@ -1,0 +1,53 @@
+name: Pictures with real data
+description: Send pictures of the app with a real camera and laser, for the README.
+title: "[Pictures] "
+labels: [documentation, help wanted]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The README pictures of **1 Set up**, **2 Wait**, **3 Measure** and **4 Results** come from the Synthetic camera. Pictures from a real measurement show better what the app does. [CONTRIBUTING.md](https://github.com/bhowiebkr/laser-level-webcam/blob/main/CONTRIBUTING.md#pictures-with-real-data) tells how to take them.
+  - type: checkboxes
+    id: steps
+    attributes:
+      label: Steps in your pictures
+      options:
+        - label: 1 Set up
+        - label: 2 Wait
+        - label: 3 Measure
+        - label: 4 Results
+  - type: textarea
+    id: pictures
+    attributes:
+      label: Pictures
+      description: Drag the PNG files here. Use one picture of the whole window for each step.
+    validations:
+      required: true
+  - type: textarea
+    id: measurement
+    attributes:
+      label: What you measured
+      description: The surface, the camera, the laser and the distance from the laser. For example, "1.2 m lathe bed, Logitech C270 without its lens, green line laser at 3 m".
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version and system
+      description: For example, "2.0.0-alpha.2, Windows 11 app".
+    validations:
+      required: true
+  - type: input
+    id: credit
+    attributes:
+      label: Credit
+      description: The name to credit for the pictures, or "none".
+  - type: checkboxes
+    id: permission
+    attributes:
+      label: Permission
+      options:
+        - label: I took these pictures. They can go in this project under the MIT license.
+          required: true
+        - label: The pictures show no private information, for example a name in a camera name or in a file path.
+          required: true

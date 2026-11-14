@@ -284,6 +284,8 @@ cargo run --release -p pack -- icons
 
 Use the tabs along the top from left to right: **1 Set up**, **2 Wait**, **3 Measure**, **4 Results**.
 
+> **Pictures wanted:** the pictures of the four steps come from the Synthetic camera. If you measure a real surface, please send pictures of your run. [Pictures with real data](CONTRIBUTING.md#pictures-with-real-data) tells how.
+
 The other items in the top bar are:
 
 - **Session**:

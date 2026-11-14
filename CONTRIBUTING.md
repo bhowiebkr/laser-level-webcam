@@ -94,6 +94,24 @@ From the source code, use `cargo run -p laser -- report` in place of `laser repo
 If `gh` is not available, the tool shows the draft and a link to the issue form, filled in. A
 person reads it and submits it.
 
+## Pictures with real data
+
+The README pictures of **1 Set up**, **2 Wait**, **3 Measure** and **4 Results** come from the
+Synthetic camera. Pictures from a real measurement show better what the app does. If you measure
+a real surface, please send your pictures.
+
+1. Measure a real surface with a real camera and laser. A short run is enough.
+2. On each step, take a picture of the whole window. Use PNG. On **3 Measure** and
+   **4 Results**, show a finished run.
+3. Look at each picture for private information, for example your name in the camera name or in
+   a file path.
+4. Open a [Pictures with real data](https://github.com/bhowiebkr/laser-level-webcam/issues/new?template=pictures.yml)
+   issue. Drag the pictures into it.
+5. Tell what you measured, and with which camera and laser.
+
+You can also open a pull request that replaces the pictures in `images/`. Keep the file names
+`step-1-set-up.webp` to `step-4-results.webp`.
+
 ## Pull requests
 
 - Keep each pull request to one change. Add a test that fails without the change, when you can.
