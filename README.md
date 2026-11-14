@@ -120,8 +120,7 @@ The differences from the Windows app are:
 - Exposure, white balance and focus offer **Auto** / **lock current value** when AVFoundation reports both modes for that device. Numeric values are unavailable, so these controls have no numeric slider. Devices that expose no controls have **Lock for measuring** disabled.
 - **Lock for measuring** reads the exposed modes back. Unlisted controls remain unverified: this API does not provide numeric exposure, gain, sharpness or mains-filter adjustment. Check beam brightness and stability before measuring.
 - A saved mode-only lock locks the value current at the next opening; it cannot restore a previous numeric value. In the CLI, `--set exposure=0` locks the current value and `--set exposure=auto` restores automatic exposure.
-- macOS supplies NV12 luma. The **Format** list identifies AVFoundation's source format, which does not establish the camera's USB transport encoding or raw sensor access.
-- When packed YUV and NV12 offer the same size and rate, the app prefers the packed-YUV source. Some redundant NV12 modes acknowledge frame-rate settings without applying them.
+- macOS supplies NV12 luma, preferring full-range output when available. The **Format** list identifies AVFoundation's source format, which does not establish the camera's USB transport encoding or raw sensor access.
 - macOS does not give the USB descriptors. Thus **What the camera reports** is not available, and the app finds a [saved sensor](#sensor) by the name of the camera.
 
 The app holds the device configuration lock while capturing to keep measurement settings stable.

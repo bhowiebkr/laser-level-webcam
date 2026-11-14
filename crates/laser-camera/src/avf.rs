@@ -132,16 +132,6 @@ fn offers(device: &AVCaptureDevice) -> Vec<Offer> {
             }
         }
     }
-    // Some devices also advertise NV12 aliases of their packed-YUV modes. These can
-    // acknowledge a frame duration while continuing to deliver at another rate. Prefer
-    // the equivalent packed-YUV source; the output still supplies NV12 luma in either case.
-    let packed: Vec<_> = out.iter().filter(|o| o.mode.format == PixelFormat::Yuyv).map(|o| o.mode).collect();
-    out.retain(|o| {
-        o.mode.format != PixelFormat::Nv12
-            || !packed
-                .iter()
-                .any(|m| m.width == o.mode.width && m.height == o.mode.height && (m.fps - o.mode.fps).abs() < 0.5)
-    });
     out
 }
 
@@ -318,18 +308,6 @@ impl AvfCamera {
             let input = AVCaptureDeviceInput::deviceInputWithDevice_error(&device).map_err(|e| os(&e))?;
             let output = AVCaptureVideoDataOutput::new();
             output.setAlwaysDiscardsLateVideoFrames(true);
-            let key = |k: &'static objc2_core_foundation::CFString| -> &'static NSString {
-                // CFString and NSString are the same object (toll-free bridged).
-                &*(std::ptr::from_ref(k).cast::<NSString>())
-            };
-            let pixel = NSNumber::new_u32(kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange);
-            let width = NSNumber::new_u32(mode.width);
-            let height = NSNumber::new_u32(mode.height);
-            let settings = NSDictionary::<NSString, AnyObject>::from_slices(
-                &[key(kCVPixelBufferPixelFormatTypeKey), key(kCVPixelBufferWidthKey), key(kCVPixelBufferHeightKey)],
-                &[&*pixel, &*width, &*height],
-            );
-            output.setVideoSettings(Some(&settings));
             output.setSampleBufferDelegate_queue(Some(ProtocolObject::from_ref(&*frames)), Some(&queue));
 
             session.beginConfiguration();
@@ -350,6 +328,25 @@ impl AvfCamera {
             device.setActiveVideoMinFrameDuration(offer.duration);
             device.setActiveVideoMaxFrameDuration(offer.duration);
             let duration = offer.duration;
+            // Negotiate output from the selected format, including its supported pixel types.
+            let key = |k: &'static objc2_core_foundation::CFString| -> &'static NSString {
+                // CFString and NSString are the same object (toll-free bridged).
+                &*(std::ptr::from_ref(k).cast::<NSString>())
+            };
+            let available = output.availableVideoCVPixelFormatTypes();
+            let pixel =
+                [kCVPixelFormatType_420YpCbCr8BiPlanarFullRange, kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange]
+                    .into_iter()
+                    .find(|p| available.iter().any(|v| v.unsignedIntValue() == *p))
+                    .ok_or(CameraError::NoMode)?;
+            let pixel = NSNumber::new_u32(pixel);
+            let width = NSNumber::new_u32(mode.width);
+            let height = NSNumber::new_u32(mode.height);
+            let settings = NSDictionary::<NSString, AnyObject>::from_slices(
+                &[key(kCVPixelBufferPixelFormatTypeKey), key(kCVPixelBufferWidthKey), key(kCVPixelBufferHeightKey)],
+                &[&*pixel, &*width, &*height],
+            );
+            output.setVideoSettings(Some(&settings));
             let capture = Self {
                 device: info.clone(),
                 modes,
