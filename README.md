@@ -9,7 +9,7 @@ See the GitHub Discussions tab for questions, comments, etc. I'll try to track p
 
 This is the software half of a measuring tool used much like a surface plate. A laser level throws a line. A webcam with its lens taken off sits on a block and reads where the line falls on its sensor, to a fraction of a pixel. Move the block from station to station along a surface, and the line's height at each station gives the surface's straightness or flatness. So far, repeated measurements agree to between 0.5 µm and 2 µm.
 
-> **Version 2 is a rewrite in Rust** (on the `rust` branch for now). Everything below up to [The Python version](#the-python-version-1x) describes it. The Python program (version 1.x) is described at the end.
+> **Version 2 is a rewrite in Rust.** Everything below up to [The Python version](#the-python-version-1x) describes it. The Python program (version 1.x) now lives on the [`python` branch](https://github.com/bhowiebkr/laser-level-webcam/tree/python), and is described at the end.
 
 - [How it works](#how-it-works)
 - [Getting started](#getting-started)
@@ -49,7 +49,9 @@ You need:
 - A block with two feet for the camera to sit on.
 - A laser level that throws a line, such as a self-levelling line laser.
 
-Live cameras work on Windows 10 and 11. Install Rust from [rustup.rs](https://rustup.rs); the repository pins the toolchain version, so rustup fetches the right one. Then:
+Live cameras work on Windows 10 and 11. The quickest way to start: download the Windows zip from [Releases](https://github.com/bhowiebkr/laser-level-webcam/releases), unzip it and run `laser-level-webcam.exe`. Nothing else needs installing.
+
+To build it yourself, install Rust from [rustup.rs](https://rustup.rs). The repository pins the toolchain version, so rustup fetches the right one. Then:
 
 ```bash
 git clone https://github.com/bhowiebkr/laser-level-webcam.git
@@ -57,10 +59,6 @@ git clone https://github.com/bhowiebkr/laser-level-webcam.git
 
 ```bash
 cd laser-level-webcam
-```
-
-```bash
-git checkout rust
 ```
 
 ```bash
@@ -466,6 +464,8 @@ cargo run --release -p laser -- help
 
 ## The Python version (1.x)
 
+The Python program lives on the [`python` branch](https://github.com/bhowiebkr/laser-level-webcam/tree/python). The rest of this section is its original README.
+
 ### Webcam sensor GUI
 ![Webcam_Sensor_GUI](images/Webcam_Sensor_GUI.png)
 
@@ -504,10 +504,10 @@ Follow these steps to install the Python program:
 
 #### 1. Clone the Repository
 
-Start by cloning the repository containing the Python program to your local machine. Open a terminal and run the following command:
+Start by cloning the repository's `python` branch, which holds the Python program, to your local machine. Open a terminal and run the following command:
 
 ```sh
-git clone https://github.com/bhowiebkr/laser-level-webcam.git
+git clone -b python https://github.com/bhowiebkr/laser-level-webcam.git
 ```
 
 #### 2. Create a Virtual Environment
