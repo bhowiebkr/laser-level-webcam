@@ -98,6 +98,8 @@ fn feed(e: &mut Engine, cam: &mut Synthetic, seconds: f64) {
 fn busy_app(ctx: &egui::Context) -> (App, Synthetic) {
     let mut settings = AppSettings::default();
     settings.camera.device = Some("No such camera".into());
+    // Short samples, in the settings so the engine keeps them when the settings change.
+    settings.sample = SampleRule { min_s: 0.5, max_s: 1.0, target_um: None };
     let app = App::with(ctx, settings, None);
     crate::app::wait_until_failed(&app);
     let small = Synthetic::open(None).modes()[3];
@@ -108,7 +110,6 @@ fn busy_app(ctx: &egui::Context) -> (App, Synthetic) {
         let (device, modes, mode, controls) = (cam.device().clone(), cam.modes().to_vec(), cam.mode(), cam.controls());
         e.opened(device, modes, mode, controls, Vec::new());
         feed(&mut e, &mut cam, 90.0);
-        e.sample_rule = SampleRule { min_s: 0.5, max_s: 1.0, target_um: None };
         let stations = e.current_run().unwrap().stations.len();
         for station in std::iter::once(0).chain(1..stations).chain([0]) {
             e.take_sample(station, None);

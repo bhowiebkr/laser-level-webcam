@@ -205,6 +205,11 @@ impl App {
             .map(|d| CameraId::new(&d.name, e.camera.usb.as_ref().map(|u| (u.vendor_id, u.product_id))));
         if id != self.camera_id {
             if let Some(id) = &id {
+                // A camera other than the one the setup is for (the first camera, when none is
+                // picked) gets its own setup, and is opened again if its mode or controls differ.
+                if self.settings.use_setup_of(&id.name, None) {
+                    self.request(Request::Open(self.settings.camera.clone()));
+                }
                 self.camera_opened(id);
             }
             self.camera_id = id;
@@ -617,6 +622,8 @@ mod tests {
         let mut settings = AppSettings::default();
         // A camera that is not there, so the driver stays idle and the test feeds the frames.
         settings.camera.device = Some("No such camera".into());
+        // Short samples, in the settings so the engine keeps them when the settings change.
+        settings.sample = SampleRule { min_s: 0.5, max_s: 1.0, target_um: None };
         let mut app = App::with(&ctx, settings, None);
         app.sensors.save(&app.settings.sensor.clone(), None);
         wait_until_failed(&app);
@@ -632,7 +639,6 @@ mod tests {
             e.opened(device, modes, mode, controls, Vec::new());
             feed(&mut e, &mut cam, 90.0);
             assert!(e.status.is_some());
-            e.sample_rule = SampleRule { min_s: 0.5, max_s: 1.0, target_um: None };
         }
         draw_all(&mut app, &ctx);
 

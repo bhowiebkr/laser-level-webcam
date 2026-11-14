@@ -306,8 +306,9 @@ fn camera_section(app: &mut App, ui: &mut egui::Ui, e: &mut Engine) {
                 .show_ui(ui, |ui| {
                     for d in app.devices.clone() {
                         if ui.selectable_label(current.as_deref() == Some(d.name.as_str()), &d.name).clicked() {
+                            // Its own mode, controls, orientation and region, not the last camera's.
+                            app.settings.use_setup_of(&d.name, current.as_deref());
                             app.settings.camera.device = Some(d.name.clone());
-                            app.settings.camera.mode = None;
                             app.request(Request::Open(app.settings.camera.clone()));
                         }
                     }
