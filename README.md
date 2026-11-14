@@ -20,6 +20,7 @@ Until now, the difference between repeated measurements is 0.5 µm to 2 µm.
 - [How it works](#how-it-works)
 - [Getting started](#getting-started)
   - [The Windows app](#the-windows-app)
+  - [macOS](#macos-build-from-source)
   - [The browser version](#the-browser-version)
   - [Build from the source code](#build-from-the-source-code)
 - [The four steps](#the-four-steps)
@@ -91,6 +92,38 @@ To use the app without the installer:
 4. If Windows shows "Windows protected your PC", click **More info**. Then click **Run anyway**.
 
 The app keeps your settings and the open session when you close the window. They come back when you start the app again.
+
+### macOS (build from source)
+
+The native app and `laser` command support built-in and USB cameras through AVFoundation.
+Build with the Rust toolchain specified by this repository and the Xcode command-line tools:
+
+```bash
+cargo run --release -p laser-level-webcam
+```
+
+Allow camera access when macOS asks. If access was denied, enable the app (or the terminal
+that launched it) in **System Settings > Privacy & Security > Camera**, then reopen it.
+The executables embed a camera usage description so they can also run directly from Cargo.
+To build a local app bundle, run `sh packaging/macos/bundle.sh`; the result is
+`dist/Laser Level Webcam.app`. It is ad-hoc signed, not notarized for distribution.
+
+The macOS backend has these limits:
+
+- The app holds the camera's configuration lock while capturing, so macOS cannot silently
+  replace the selected sensor format. Close other apps using the same camera while measuring.
+- Frames are NV12 luma supplied by AVFoundation, at a size and frame rate advertised by
+  the device. This does not prove that the camera sends uncompressed data over USB;
+  AVFoundation may decode it. USB descriptors and transport bandwidth are not available.
+- Exposure, white balance and focus offer **Auto** / **lock current value** only, and only
+  when the device supports both modes. macOS does not expose their numeric values through
+  this API. The app shows these as mode-only controls, without a numeric slider.
+- `Lock for measuring` reads the modes back. It cannot set numeric exposure, gain,
+  sharpness, mains filtering or the other USB controls. Missing controls are not verified.
+  Check the beam brightness and stability before taking measurements.
+- A saved mode-only lock locks the value current at the next opening; it does not restore
+  a previously measured exposure or colour temperature. In the CLI, `--set exposure=0`
+  means lock the current value, and `--set exposure=auto` restores automatic exposure.
 
 ### The browser version
 
@@ -624,6 +657,21 @@ To run the tests of the Rust code, use this command:
 ```bash
 cargo test --workspace
 ```
+
+On macOS, test real cameras separately (close other camera apps first):
+
+```bash
+cargo build -p laser
+target/debug/laser camera --list
+python3 tools/check-macos.py --camera 'Your camera name'
+```
+
+This opt-in check tests capture, auto/lock readback where available, reopening, rejection
+of unsupported numeric settings, representative sizes and frame rates, and delivered luma
+buffer dimensions. Repeat `--camera` to test multiple cameras; add `--all-modes` to test
+every advertised mode. It restores the original auto/lock modes, deletes temporary frames,
+and reports timing gaps and the delivered frame rate separately from the nominal rate.
+Hardware checks do not establish laser measurement accuracy.
 
 `browser-check` tests the browser camera code in a real browser. It builds a test page with trunk and serves it on this computer. Then it opens the page in Chrome, with permission to use the camera. For each camera, the page does these steps:
 

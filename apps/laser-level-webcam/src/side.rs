@@ -3,7 +3,7 @@
 
 use eframe::egui::{self, RichText};
 use laser_core::camera::{
-    self, ControlId, ControlInfo, ControlMode, ControlSetting, Mains, ModeScaling, PixelFormat, VideoMode,
+    self, ControlId, ControlInfo, ControlMode, ControlSetting, ControlUnit, Mains, ModeScaling, PixelFormat, VideoMode,
 };
 use laser_core::frame::Roi;
 
@@ -47,6 +47,9 @@ fn section(ui: &mut egui::Ui, title: &str, open: bool, intro: &str, body: impl F
 /// Where a mode's frames come from.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Source {
+    /// macOS supplies decoded luma; the USB encoding is not exposed here.
+    #[cfg(target_os = "macos")]
+    MacOS,
     /// The camera sends it: it is in the camera's USB descriptors.
     Camera,
     /// Windows makes it, by decoding the camera's MJPEG.
@@ -54,6 +57,10 @@ enum Source {
 }
 
 fn source_of(m: &VideoMode, cam: &CameraView) -> Source {
+    #[cfg(target_os = "macos")]
+    if cam.device.as_ref().is_some_and(|d| d.backend == laser_camera::Backend::AvFoundation) {
+        return Source::MacOS;
+    }
     let made = match &cam.usb {
         Some(u) => !u.sends(m),
         // No descriptors: an NV12 mode with an MJPEG twin is Windows decoding it.
@@ -85,6 +92,11 @@ fn aspect(w: u32, h: u32) -> String {
 
 fn format_text(f: PixelFormat, source: Source) -> (&'static str, &'static str) {
     match (f, source) {
+        #[cfg(target_os = "macos")]
+        (PixelFormat::Nv12, Source::MacOS) => (
+            "NV12, supplied by macOS",
+            "Luma from AVFoundation. The camera's USB encoding is unknown and may include compression; this is not raw sensor data.",
+        ),
         (PixelFormat::Yuyv, _) => (
             "Uncompressed (YUYV)",
             "Every pixel as the camera's processor puts it out, nothing compressed: the best for measuring. Large sizes only come slowly, because the USB link carries no more.",
@@ -341,9 +353,17 @@ fn camera_section(app: &mut App, ui: &mut egui::Ui, e: &mut Engine) {
     }
 
     ui.add_space(4.0);
+    #[cfg(target_os = "macos")]
+    if e.camera.device.as_ref().is_some_and(|d| d.backend == laser_camera::Backend::AvFoundation) {
+        ui.label(theme::dim(if e.camera.controls.is_empty() {
+            "This camera exposes no lock controls on macOS. Automatic image changes cannot be ruled out."
+        } else {
+            "macOS can lock only the controls listed below. Numeric adjustment and unlisted controls are unavailable."
+        }));
+    }
     let lock = ui
-        .add(theme::primary("Lock for measuring"))
-        .on_hover_text("Every automatic control to manual, sharpening off, and the mains filter set. An automatic control moves the beam's brightness or shape while measuring.");
+        .add_enabled(!e.camera.controls.is_empty(), theme::primary("Lock for measuring"))
+        .on_hover_text("Lock the controls exposed by this camera, turn sharpening off and set the mains filter where supported. Unlisted controls cannot be verified.");
     if lock.clicked() {
         let settings = camera::for_measuring(&e.camera.controls, app.settings.camera.mains);
         for s in &settings {
@@ -415,6 +435,17 @@ fn control_row(app: &mut App, ui: &mut egui::Ui, info: &ControlInfo) {
         });
     });
     let exposure = *info;
+    if info.unit == ControlUnit::ModeOnly {
+        ui.label(theme::dim(if auto_on {
+            "Automatic; click Auto to lock the current value"
+        } else {
+            "Current value locked; numeric adjustment unavailable"
+        }));
+        if let Some(mode) = asked {
+            set_control(app, id, mode);
+        }
+        return;
+    }
     let text = move |x: f64| match exposure.exposure_s(x as i64) {
         Some(s) if s < 1.0 => format!("{} ({:.2} ms)", x as i64, s * 1000.0),
         Some(s) => format!("{} ({s:.2} s)", x as i64),
@@ -488,7 +519,9 @@ fn saved_sensors(app: &mut App, ui: &mut egui::Ui) {
             .clicked();
         if ui
             .add_enabled(!app.sensors.sensors.is_empty(), egui::Button::new("Export…"))
-            .on_hover_text("Save the list to a file: a copy to keep, or to take to another computer or the browser version.")
+            .on_hover_text(
+                "Save the list to a file: a copy to keep, or to take to another computer or the browser version.",
+            )
             .clicked()
         {
             action = Some(SensorAction::Export);

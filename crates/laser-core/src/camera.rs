@@ -199,6 +199,8 @@ impl ControlId {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ControlUnit {
+    /// Only auto/lock is available. Manual(0) locks the current value; no numeric value is known.
+    ModeOnly,
     /// A number with no unit given.
     #[default]
     Raw,
@@ -513,6 +515,27 @@ mod tests {
         assert_eq!(next_exposure(&linux, 100, 60.0, false), Some(300));
         // A small change that rounds to nothing still takes a step.
         assert_eq!(next_exposure(&linux, 1, 119.0, false), Some(2));
+    }
+
+    #[test]
+    fn mode_only_exposure_locks_without_claiming_a_duration_or_numeric_step() {
+        let c = ControlInfo {
+            id: ControlId::Exposure,
+            min: 0,
+            max: 0,
+            step: 1,
+            default: 0,
+            value: 0,
+            auto: Some(true),
+            unit: ControlUnit::ModeOnly,
+        };
+        assert_eq!(
+            for_measuring(&[c], Mains::Hz50),
+            [ControlSetting { id: ControlId::Exposure, mode: ControlMode::Manual(0) }]
+        );
+        assert_eq!(c.exposure_s(0), None);
+        assert_eq!(next_exposure(&c, 0, 255.0, true), None);
+        assert_eq!(next_exposure(&c, 0, 10.0, false), None);
     }
 
     #[test]

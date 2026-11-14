@@ -11,6 +11,7 @@
 //! - `mf` (Windows): Media Foundation for the frames, with the DirectShow camera control and
 //!   video proc amp interfaces and the kernel-streaming power-line property for the controls.
 //! - `web` (the browser): `getUserMedia`, opened with the asynchronous `web::open`.
+//! - `avf` (macOS): AVFoundation, with decoded luma and supported auto/lock controls.
 //!
 //! A source is used on the thread that opened it; [`capture`] runs one on its own thread.
 
@@ -19,6 +20,8 @@ use std::fmt;
 use laser_core::camera::{CameraSettings, ControlId, ControlInfo, ControlMode, ControlSetting, VideoMode};
 use laser_core::frame::{FrameError, Luma};
 
+#[cfg(target_os = "macos")]
+mod avf;
 mod browser;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod capture;
@@ -62,6 +65,8 @@ pub struct DeviceInfo {
 pub enum Backend {
     Synthetic,
     MediaFoundation,
+    #[cfg(target_os = "macos")]
+    AvFoundation,
     /// The browser's `getUserMedia`; opened only through `web::open`.
     Browser,
 }
@@ -136,6 +141,8 @@ pub fn devices() -> Vec<DeviceInfo> {
     let mut out: Vec<DeviceInfo> = Vec::new();
     #[cfg(windows)]
     out.extend(mf::devices().unwrap_or_default());
+    #[cfg(target_os = "macos")]
+    out.extend(avf::devices());
     #[cfg(target_arch = "wasm32")]
     out.extend(web::devices());
     out.push(synthetic::device());
@@ -161,6 +168,8 @@ pub fn open(settings: &CameraSettings) -> Result<(Box<dyn FrameSource>, Vec<Appl
     };
     let mut source: Box<dyn FrameSource> = match device.backend {
         Backend::Synthetic => Box::new(synthetic::Synthetic::open(settings.mode)),
+        #[cfg(target_os = "macos")]
+        Backend::AvFoundation => Box::new(avf::AvCamera::open(&device, settings.mode.as_ref())?),
         #[cfg(windows)]
         Backend::MediaFoundation => Box::new(mf::MfCamera::open(&device, settings.mode.as_ref())?),
         #[cfg(not(windows))]
