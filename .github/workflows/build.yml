@@ -175,5 +175,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           flags=(--draft --title "$GITHUB_REF_NAME" --notes "Builds for Windows, macOS, Linux and the browser.")
-          case "$GITHUB_REF_NAME" in *-*) flags+=(--prerelease) ;; esac
           gh release create "$GITHUB_REF_NAME" out/* --verify-tag "${flags[@]}"
