@@ -19,21 +19,25 @@ problem: a request to remove a limit is a feature request, not a bug.
 - `cargo clippy` and `cargo test` on Windows, Linux and macOS, in GitHub Actions, for each push.
 - The Windows app with live USB cameras.
 - The browser version in Chrome on Windows, with `browser-check` and `pack check`.
-- On Apple Silicon with macOS 27.0.1, the MacBook Pro Camera and Logitech C922 supplied frames
-  through the `laser` tool. Six modes on each camera passed frame-size and timing checks. A
-  separate C922 **640×360, 24 fps, NV12** check delivered about 24 fps after output negotiation
-  was moved after source-format selection and made to prefer supported full-range NV12.
-- The C922 passed **Exposure** and **Focus** auto/lock readback, reopening and refusal of numeric
-  values. The MacBook reported no auto/lock controls. Frame gaps were observed; these checks do
-  not establish measurement accuracy or gap-free capture at every rate.
-- Linux live cameras, Intel Macs and older macOS versions have not been checked here.
+- The `laser` tool on a Mac with Apple silicon and macOS 27, with the MacBook Pro camera and a
+  Logitech C922 (reported in
+  [pull request 47](https://github.com/bhowiebkr/laser-level-webcam/pull/47)):
+  - Six modes on each camera gave frames of the correct size, at no more than 15% above the
+    frame rate of the mode.
+  - The C922 at **640×360, 24 fps, NV12** gave about 24 fps. Before that pull request, it gave
+    about 30 fps.
+  - On the C922, **Auto** and lock operated for **Exposure** and **Focus**, also after the camera
+    was opened again. The MacBook Pro camera gives no controls.
+  - Some frames were missing. These checks do not show the accuracy of a measurement.
+- The Mac window app and the Linux app have not been tried with live cameras. Intel Macs and
+  older versions of macOS have not been tried.
 
 ## Known limits
 
 - The Mac app sets no camera values, because macOS gives the app none. **Exposure**, **White
   balance** and **Focus** are either **Auto** or locked where they are, if the camera allows both.
-  The Mac app has no gain and no other controls. White-balance locking was not available on the
-  cameras checked.
+  The Mac app has no gain and no other controls. On the cameras that were tried, **White
+  balance** could not be locked.
 - The Mac app and the browser version do not get the USB descriptors of the camera. Thus
   **What the camera reports** is not available, and a saved sensor is found by the name of the
   camera.
