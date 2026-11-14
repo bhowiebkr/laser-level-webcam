@@ -19,14 +19,21 @@ problem: a request to remove a limit is a feature request, not a bug.
 - `cargo clippy` and `cargo test` on Windows, Linux and macOS, in GitHub Actions, for each push.
 - The Windows app with live USB cameras.
 - The browser version in Chrome on Windows, with `browser-check` and `pack check`.
-- The Mac and Linux apps are built and tested by GitHub Actions. They have not been tried with
-  live cameras yet.
+- On Apple Silicon with macOS 27.0.1, the MacBook Pro Camera and Logitech C922 supplied frames
+  through the `laser` tool. Six modes on each camera passed frame-size and timing checks. A
+  separate C922 **640×360, 24 fps, NV12** check delivered about 24 fps after output negotiation
+  was moved after source-format selection and made to prefer supported full-range NV12.
+- The C922 passed **Exposure** and **Focus** auto/lock readback, reopening and refusal of numeric
+  values. The MacBook reported no auto/lock controls. Frame gaps were observed; these checks do
+  not establish measurement accuracy or gap-free capture at every rate.
+- Linux live cameras, Intel Macs and older macOS versions have not been checked here.
 
 ## Known limits
 
 - The Mac app sets no camera values, because macOS gives the app none. **Exposure**, **White
   balance** and **Focus** are either **Auto** or locked where they are, if the camera allows both.
-  The Mac app has no gain and no other controls. The Mac controls have not been tried on a Mac.
+  The Mac app has no gain and no other controls. White-balance locking was not available on the
+  cameras checked.
 - The Mac app and the browser version do not get the USB descriptors of the camera. Thus
   **What the camera reports** is not available, and a saved sensor is found by the name of the
   camera.
