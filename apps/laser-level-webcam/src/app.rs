@@ -380,7 +380,11 @@ impl App {
                 {
                     self.file_action = Some(FileAction::New);
                 }
-                if ui.button("Open session…").clicked() {
+                if ui
+                    .button("Open session…")
+                    .on_hover_text("Open a saved session file: its runs, visits and the settings they were measured with. It takes the place of this one.")
+                    .clicked()
+                {
                     self.file_action = Some(FileAction::Open);
                 }
                 if ui
@@ -390,15 +394,19 @@ impl App {
                 {
                     self.file_action = Some(FileAction::Save);
                 }
-            });
+            })
+            .response
+            .on_hover_text("Start, open or save a session: every run and visit, with the settings they were measured with.");
             ui.menu_button("View", |ui| {
-                ui.label(theme::dim(format!("UI size {:.0} %", ui.ctx().zoom_factor() * 100.0)));
+                ui.label(theme::dim(format!("UI size {:.0} %", ui.ctx().zoom_factor() * 100.0)))
+                    .on_hover_text("How large the program draws everything. 100 % is the system size.");
                 egui::gui_zoom::zoom_menu_buttons(ui);
             })
             .response
             .on_hover_text("Make everything larger or smaller. Ctrl + and Ctrl − do the same.");
             if let Some(msg) = &self.file_msg {
-                ui.label(RichText::new(msg).small().color(theme::TEXT_DIM));
+                ui.label(RichText::new(msg).small().color(theme::TEXT_DIM))
+                    .on_hover_text("What the last open or save did.");
             }
             ui.add_space(16.0);
             for (k, screen) in Screen::ALL.into_iter().enumerate() {
@@ -422,7 +430,7 @@ impl App {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     beam_chip(ui, e);
                     if let Some(fps) = &fps {
-                        theme::chip(ui, fps.clone(), theme::TEXT_DIM);
+                        fps_chip(ui, fps.clone());
                     }
                     camera_chip(ui, e);
                 })
@@ -434,7 +442,7 @@ impl App {
                 ui.horizontal(|ui| {
                     camera_chip(ui, e);
                     if let Some(fps) = &fps {
-                        theme::chip(ui, fps.clone(), theme::TEXT_DIM);
+                        fps_chip(ui, fps.clone());
                     }
                     beam_chip(ui, e);
                 })
@@ -505,7 +513,19 @@ fn camera_chip(ui: &mut egui::Ui, e: &Engine) {
         CameraState::Open => (name.to_owned(), theme::OK),
         CameraState::Failed(why) => (format!("Camera: {why}"), theme::ERROR),
     };
-    theme::chip(ui, text, color);
+    let help = match &e.camera.state {
+        CameraState::Closed => "No camera is open. Pick one in the Camera section of the side panel.",
+        CameraState::Opening(_) => "The camera is opening. Some cameras take a few seconds.",
+        CameraState::Open => "The camera that is open. Pick another in the Camera section of the side panel.",
+        CameraState::Failed(_) => "The camera did not open. Click Try again in the Camera section, or pick another camera.",
+    };
+    theme::chip(ui, text, color).on_hover_text(help);
+}
+
+fn fps_chip(ui: &mut egui::Ui, fps: String) {
+    theme::chip(ui, fps, theme::TEXT_DIM).on_hover_text(
+        "Frames a second coming from the camera now. Lower than the mode's rate when the exposure is longer than a frame, or frames are lost.",
+    );
 }
 
 fn beam_chip(ui: &mut egui::Ui, e: &Engine) {
@@ -514,10 +534,13 @@ fn beam_chip(ui: &mut egui::Ui, e: &Engine) {
     }
     match &e.live.fix {
         Some(Ok(fix)) if fix.warnings.any() => {
-            theme::chip(ui, format!("Beam {:.2} px, check warnings", fix.position_px), theme::ACCENT);
+            theme::chip(ui, format!("Beam {:.2} px, check warnings", fix.position_px), theme::ACCENT).on_hover_text(
+                "The beam's height in this frame, in pixels from the top of the view. A warning is up: see it on Set up.",
+            );
         }
         Some(Ok(fix)) => {
-            theme::chip(ui, format!("Beam {:.2} px", fix.position_px), theme::OK);
+            theme::chip(ui, format!("Beam {:.2} px", fix.position_px), theme::OK)
+                .on_hover_text("The beam's height in this frame, in pixels from the top of the view. Green: no warnings.");
         }
         Some(Err(why)) => {
             theme::chip(ui, no_beam_short(*why), theme::ERROR).on_hover_text(why.text());
@@ -547,13 +570,14 @@ fn status_bar(ui: &mut egui::Ui, e: &Engine) {
                     m.height,
                     m.fps,
                     m.format.name()
-                )));
+                )))
+                .on_hover_text("The open camera and its mode: size, frame rate and format.");
             }
             _ => {
                 ui.label(small("No camera open".into()));
             }
         }
-        ui.label(small(format!("frames {}", e.live.frames)));
+        ui.label(small(format!("frames {}", e.live.frames))).on_hover_text("Frames read from the camera since it opened.");
         let gaps = RichText::new(format!("gaps {}", e.live.gaps)).small();
         ui.label(if e.live.gaps > 0 { gaps.color(theme::ACCENT) } else { gaps.color(theme::TEXT_DIM) }).on_hover_text(
             "Frame times with no frame: lost by the camera, or an automatic exposure longer than the frame period.",
@@ -562,7 +586,8 @@ fn status_bar(ui: &mut egui::Ui, e: &Engine) {
         ui.label(if e.live.dropped > 0 { dropped.color(theme::ACCENT) } else { dropped.color(theme::TEXT_DIM) })
             .on_hover_text("Frames this computer was too busy to read.");
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.label(small(format!("session {}", crate::plot::clock(e.now()))));
+            ui.label(small(format!("session {}", crate::plot::clock(e.now()))))
+                .on_hover_text("Time since this session started. Graphs and visits are timed from it.");
         });
     });
 }

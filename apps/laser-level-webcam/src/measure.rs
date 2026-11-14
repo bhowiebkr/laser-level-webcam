@@ -6,6 +6,7 @@ use eframe::egui::{self, Align2, RichText, Stroke};
 use laser_core::monitor::Readiness;
 use laser_core::reading::SampleRule;
 use laser_core::survey::{Heights, Layout, Run, Station};
+use laser_core::units::Unit;
 
 use crate::app::{App, Screen};
 use crate::engine::{CameraState, Engine};
@@ -74,7 +75,8 @@ pub fn draw(app: &mut App, ui: &mut egui::Ui, e: &mut Engine) {
             Layout::Grid => grid_plot(app, ui, run, heights.as_ref().ok(), station, plot_h, &mut actions),
         }
         if let Err(why) = &heights {
-            ui.label(theme::dim(format!("Heights: {why}.")));
+            ui.label(theme::dim(format!("Heights: {why}.")))
+                .on_hover_text("Why the plot has no heights yet. Heights are worked out against the zero station, so it needs a sample first.");
         }
         ui.add_space(6.0);
         let heights = heights.as_ref().ok();
@@ -187,18 +189,24 @@ fn run_bar(app: &mut App, ui: &mut egui::Ui, e: &Engine, actions: &mut Vec<Actio
     ui.horizontal(|ui| {
         ui.add_enabled_ui(!busy, |ui| {
             let current = e.current_run().map_or("No run", |r| r.name.as_str());
-            egui::ComboBox::from_id_salt("run").selected_text(current).show_ui(ui, |ui| {
-                for (i, r) in e.session.runs.iter().enumerate() {
-                    let text = format!("{}  ·  {} stations, {} visits", r.name, r.stations.len(), r.visits.len());
-                    if ui.selectable_label(i == e.run, text).clicked() {
-                        actions.push(Action::SelectRun(i));
+            egui::ComboBox::from_id_salt("run")
+                .selected_text(current)
+                .show_ui(ui, |ui| {
+                    for (i, r) in e.session.runs.iter().enumerate() {
+                        let text = format!("{}  ·  {} stations, {} visits", r.name, r.stations.len(), r.visits.len());
+                        if ui.selectable_label(i == e.run, text).on_hover_text("Measure this run.").clicked() {
+                            actions.push(Action::SelectRun(i));
+                        }
                     }
-                }
-            });
+                })
+                .response
+                .on_hover_text("The run being measured. A run is one line or surface: its stations and every visit to them.");
             if let Some(run) = e.current_run() {
                 let id = ui.scope_id().with(("run_name", e.run));
                 let mut name: String = ui.data(|m| m.get_temp(id)).unwrap_or_else(|| run.name.clone());
-                let resp = ui.add(egui::TextEdit::singleline(&mut name).desired_width(140.0).hint_text("Run name"));
+                let resp = ui
+                    .add(egui::TextEdit::singleline(&mut name).desired_width(140.0).hint_text("Run name"))
+                    .on_hover_text("The run's name. Type a new one and press Enter or click away to keep it.");
                 if resp.changed() {
                     ui.data_mut(|m| m.insert_temp(id, name.clone()));
                 }
@@ -209,10 +217,16 @@ fn run_bar(app: &mut App, ui: &mut egui::Ui, e: &Engine, actions: &mut Vec<Actio
                     ui.data_mut(|m| m.remove::<String>(id));
                 }
             }
-            ui.menu_button("New run", |ui| new_run_form(ui, e, actions));
+            ui.menu_button("New run", |ui| new_run_form(ui, e, actions))
+                .response
+                .on_hover_text("Lay out a new line or surface to measure. The runs you have stay in the session.");
         });
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.button("Results").clicked() {
+            if ui
+                .button("Results")
+                .on_hover_text("Go to Results: this run's heights as a profile or a map, with straightness or flatness.")
+                .clicked()
+            {
                 app.screen = Screen::Results;
             }
         });
@@ -223,9 +237,13 @@ fn new_run_form(ui: &mut egui::Ui, e: &Engine, actions: &mut Vec<Action>) {
     let id = ui.scope_id().with("new_run");
     let mut f: NewRun = ui.data(|m| m.get_temp(id)).unwrap_or_default();
     ui.set_min_width(260.0);
+    const STATIONS: &str = "How many places the block is put down. More stations show more of the shape, and take longer.";
+    const SPACING: &str = "Distance from one station to the next. Make it about the block's length, so the block's feet land where the last station was.";
     ui.horizontal(|ui| {
-        ui.selectable_value(&mut f.grid, false, "Along a line");
-        ui.selectable_value(&mut f.grid, true, "Across a surface");
+        ui.selectable_value(&mut f.grid, false, "Along a line")
+            .on_hover_text("Stations in a row: straightness of one line.");
+        ui.selectable_value(&mut f.grid, true, "Across a surface")
+            .on_hover_text("Stations in a grid: flatness of an area.");
     });
     ui.label(theme::dim(if f.grid {
         "Straightness in two directions: flatness of a table or plate."
@@ -234,31 +252,40 @@ fn new_run_form(ui: &mut egui::Ui, e: &Engine, actions: &mut Vec<Action>) {
     }));
     egui::Grid::new("new_run_grid").num_columns(2).spacing([8.0, 4.0]).show(ui, |ui| {
         if f.grid {
-            ui.label("Stations");
+            ui.label("Stations").on_hover_text(STATIONS);
             ui.horizontal(|ui| {
-                ui.add(egui::DragValue::new(&mut f.nx).range(2..=50).suffix(" across"));
-                ui.add(egui::DragValue::new(&mut f.ny).range(2..=50).suffix(" deep"));
+                ui.add(egui::DragValue::new(&mut f.nx).range(2..=50).suffix(" across"))
+                    .on_hover_text(format!("{STATIONS}\nStations across, along the laser line."));
+                ui.add(egui::DragValue::new(&mut f.ny).range(2..=50).suffix(" deep"))
+                    .on_hover_text(format!("{STATIONS}\nRows deep, away from the laser."));
             });
             ui.end_row();
-            ui.label("Spacing");
+            ui.label("Spacing").on_hover_text(SPACING);
             ui.horizontal(|ui| {
-                ui.add(egui::DragValue::new(&mut f.dx_mm).range(1.0..=10_000.0).suffix(" mm"));
-                ui.add(egui::DragValue::new(&mut f.dy_mm).range(1.0..=10_000.0).suffix(" mm"));
+                ui.add(egui::DragValue::new(&mut f.dx_mm).range(1.0..=10_000.0).suffix(" mm"))
+                    .on_hover_text(format!("{SPACING}\nThis is the spacing across."));
+                ui.add(egui::DragValue::new(&mut f.dy_mm).range(1.0..=10_000.0).suffix(" mm"))
+                    .on_hover_text(format!("{SPACING}\nThis is the spacing between rows."));
             });
             ui.end_row();
         } else {
-            ui.label("Stations");
-            ui.add(egui::DragValue::new(&mut f.count).range(2..=200));
+            ui.label("Stations").on_hover_text(STATIONS);
+            ui.add(egui::DragValue::new(&mut f.count).range(2..=200)).on_hover_text(STATIONS);
             ui.end_row();
-            ui.label("Spacing");
-            ui.add(egui::DragValue::new(&mut f.spacing_mm).range(1.0..=10_000.0).suffix(" mm"));
+            ui.label("Spacing").on_hover_text(SPACING);
+            ui.add(egui::DragValue::new(&mut f.spacing_mm).range(1.0..=10_000.0).suffix(" mm"))
+                .on_hover_text(SPACING);
             ui.end_row();
         }
     });
     ui.label(theme::dim(
         "Spacing is about the block's length: the block rests on two feet, and each station's height is where the block sits.",
     ));
-    if ui.add(theme::primary("Create")).clicked() {
+    if ui
+        .add(theme::primary("Create"))
+        .on_hover_text("Make the run and start measuring it. The first station is the zero, which every height is measured from.")
+        .clicked()
+    {
         let n = e.session.runs.len() + 1;
         let run = if f.grid {
             Run::grid(&format!("Surface {n}"), f.nx, f.ny, f.dx_mm, f.dy_mm)
@@ -289,22 +316,32 @@ fn sample_card(app: &mut App, ui: &mut egui::Ui, e: &Engine, run: &Run, station:
             ui.horizontal(|ui| {
                 ui.label(RichText::new(format!("{verb} station {}", station_name(run, s.station))).size(18.0).strong().color(LASER));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button("Cancel").clicked() {
+                    if ui.button("Cancel").on_hover_text("Stop this sample and throw it away.").clicked() {
                         actions.push(Action::Cancel);
                     }
                     let enough = elapsed >= rule.min_s.min(1.0);
-                    if ui.add_enabled(enough, theme::primary("Keep it now")).clicked() {
+                    if ui
+                        .add_enabled(enough, theme::primary("Keep it now"))
+                        .on_hover_text("End the sample now and keep what it has. A shorter sample is less sure.")
+                        .on_disabled_hover_text("A sample needs at least a second of frames.")
+                        .clicked()
+                    {
                         actions.push(Action::Keep);
                     }
                 });
             });
             let progress = (elapsed / rule.max_s.max(1e-9)).min(1.0) as f32;
-            ui.add(egui::ProgressBar::new(progress).text(format!("{:.1} s", elapsed)).desired_height(14.0));
+            ui.add(egui::ProgressBar::new(progress).text(format!("{:.1} s", elapsed)).desired_height(14.0))
+                .on_hover_text(format!(
+                    "Time into the sample. The bar is full at the longest a sample runs, {:.0} s; it can end sooner.",
+                    rule.max_s
+                ));
             let mut rule_text = format!("At least {:.0} s, at most {:.0} s", rule.min_s, rule.max_s);
             if let Some(t) = rule.target_um {
                 rule_text.push_str(&format!(", or once the reading is good to {}", with_unit(unit, t)));
             }
-            ui.label(theme::dim(rule_text + ". Keep hands and breath away from the beam."));
+            ui.label(theme::dim(rule_text + ". Keep hands and breath away from the beam."))
+                .on_hover_text("When this sample stops. Warm air and touching the block move the beam, so keep still until it ends.");
             if let Some(r) = e.sample_so_far() {
                 let scale = &e.session.scale;
                 let zero_px = run.visits.iter().rev().find(|v| v.station == run.zero).map(|v| v.reading.px);
@@ -318,7 +355,7 @@ fn sample_card(app: &mut App, ui: &mut egui::Ui, e: &Engine, run: &Run, station:
                     stat(ui, "Scatter", with_unit(unit, scale.um(r.scatter_px).abs()), theme::TEXT, "Standard deviation of the frames about the mean.");
                     stat(ui, "Frames", format!("{} of {}", r.used, r.frames), theme::TEXT, "Frames used, of the frames seen. Frames with no beam or far from the rest are left out.");
                     for name in r.flags.names() {
-                        theme::card_chip(ui, name, theme::ACCENT);
+                        theme::card_chip(ui, name, theme::ACCENT).on_hover_text(flag_help(name));
                     }
                 });
             }
@@ -332,8 +369,12 @@ fn sample_card(app: &mut App, ui: &mut egui::Ui, e: &Engine, run: &Run, station:
                 Layout::Line => format!("{:.0} mm", st.x_mm),
                 Layout::Grid => format!("{:.0}, {:.0} mm", st.x_mm, st.y_mm),
             };
-            ui.label(RichText::new(format!("Station {}", station_name(run, station))).size(18.0).strong());
-            ui.label(theme::dim(at));
+            ui.label(RichText::new(format!("Station {}", station_name(run, station))).size(18.0).strong())
+                .on_hover_text("The station the next sample is for. (zero) marks the station every height is measured from.");
+            ui.label(theme::dim(at)).on_hover_text(match run.layout {
+                Layout::Line => "Where the station is along the line, from the first station.",
+                Layout::Grid => "Where the station is, across and deep, from the first station.",
+            });
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let take = ui.add_enabled(open, theme::primary("Take sample")).on_hover_text("Space bar");
                 let space = ui.input(|i| i.key_pressed(egui::Key::Space)) && ui.memory(|m| m.focused().is_none());
@@ -347,11 +388,13 @@ fn sample_card(app: &mut App, ui: &mut egui::Ui, e: &Engine, run: &Run, station:
             "Put the block on this station, let it sit still, then take the sample. Click a station on the plot to pick another."
         } else {
             "Picked by hand. The plan's next station comes back after this sample."
-        }));
-        sample_rule(ui, &mut app.settings.sample);
+        }))
+        .on_hover_text("What to do at this station. The station marked orange on the plot is where the block goes.");
+        sample_rule(ui, &mut app.settings.sample, unit);
         ui.horizontal_wrapped(|ui| {
             if !open {
-                theme::chip(ui, "No camera", theme::ERROR);
+                theme::chip(ui, "No camera", theme::ERROR)
+                    .on_hover_text("No camera is open, so no sample can be taken. Pick one in the side panel.");
             }
             match e.status.as_ref().map(|s| &s.readiness) {
                 Some(Readiness::Ready) | None => {}
@@ -360,13 +403,18 @@ fn sample_card(app: &mut App, ui: &mut egui::Ui, e: &Engine, run: &Run, station:
                         .on_hover_text("Readings taken now drift more than the plan allows. See Wait.");
                 }
                 Some(Readiness::Collecting { .. }) => {
-                    theme::chip(ui, "Drift not known yet", theme::TEXT_DIM);
+                    theme::chip(ui, "Drift not known yet", theme::TEXT_DIM)
+                        .on_hover_text("The drift monitor is still collecting. Samples can be taken; see Wait for how long it needs.");
                 }
                 Some(Readiness::Noisy { .. }) => {
-                    theme::chip(ui, "Too noisy for the plan", theme::ACCENT);
+                    theme::chip(ui, "Too noisy for the plan", theme::ACCENT).on_hover_text(
+                        "The beam's noise is more than the allowed drift, so the plan cannot be met. See Wait: allow more drift, or steady the set-up.",
+                    );
                 }
                 Some(Readiness::Drifting { .. }) => {
-                    theme::chip(ui, "Still drifting", theme::ACCENT);
+                    theme::chip(ui, "Still drifting", theme::ACCENT).on_hover_text(
+                        "The beam still moves more than the plan allows and is not settling. Measure the zero often, or see Wait.",
+                    );
                 }
             }
             let rate = e.status.as_ref().and_then(|s| s.rate_per_min).map(|r| r / 60.0);
@@ -380,7 +428,11 @@ fn sample_card(app: &mut App, ui: &mut egui::Ui, e: &Engine, run: &Run, station:
                 if rz.due && station != run.zero {
                     theme::chip(ui, format!("Measure the zero again: {text}"), theme::ACCENT)
                         .on_hover_text(format!("Drift rate {} per minute, from {from}.", with_unit(unit, rz.rate_um_per_min)));
-                    if ui.small_button("Go to the zero").clicked() {
+                    if ui
+                        .small_button("Go to the zero")
+                        .on_hover_text("Pick the zero station for the next sample, so the drift since the last zero visit can be taken out.")
+                        .clicked()
+                    {
                         actions.push(Action::Pick(run.zero));
                     }
                 } else {
@@ -390,7 +442,7 @@ fn sample_card(app: &mut App, ui: &mut egui::Ui, e: &Engine, run: &Run, station:
             }
         });
         if let Some(why) = &e.survey_error {
-            ui.colored_label(theme::ERROR, why);
+            ui.colored_label(theme::ERROR, why).on_hover_text("The last change to the run that did not work, and why.");
         }
     });
 }
@@ -431,11 +483,20 @@ fn line_plot(
         ys.extend(h.visits.iter().map(|v| unit.from_um(v.height_um)));
     }
     let y = plot::span(ys, 0.12);
+    let legend = format!(
+        "Each station's height against the zero station, in {}, with the drift taken out. Across: distance along the line.\n\
+         Red dots and line: each station's mean height. Red bars: ±1 standard error, how sure the mean is.\n\
+         Faint dots: each visit on its own. Orange band: the station picked for the next sample.\n\
+         The numbers along the bottom are the stations; 0 is the zero. Click near a station to pick it.",
+        unit.label()
+    );
     ui.horizontal(|ui| {
-        ui.label(theme::heading("Heights so far"));
-        ui.label(theme::dim("against the zero station, drift taken out; the bars are ±1 standard error"));
+        ui.label(theme::heading("Heights so far")).on_hover_text(&legend);
+        ui.label(theme::dim("against the zero station, drift taken out; the bars are ±1 standard error"))
+            .on_hover_text(&legend);
     });
     let (ax, painter, resp) = Axes::allocate(ui, height, x, y);
+    let resp = resp.on_hover_text(&legend);
     ax.xband(
         &painter,
         run.stations[station].x_mm - (x[1] - x[0]) * 0.01,
@@ -500,11 +561,18 @@ fn grid_plot(
     let per_station = station_heights(heights);
     let x = plot::span(run.stations.iter().map(|s| s.x_mm), 0.12);
     let y = plot::span(run.stations.iter().map(|s| s.y_mm), 0.15);
+    let legend = format!(
+        "The stations seen from above, placed in mm across and deep.\n\
+         Square: the zero station. Red: measured, with its height against the zero in {} (drift taken out). Grey: not measured yet, with its name.\n\
+         Orange ring: the station picked for the next sample. Click a station to pick it.",
+        unit.label()
+    );
     ui.horizontal(|ui| {
-        ui.label(theme::heading("Stations"));
-        ui.label(theme::dim("seen from above; heights against the zero station, drift taken out"));
+        ui.label(theme::heading("Stations")).on_hover_text(&legend);
+        ui.label(theme::dim("seen from above; heights against the zero station, drift taken out")).on_hover_text(&legend);
     });
     let (ax, painter, resp) = Axes::allocate(ui, height, x, y);
+    let resp = resp.on_hover_text(&legend);
     ax.grid(&painter, |v| format!("{v:.0} mm"), |v| format!("{v:.0} mm"));
     for (i, s) in run.stations.iter().enumerate() {
         let p = ax.pos(s.x_mm, s.y_mm);
@@ -568,15 +636,29 @@ fn visits_table(
 ) {
     let unit = app.settings.unit;
     let busy = e.sampling.is_some();
-    ui.label(theme::heading(format!("Visits ({})", run.visits.len())));
+    ui.label(theme::heading(format!("Visits ({})", run.visits.len())))
+        .on_hover_text("Every sample taken in this run, newest at the top. A station visited more than once has a row for each visit.");
     if run.visits.is_empty() {
         ui.label(theme::dim("None yet. The first sample goes on the zero station."));
         return;
     }
     let by_visit = |i: usize| heights.and_then(|h| h.visits.iter().find(|v| v.visit == i));
+    let heads = [
+        ("#", "The visit's number, in the order taken.".to_owned()),
+        ("Station", "The station the block was on.".to_owned()),
+        ("Time", "When the sample was taken, as session time.".to_owned()),
+        ("Height", format!("Height against the zero station, in {}, with the drift taken out.", unit.label())),
+        ("±", format!("Standard error of the height, in {}: how sure it is.", unit.label())),
+        ("Frames", "Frames used, of the frames seen. Frames with no beam or far from the rest are left out.".to_owned()),
+        ("Checks", "ok, or what makes the visit less sure. Hover over a visit's checks for what each one means.".to_owned()),
+        ("", String::new()),
+    ];
     egui::Grid::new("visits").striped(true).num_columns(8).spacing([14.0, 4.0]).show(ui, |ui| {
-        for head in ["#", "Station", "Time", "Height", "±", "Frames", "Checks", ""] {
-            ui.label(theme::dim(head));
+        for (head, help) in &heads {
+            let r = ui.label(theme::dim(*head));
+            if !help.is_empty() {
+                r.on_hover_text(help);
+            }
         }
         ui.end_row();
         for (i, v) in run.visits.iter().enumerate().rev() {
@@ -585,27 +667,32 @@ fn visits_table(
             ui.label(clock(v.reading.t_s));
             match by_visit(i) {
                 Some(h) => {
-                    ui.label(unit.format(h.height_um));
-                    ui.label(unit.format(h.uncertainty_um));
+                    ui.label(unit.format(h.height_um)).on_hover_text(&heads[3].1);
+                    ui.label(unit.format(h.uncertainty_um)).on_hover_text(&heads[4].1);
                 }
                 None => {
-                    ui.label("–");
+                    ui.label("–").on_hover_text("No height yet: the run needs a zero visit first.");
                     ui.label("–");
                 }
             }
-            ui.label(format!("{}/{}", v.reading.used, v.reading.frames));
+            ui.label(format!("{}/{}", v.reading.used, v.reading.frames)).on_hover_text(&heads[5].1);
             let names: Vec<&str> = v.reading.flags.names().collect();
             if names.is_empty() {
-                ui.colored_label(theme::OK, "ok");
+                ui.colored_label(theme::OK, "ok").on_hover_text("No checks failed. This visit can be trusted.");
             } else {
-                ui.colored_label(theme::ACCENT, names.join(", "));
+                let help: Vec<String> = names.iter().map(|n| format!("{n}: {}", flag_help(n))).collect();
+                ui.colored_label(theme::ACCENT, names.join(", ")).on_hover_text(help.join("\n"));
             }
             ui.add_enabled_ui(!busy, |ui| {
                 ui.horizontal(|ui| {
-                    if ui.small_button("Measure again").clicked() {
+                    if ui
+                        .small_button("Measure again")
+                        .on_hover_text("Take this visit again on the same station. The new sample takes its place.")
+                        .clicked()
+                    {
                         actions.push(Action::Take(v.station, Some(i)));
                     }
-                    if ui.small_button("Delete").clicked() {
+                    if ui.small_button("Delete").on_hover_text("Throw this visit away.").clicked() {
                         actions.push(Action::Delete(i));
                     }
                 });
@@ -616,23 +703,30 @@ fn visits_table(
 }
 
 /// How long each sample is averaged. Longer samples average away more noise.
-fn sample_rule(ui: &mut egui::Ui, s: &mut SampleRule) {
+fn sample_rule(ui: &mut egui::Ui, s: &mut SampleRule, unit: Unit) {
     ui.horizontal_wrapped(|ui| {
         ui.label("Each sample").on_hover_text(
             "How long each reading is averaged. Longer samples average away more noise; a target ends a sample early once it is sure enough.",
         );
-        ui.label(theme::dim("at least"));
+        ui.label(theme::dim("at least")).on_hover_text("A sample is at least this long.");
         ui.add(egui::DragValue::new(&mut s.min_s).range(0.2..=120.0).speed(0.1).suffix(" s"))
             .on_hover_text("A sample is at least this long.");
-        ui.label(theme::dim("at most"));
+        ui.label(theme::dim("at most")).on_hover_text("A sample ends after this long, sure enough or not.");
         ui.add(egui::DragValue::new(&mut s.max_s).range(0.5..=600.0).speed(0.1).suffix(" s"))
             .on_hover_text("A sample ends after this long, sure enough or not.");
         let mut target = s.target_um.is_some();
         ui.checkbox(&mut target, "or once good to")
             .on_hover_text("End the sample once its uncertainty is below this.");
-        let mut t = s.target_um.unwrap_or(0.1);
-        ui.add_enabled(target, egui::DragValue::new(&mut t).range(0.001..=10.0).speed(0.001).suffix(" µm"));
-        s.target_um = target.then_some(t);
+        let mut t = unit.from_um(s.target_um.unwrap_or(0.1));
+        let drag = egui::DragValue::new(&mut t)
+            .range(unit.from_um(0.001)..=unit.from_um(10.0))
+            .speed(unit.from_um(0.001))
+            .max_decimals(unit.decimals() + 1)
+            .suffix(format!(" {}", unit.label()));
+        ui.add_enabled(target, drag)
+            .on_hover_text("The sample ends once its standard error is below this, after the shortest time.")
+            .on_disabled_hover_text("Tick \"or once good to\" to end samples early once they are sure enough.");
+        s.target_um = target.then_some(unit.to_um(t).clamp(0.001, 10.0));
     });
     if s.max_s < s.min_s {
         s.max_s = s.min_s;
@@ -642,7 +736,8 @@ fn sample_rule(ui: &mut egui::Ui, s: &mut SampleRule) {
 /// The run as a whole: drift seen by the zero visits, and how well repeat visits agree.
 fn run_figures(app: &App, ui: &mut egui::Ui, heights: Option<&Heights>) {
     let unit = app.settings.unit;
-    ui.label(theme::heading("This run"));
+    ui.label(theme::heading("This run"))
+        .on_hover_text("Figures for the whole run: the drift the zero visits saw, and how well repeat visits agree.");
     let Some(h) = heights else {
         ui.label(theme::dim("Figures for the run come once it has heights."));
         return;
@@ -690,9 +785,23 @@ fn stations_editor(ui: &mut egui::Ui, run: &Run, busy: bool, actions: &mut Vec<A
         .show(ui, |ui| {
             ui.add_enabled_ui(!busy, |ui| {
                 let grid = run.layout == Layout::Grid;
+                const NAME: &str = "A name for the station, such as a mark on the part. Empty: its number.";
+                const ALONG: &str = "Where the station is along the line, in mm from the first station.";
+                const ACROSS: &str = "Where the station is deep, in mm from the first row.";
+                const ZERO: &str = "The station every height is measured from. Visit it at the start, the end, and now and then between to measure the drift.";
                 egui::Grid::new("stations").striped(true).num_columns(6).spacing([10.0, 4.0]).show(ui, |ui| {
-                    for head in ["#", "Name", "Along", if grid { "Across" } else { "" }, "Zero", ""] {
-                        ui.label(theme::dim(head));
+                    for (head, help) in [
+                        ("#", "The station's number."),
+                        ("Name", NAME),
+                        ("Along", ALONG),
+                        (if grid { "Across" } else { "" }, if grid { ACROSS } else { "" }),
+                        ("Zero", ZERO),
+                        ("", ""),
+                    ] {
+                        let r = ui.label(theme::dim(head));
+                        if !help.is_empty() {
+                            r.on_hover_text(help);
+                        }
                     }
                     ui.end_row();
                     for (i, s) in run.stations.iter().enumerate() {
@@ -704,10 +813,15 @@ fn stations_editor(ui: &mut egui::Ui, run: &Run, busy: bool, actions: &mut Vec<A
                                     .desired_width(80.0)
                                     .hint_text(format!("{}", i + 1)),
                             )
+                            .on_hover_text(NAME)
                             .changed();
-                        changed |= ui.add(egui::DragValue::new(&mut st.x_mm).speed(1.0).suffix(" mm")).changed();
+                        changed |=
+                            ui.add(egui::DragValue::new(&mut st.x_mm).speed(1.0).suffix(" mm")).on_hover_text(ALONG).changed();
                         if grid {
-                            changed |= ui.add(egui::DragValue::new(&mut st.y_mm).speed(1.0).suffix(" mm")).changed();
+                            changed |= ui
+                                .add(egui::DragValue::new(&mut st.y_mm).speed(1.0).suffix(" mm"))
+                                .on_hover_text(ACROSS)
+                                .changed();
                         } else {
                             ui.label("");
                         }
@@ -723,18 +837,44 @@ fn stations_editor(ui: &mut egui::Ui, run: &Run, busy: bool, actions: &mut Vec<A
                             actions.push(Action::SetZero(i));
                         }
                         let n = run.visits.iter().filter(|v| v.station == i).count();
-                        let remove = ui.add_enabled(i != run.zero, egui::Button::new("Remove").small());
-                        let remove =
-                            if n > 0 { remove.on_hover_text(format!("Its {n} visit(s) go too")) } else { remove };
+                        let remove = ui
+                            .add_enabled(i != run.zero, egui::Button::new("Remove").small())
+                            .on_disabled_hover_text("The zero station cannot be removed. Make another station the zero first.");
+                        let remove = if n > 0 {
+                            remove.on_hover_text(format!("Take this station out of the run. Its {n} visit(s) go too."))
+                        } else {
+                            remove.on_hover_text("Take this station out of the run.")
+                        };
                         if remove.clicked() {
                             actions.push(Action::RemoveStation(i));
                         }
                         ui.end_row();
                     }
                 });
-                if ui.button("Add a station").clicked() {
+                if ui
+                    .button("Add a station")
+                    .on_hover_text("Add a station after the last one, as far on as the last two are apart.")
+                    .clicked()
+                {
                     actions.push(Action::AddStation);
                 }
             });
-        });
+        })
+        .header_response
+        .on_hover_text("The run's stations: names, places and which one is the zero. Click to open or close.");
+}
+
+/// What a check on a reading means, by the name the reading gives it.
+pub fn flag_help(name: &str) -> &'static str {
+    match name {
+        "clipped" => "Frames were clipped: the beam's top was flat at white. Lower the exposure, the gain or the laser power.",
+        "tilted" => "The line is not square to the sensor. Turn the camera or the laser until the line runs level.",
+        "near_edge" => "The beam is close to the edge of the frame. Move the camera so the beam sits nearer the middle.",
+        "dropouts" => "Some frames had no beam. Check for shadows, dust or a hand in the beam.",
+        "outliers" => "Frames far from the rest were left out. A knock or a flicker can do this.",
+        "moving" => "The reading moved during the sample: the block was still settling, or it was bumped. Measure it again.",
+        "few_frames" => "Too few frames for a trustworthy uncertainty. Make the sample longer.",
+        "drift_unchecked" => "Taken before the first or after the last zero visit, so the drift since the zero is not checked. Measure the zero station again.",
+        _ => "A check on this reading did not pass.",
+    }
 }

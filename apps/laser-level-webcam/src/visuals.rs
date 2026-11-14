@@ -22,11 +22,12 @@ fn small(text: impl Into<String>, color: Color32) -> RichText {
 
 /// A drawing area across the panel, with a well behind it.
 /// A drawing as wide as the panel. It grows taller as the panel widens, up to 1.6 times `height`.
-fn canvas(ui: &mut egui::Ui, height: f32) -> (Rect, Painter) {
+/// `help` is shown on hover: what the drawing shows and how to read it.
+fn canvas(ui: &mut egui::Ui, height: f32, help: &str) -> (Rect, Painter) {
     let width = ui.available_width();
     let height = height * (width / 320.0).clamp(1.0, 1.6);
     let (response, painter) = ui.allocate_painter(vec2(width, height), Sense::hover());
-    let r = response.rect;
+    let r = response.on_hover_text(help).rect;
     painter.rect_filled(r, 6.0, theme::CANVAS);
     painter.rect_stroke(r, 6.0, Stroke::new(1.0, theme::LINE), egui::StrokeKind::Inside);
     (r.shrink(8.0), painter)
@@ -91,7 +92,10 @@ pub fn exposure(
     ui.label(small(
         format!("Brightest pixel {}; {:.3} % at or above the clip level {clip_level}", detail.peak(), share * 100.0),
         if share > 0.0 { theme::ACCENT } else { theme::TEXT_DIM },
-    ));
+    ))
+    .on_hover_text(
+        "Brightest pixel: the highest grey level in the frame, 0 to 255. Pixels at or above the clip level are flat at the top and cannot be read; keep this at 0 % on the beam.",
+    );
     let (bg, peak) = beam?;
     let clipped = bg + peak >= f64::from(clip_level);
     let manual = info.auto != Some(true);
@@ -118,7 +122,11 @@ pub fn exposure(
 }
 
 fn timeline(ui: &mut egui::Ui, exp: f64, period: f64, flicker: f64) {
-    let (r, p) = canvas(ui, 96.0);
+    let (r, p) = canvas(
+        ui,
+        96.0,
+        "Frames: the ticks are when each frame starts.\nOpen: how long the shutter is open in each frame. Orange is fine; red is longer than the frame period.\nLight: the room light, flickering at twice the mains frequency. The shaded part is the light one exposure catches. A whole number of flicker cycles gives the same background in every frame.",
+    );
     let span = (period.max(exp) * 1.12).max(2.0 * flicker);
     let x = |t: f64| r.left() + 34.0 + (t / span) as f32 * (r.width() - 34.0);
     let row = |k: f32| r.top() + k;
@@ -171,7 +179,11 @@ fn timeline(ui: &mut egui::Ui, exp: f64, period: f64, flicker: f64) {
 }
 
 fn histogram(ui: &mut egui::Ui, detail: &Detail, clip_level: u8, beam: Option<(f64, f64)>) {
-    let (r, p) = canvas(ui, 78.0);
+    let (r, p) = canvas(
+        ui,
+        78.0,
+        "How many pixels have each grey level, from 0 (black) to 255 (white). Bar heights are on a log scale, so a few pixels still show.\nRed bars and the dashed line: pixels at or above the clip level.\nOrange line: the top of the beam. Green band: where the beam's top should be for a good exposure.",
+    );
     let r = Rect::from_min_max(r.min, pos2(r.right(), r.bottom() - 12.0));
     let x = |level: f64| r.left() + (level / 256.0) as f32 * r.width();
     if let Some((bg, _)) = beam {
@@ -220,7 +232,11 @@ pub fn sensor(ui: &mut egui::Ui, sensor: &Sensor, mode: Option<&VideoMode>, axis
     }
     let (fw, fh) = mode.map_or((sensor.width_px, sensor.height_px), |m| (m.width, m.height));
     let um_per_px = sensor.um_per_px(fw, fh, axis);
-    let (r, p) = canvas(ui, 132.0);
+    let (r, p) = canvas(
+        ui,
+        132.0,
+        "Left: the sensor to scale, with its size in mm. The orange box is the part of it one frame covers. The red line is the laser; the arrows show the way heights are read.\nRight: 3 × 3 frame pixels (orange grid) over the sensor pixels (grey grid), with a ruler in µm. It shows how many µm one frame pixel is.",
+    );
     let split = r.left() + r.width() * 0.58;
 
     // The sensor to scale, and the frame on it.
@@ -312,7 +328,11 @@ pub fn orientation(ui: &mut egui::Ui, sensor: &Sensor, mode: Option<&VideoMode>,
     let (vw, vh) = o.view_size(f64::from(fw), f64::from(fh));
     let um = if sensor.is_valid() { sensor.um_per_px(fw, fh, o.axis()) } else { 0.0 };
     let range_mm = vh * um / 1000.0;
-    let (r, p) = canvas(ui, 150.0);
+    let (r, p) = canvas(
+        ui,
+        150.0,
+        "The frame as the live view shows it, turned so the laser line (red) runs level.\nLifting the block moves the line down the view, and the height goes up.\nBlue dot: the corner the camera's first pixel (0,0) is in. It shows how the image was turned.\nBracket: the height range the frame covers, in mm and in px.",
+    );
 
     // The frame, as large as fits beside the height bracket.
     let side = 84.0;
@@ -384,7 +404,11 @@ pub fn orientation(ui: &mut egui::Ui, sensor: &Sensor, mode: Option<&VideoMode>,
 /// The frame cut into strips along the line, the part of it searched, and the centres the
 /// strips give, with one dropped.
 pub fn strips(ui: &mut egui::Ui, cfg: &FinderConfig, size: (usize, usize)) {
-    let (r, p) = canvas(ui, 120.0);
+    let (r, p) = canvas(
+        ui,
+        120.0,
+        "The frame (grey) cut into strips along the laser line (red). Each strip gives one beam centre.\nGreen dots: centres that are kept. Red cross: a centre that disagrees with the others and is dropped.\nOrange box, when shown: the region searched. The dark part outside it is skipped.",
+    );
     let (w, h) = (size.0.max(1) as f32, size.1.max(1) as f32);
     let k = (r.width() / w).min(r.height() / h);
     let frame = Rect::from_center_size(r.center(), vec2(w * k, h * k));
@@ -465,7 +489,11 @@ pub fn strips(ui: &mut egui::Ui, cfg: &FinderConfig, size: (usize, usize)) {
 
 /// The zones of a beam profile the finder uses, drawn for an ideal beam with the settings given.
 pub fn fit_zones(ui: &mut egui::Ui, cfg: &FinderConfig) {
-    let (r, p) = canvas(ui, 120.0);
+    let (r, p) = canvas(
+        ui,
+        120.0,
+        "One beam profile across the line (red), for an ideal beam with these settings. σ is the beam's width.\nOrange: the fit window, where the centre is worked out.\nBlue: the background zones. The dashed line is the background fitted in them.\nGrey band: the noise. The beam's peak must be this many times the noise to count.\nFWHM: the beam's full width at half its height.",
+    );
     let r = Rect::from_min_max(r.min, pos2(r.right(), r.bottom() - 12.0));
     let reach = (cfg.background_sigmas + 2.0).max(6.0);
     let (bg, peak) = (0.12, 0.78);

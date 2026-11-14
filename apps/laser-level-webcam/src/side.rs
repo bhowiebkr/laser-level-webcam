@@ -35,11 +35,15 @@ dust or reflections.";
 fn section(ui: &mut egui::Ui, title: &str, open: bool, intro: &str, body: impl FnOnce(&mut egui::Ui)) {
     theme::card().show(ui, |ui| {
         ui.set_width(ui.available_width());
-        egui::CollapsingHeader::new(theme::heading(title)).default_open(open).show_unindented(ui, |ui| {
-            ui.label(theme::dim(intro));
-            ui.add_space(4.0);
-            body(ui);
-        });
+        egui::CollapsingHeader::new(theme::heading(title))
+            .default_open(open)
+            .show_unindented(ui, |ui| {
+                ui.label(theme::dim(intro));
+                ui.add_space(4.0);
+                body(ui);
+            })
+            .header_response
+            .on_hover_text(format!("{intro}\nClick to open or close."));
     });
     ui.add_space(4.0);
 }
@@ -172,31 +176,42 @@ fn mode_picker(app: &mut App, ui: &mut egui::Ui, cam: &CameraView) {
     }
     sizes.sort_by_key(|&(w, h)| std::cmp::Reverse(u64::from(w) * u64::from(h)));
     let size_text = |(w, h): (u32, u32)| format!("{w}×{h}   {}", aspect(w, h));
+    const SIZE: &str = "Frame size in pixels, and its shape. A size of another shape can show a different part of the sensor. A larger size gives finer steps across the beam but can only come at a lower frame rate.";
     ui.horizontal(|ui| {
-        ui.label("Size").on_hover_text(
-            "Frame size in pixels, and its shape. A size of another shape can show a different part of the sensor.",
-        );
+        ui.label("Size").on_hover_text(SIZE);
         egui::ComboBox::from_id_salt("mode_size")
             .width(ui.available_width())
             .selected_text(size_text((cur.width, cur.height)))
             .show_ui(ui, |ui| {
                 for wh in sizes {
-                    if ui.selectable_label((cur.width, cur.height) == wh, size_text(wh)).clicked()
+                    let mp = f64::from(wh.0) * f64::from(wh.1) / 1e6;
+                    if ui
+                        .selectable_label((cur.width, cur.height) == wh, size_text(wh))
+                        .on_hover_text(format!("{mp:.1} million pixels a frame."))
+                        .clicked()
                         && (cur.width, cur.height) != wh
                     {
                         pick = nearest(of_format.iter().copied().filter(|m| (m.width, m.height) == wh), &cur);
                     }
                 }
-            });
+            })
+            .response
+            .on_hover_text(SIZE);
     });
 
     let mut rates: Vec<VideoMode> =
         of_format.iter().copied().filter(|m| (m.width, m.height) == (cur.width, cur.height)).collect();
     rates.sort_by(|a, b| b.fps.total_cmp(&a.fps));
     ui.horizontal_wrapped(|ui| {
-        ui.label("Frame rate").on_hover_text("The frame rates the camera lists for this format and size.");
+        ui.label("Frame rate").on_hover_text(
+            "The frame rates the camera lists for this format and size. More frames a second give more samples to average in the same time.",
+        );
         for m in rates {
-            if ui.selectable_label(m == cur, format!("{:.0} fps", m.fps)).clicked() && m != cur {
+            let help = format!(
+                "Take {:.0} frames a second. A one-second average then has {:.0} readings in it.",
+                m.fps, m.fps
+            );
+            if ui.selectable_label(m == cur, format!("{:.0} fps", m.fps)).on_hover_text(help).clicked() && m != cur {
                 pick = Some(m);
             }
         }
@@ -230,6 +245,7 @@ fn mode_picker(app: &mut App, ui: &mut egui::Ui, cam: &CameraView) {
 fn usb_report(ui: &mut egui::Ui, u: &laser_core::uvc::UvcDevice) {
     use laser_core::uvc::UvcEncoding;
     egui::CollapsingHeader::new("What the camera reports").id_salt("usb_report").show(ui, |ui| {
+        const GRID: &str = "Each row is one size in one format, with the frame rates the camera sends it at.";
         let link = u
             .max_bytes_per_s
             .map_or_else(|| "a bulk video link".to_owned(), |b| format!("video link up to {:.1} MB/s", b as f64 / 1e6));
@@ -252,9 +268,13 @@ fn usb_report(ui: &mut egui::Ui, u: &laser_core::uvc::UvcDevice) {
             ));
         }
         egui::Grid::new("usb_formats").num_columns(3).striped(true).spacing([12.0, 2.0]).show(ui, |ui| {
-            ui.label(RichText::new("Format").strong());
-            ui.label(RichText::new("Size").strong());
-            ui.label(RichText::new("fps").strong());
+            ui.label(RichText::new("Format").strong()).on_hover_text(format!(
+                "{GRID}\nFormat: how each frame is packed. Uncompressed (such as YUY2 16 bit) is every pixel as the camera made it. MJPEG is a JPEG picture, smaller, so it comes faster."
+            ));
+            ui.label(RichText::new("Size").strong())
+                .on_hover_text(format!("{GRID}\nSize: width × height in pixels, and its shape."));
+            ui.label(RichText::new("fps").strong())
+                .on_hover_text(format!("{GRID}\nfps: the frame rates, in frames a second, for that size."));
             ui.end_row();
             for f in &u.formats {
                 let name = match &f.encoding {
@@ -276,12 +296,22 @@ fn usb_report(ui: &mut egui::Ui, u: &laser_core::uvc::UvcDevice) {
                 }
             }
         });
-        egui::CollapsingHeader::new("Descriptor bytes").id_salt("usb_bytes").show(ui, |ui| {
-            egui::ScrollArea::vertical().max_height(220.0).show(ui, |ui| {
-                ui.label(RichText::new(u.hex()).monospace().small());
-            });
-        });
-    });
+        egui::CollapsingHeader::new("Descriptor bytes")
+            .id_salt("usb_bytes")
+            .show(ui, |ui| {
+                egui::ScrollArea::vertical().max_height(220.0).show(ui, |ui| {
+                    ui.label(RichText::new(u.hex()).monospace().small());
+                });
+            })
+            .header_response
+            .on_hover_text(
+                "The raw USB video descriptors, in hex, as the camera sent them. Paste them into a bug report when a camera's list looks wrong.",
+            );
+    })
+    .header_response
+    .on_hover_text(
+        "The camera's own list of formats, sizes and frame rates, read from its USB descriptors. Use it to see what the camera really sends, apart from what the system adds.",
+    );
 }
 
 fn camera_section(app: &mut App, ui: &mut egui::Ui, e: &mut Engine) {
@@ -305,14 +335,22 @@ fn camera_section(app: &mut App, ui: &mut egui::Ui, e: &mut Engine) {
                 .selected_text(current.clone().unwrap_or_else(|| "First camera".into()))
                 .show_ui(ui, |ui| {
                     for d in app.devices.clone() {
-                        if ui.selectable_label(current.as_deref() == Some(d.name.as_str()), &d.name).clicked() {
+                        if ui
+                            .selectable_label(current.as_deref() == Some(d.name.as_str()), &d.name)
+                            .on_hover_text("Open this camera. It comes back with the mode, controls, orientation and region it had last time.")
+                            .clicked()
+                        {
                             // Its own mode, controls, orientation and region, not the last camera's.
                             app.settings.use_setup_of(&d.name, current.as_deref());
                             app.settings.camera.device = Some(d.name.clone());
                             app.request(Request::Open(app.settings.camera.clone()));
                         }
                     }
-                });
+                })
+                .response
+                .on_hover_text(
+                    "The camera to measure with. Synthetic is a made-up camera with a moving beam, to try the program without one.",
+                );
         });
     });
     if !e.camera.modes.is_empty() {
@@ -320,8 +358,17 @@ fn camera_section(app: &mut App, ui: &mut egui::Ui, e: &mut Engine) {
     }
     ui.horizontal(|ui| {
         ui.label("Mains").on_hover_text(ControlId::PowerLineFrequency.help());
-        for (m, text) in [(Mains::Hz50, "50 Hz"), (Mains::Hz60, "60 Hz")] {
-            if ui.selectable_label(app.settings.camera.mains == m, text).clicked() && app.settings.camera.mains != m {
+        for (m, text, where_) in [
+            (Mains::Hz50, "50 Hz", "Most of Europe, Asia, Africa and Australia."),
+            (Mains::Hz60, "60 Hz", "North America and parts of South America and Asia."),
+        ] {
+            let help = format!(
+                "Mains power at {text}: {where_} Room lights then flicker every {:.1} ms.",
+                m.flicker_period_s() * 1000.0
+            );
+            if ui.selectable_label(app.settings.camera.mains == m, text).on_hover_text(help).clicked()
+                && app.settings.camera.mains != m
+            {
                 app.settings.camera.mains = m;
                 if e.camera.control(ControlId::PowerLineFrequency).is_some() {
                     set_control(app, ControlId::PowerLineFrequency, ControlMode::Manual(m.menu_value()));
@@ -332,8 +379,13 @@ fn camera_section(app: &mut App, ui: &mut egui::Ui, e: &mut Engine) {
     match &e.camera.state {
         CameraState::Open => {}
         CameraState::Failed(why) => {
-            ui.label(RichText::new(why).color(theme::ERROR));
-            if ui.button("Try again").clicked() {
+            ui.label(RichText::new(why).color(theme::ERROR))
+                .on_hover_text("Why the camera did not open. Another program may be using it, or it was unplugged.");
+            if ui
+                .button("Try again")
+                .on_hover_text("Open the same camera again, with the same mode. Close any other program using it first.")
+                .clicked()
+            {
                 app.request(Request::Open(app.settings.camera.clone()));
             }
             return;
@@ -347,7 +399,8 @@ fn camera_section(app: &mut App, ui: &mut egui::Ui, e: &mut Engine) {
         .on_hover_text("Every automatic control to manual, sharpening off, and the mains filter set. An automatic control moves the beam's brightness or shape while measuring.")
         .on_disabled_hover_text("This camera gives no controls to lock.");
     if e.camera.controls.is_empty() {
-        ui.label(theme::dim("This camera gives no controls, so it can change its exposure by itself.").small());
+        ui.label(theme::dim("This camera gives no controls, so it can change its exposure by itself.").small())
+            .on_hover_text("A camera that sets its own exposure can change the beam's brightness while measuring. Light the target the same way all through a run.");
     }
     if lock.clicked() {
         let settings = camera::for_measuring(&e.camera.controls, app.settings.camera.mains);
@@ -358,14 +411,17 @@ fn camera_section(app: &mut App, ui: &mut egui::Ui, e: &mut Engine) {
     }
     let autos: Vec<&str> = e.camera.controls.iter().filter(|c| c.auto == Some(true)).map(|c| c.id.label()).collect();
     if !autos.is_empty() {
-        ui.label(RichText::new(format!("Still automatic: {}", autos.join(", "))).small().color(theme::ACCENT));
+        ui.label(RichText::new(format!("Still automatic: {}", autos.join(", "))).small().color(theme::ACCENT))
+            .on_hover_text("These controls still change by themselves and can move the beam's brightness or shape. Click Lock for measuring, or turn off Auto on each one below.");
     }
     for a in &e.camera.refused {
         let why = match &a.result {
             Ok(info) => format!("{} did not hold (reads {})", a.setting.id.label(), info.value),
             Err(err) => err.to_string(),
         };
-        ui.label(RichText::new(why).small().color(theme::ERROR));
+        ui.label(RichText::new(why).small().color(theme::ERROR)).on_hover_text(
+            "The camera did not take this setting, or set it back. The number is what the camera reads now. Some cameras only take a setting while another one is manual.",
+        );
     }
 
     if let Some(exposure) = e.camera.control(ControlId::Exposure).cloned() {
@@ -390,7 +446,11 @@ fn camera_section(app: &mut App, ui: &mut egui::Ui, e: &mut Engine) {
         }
         control_row(app, ui, &info);
     }
-    if ui.small_button("Read the controls again").clicked() {
+    if ui
+        .small_button("Read the controls again")
+        .on_hover_text("Ask the camera for each control's value now. Use it when another program changed them, or a slider looks wrong.")
+        .clicked()
+    {
         app.request(Request::Refresh);
     }
 }
@@ -426,7 +486,7 @@ fn control_row(app: &mut App, ui: &mut egui::Ui, info: &ControlInfo) {
         } else {
             "Locked where it is. The camera gives no value to set."
         };
-        ui.label(theme::dim(text).small());
+        ui.label(theme::dim(text).small()).on_hover_text(id.help());
         if let Some(mode) = asked {
             set_control(app, id, mode);
         }
@@ -460,7 +520,7 @@ fn saved_sensors(app: &mut App, ui: &mut egui::Ui) {
     let linked = saved.is_some_and(|s| camera.is_some_and(|c| s.cameras.iter().any(|k| k.matches(c))));
     let (mut pick, mut save, mut delete, mut action) = (None, false, false, None);
     ui.horizontal_wrapped(|ui| {
-        ui.label("Saved");
+        ui.label("Saved").on_hover_text("Sensors you have saved. Each one can be picked by itself when its camera opens.");
         let shown = match (saved, app.sensors.sensors.is_empty()) {
             (_, true) => "None yet".to_owned(),
             (Some(_), false) => current.name.clone(),
@@ -529,7 +589,7 @@ fn saved_sensors(app: &mut App, ui: &mut egui::Ui) {
     };
     ui.label(theme::dim(state)).on_hover_text(sensors::place());
     if let Some(msg) = &app.sensor_msg {
-        ui.label(theme::dim(msg));
+        ui.label(theme::dim(msg)).on_hover_text("What the last save, import or export did.");
     }
     if let Some(k) = pick {
         app.settings.sensor = k;
@@ -550,18 +610,25 @@ fn sensor_section(app: &mut App, ui: &mut egui::Ui, e: &Engine) {
     saved_sensors(app, ui);
     ui.add_space(6.0);
     let s = &mut app.settings.sensor;
+    const NAME: &str = "The sensor's part number, such as OV2710 or IMX291, from its data sheet. It names the sensor in the saved list.";
+    const PITCH: &str = "Centre-to-centre distance of the sensor's pixels, from its data sheet. Every height is a number of pixels times this, so a wrong pitch scales every reading.";
+    const FULL: &str = "Active pixels at the sensor's full resolution, width × height. With the pitch it gives the sensor's size, and how big a frame pixel is in a smaller mode.";
     egui::Grid::new("sensor").num_columns(2).spacing([10.0, 6.0]).show(ui, |ui| {
-        ui.label("Name");
-        ui.add(egui::TextEdit::singleline(&mut s.name).hint_text("from the data sheet").desired_width(f32::INFINITY));
+        ui.label("Name").on_hover_text(NAME);
+        ui.add(egui::TextEdit::singleline(&mut s.name).hint_text("from the data sheet").desired_width(f32::INFINITY))
+            .on_hover_text(NAME);
         ui.end_row();
-        ui.label("Pixel pitch").on_hover_text("Centre-to-centre distance of the sensor's pixels, from its data sheet.");
-        ui.add(egui::DragValue::new(&mut s.pixel_pitch_um).range(0.3..=30.0).speed(0.01).suffix(" µm").max_decimals(3));
+        ui.label("Pixel pitch").on_hover_text(PITCH);
+        ui.add(egui::DragValue::new(&mut s.pixel_pitch_um).range(0.3..=30.0).speed(0.01).suffix(" µm").max_decimals(3))
+            .on_hover_text(format!("{PITCH}\nDrag to change it, or double-click to type it."));
         ui.end_row();
-        ui.label("Full size").on_hover_text("Active pixels at the sensor's full resolution.");
+        ui.label("Full size").on_hover_text(FULL);
         ui.horizontal(|ui| {
-            ui.add(egui::DragValue::new(&mut s.width_px).range(16..=20000));
+            ui.add(egui::DragValue::new(&mut s.width_px).range(16..=20000))
+                .on_hover_text(format!("{FULL}\nThis is the width, in pixels along the line."));
             ui.label("×");
-            ui.add(egui::DragValue::new(&mut s.height_px).range(16..=20000));
+            ui.add(egui::DragValue::new(&mut s.height_px).range(16..=20000))
+                .on_hover_text(format!("{FULL}\nThis is the height, in pixels."));
         });
         ui.end_row();
         ui.label("Smaller modes").on_hover_text("How the camera makes a mode smaller than the sensor.");
@@ -578,7 +645,10 @@ fn sensor_section(app: &mut App, ui: &mut egui::Ui, e: &Engine) {
         s.width_mm(),
         s.height_mm(),
         e.um_per_px()
-    )));
+    )))
+    .on_hover_text(
+        "The sensor's size from the pitch and full size, and how far one pixel of the frame is on the sensor. A beam that moves one frame pixel moved this far.",
+    );
     visuals::sensor(ui, &app.settings.sensor, e.camera.mode.as_ref(), app.settings.orientation.axis());
 }
 
@@ -591,54 +661,73 @@ fn orientation_section(app: &mut App, ui: &mut egui::Ui, e: &Engine) {
 
 fn finder_section(app: &mut App, ui: &mut egui::Ui, e: &Engine) {
     let f = &mut app.settings.finder;
+    const STRIPS: &str = "The frame is cut into strips along the line. Each strip gives a centre; a strip that disagrees (dust, a reflection) is dropped and the line's tilt comes from the rest.";
+    const WINDOW: &str = "Half width of the window the centre is worked out in, in beam sigmas. Wider uses more of the beam and more of the noise.";
+    const BACKGROUND: &str = "The background is fitted outside this many beam sigmas from the centre. It must sit clear of the beam's tails, but inside the frame.";
+    const SIGNAL: &str = "A beam fainter than this many times the noise is no reading. Raise it to drop dim or doubtful frames; lower it for a faint beam.";
+    const CLIP: &str = "Grey level counted as clipped. A clipped beam has a flat top and its centre is less sure. Set it just under the brightest level the camera gives.";
     egui::Grid::new("finder").num_columns(2).spacing([10.0, 6.0]).show(ui, |ui| {
-        ui.label("Strips").on_hover_text("The frame is cut into strips along the line. Each strip gives a centre; a strip that disagrees (dust, a reflection) is dropped and the line's tilt comes from the rest.");
-        theme::wide_slider(ui, true, &["64".into()], egui::Slider::new(&mut f.strips, 1..=64));
+        ui.label("Strips").on_hover_text(STRIPS);
+        theme::wide_slider(ui, true, &["64".into()], egui::Slider::new(&mut f.strips, 1..=64)).on_hover_text(STRIPS);
         ui.end_row();
-        ui.label("Fit window").on_hover_text("Half width of the window the centre is worked out in, in beam sigmas. Wider uses more of the beam and more of the noise.");
-        theme::wide_slider(ui, true, &["5.0 σ".into()], egui::Slider::new(&mut f.window_sigmas, 1.0..=5.0).fixed_decimals(1).suffix(" σ"));
+        ui.label("Fit window").on_hover_text(WINDOW);
+        theme::wide_slider(ui, true, &["5.0 σ".into()], egui::Slider::new(&mut f.window_sigmas, 1.0..=5.0).fixed_decimals(1).suffix(" σ"))
+            .on_hover_text(WINDOW);
         ui.end_row();
-        ui.label("Background from").on_hover_text("The background is fitted outside this many beam sigmas from the centre.");
-        theme::wide_slider(ui, true, &["8.0 σ".into()], egui::Slider::new(&mut f.background_sigmas, 2.0..=8.0).fixed_decimals(1).suffix(" σ"));
+        ui.label("Background from").on_hover_text(BACKGROUND);
+        theme::wide_slider(ui, true, &["8.0 σ".into()], egui::Slider::new(&mut f.background_sigmas, 2.0..=8.0).fixed_decimals(1).suffix(" σ"))
+            .on_hover_text(BACKGROUND);
         ui.end_row();
-        ui.label("Least signal").on_hover_text("A beam fainter than this many times the noise is no reading.");
-        theme::wide_slider(ui, true, &["50".into()], egui::Slider::new(&mut f.min_snr, 3.0..=50.0).fixed_decimals(0));
+        ui.label("Least signal").on_hover_text(SIGNAL);
+        theme::wide_slider(ui, true, &["50".into()], egui::Slider::new(&mut f.min_snr, 3.0..=50.0).fixed_decimals(0))
+            .on_hover_text(SIGNAL);
         ui.end_row();
-        ui.label("Clipped at").on_hover_text("Grey level counted as clipped. A clipped beam has a flat top and its centre is less sure.");
-        theme::wide_slider(ui, true, &["255".into()], egui::Slider::new(&mut f.clip_level, 200..=255));
+        ui.label("Clipped at").on_hover_text(CLIP);
+        theme::wide_slider(ui, true, &["255".into()], egui::Slider::new(&mut f.clip_level, 200..=255)).on_hover_text(CLIP);
         ui.end_row();
     });
-    egui::CollapsingHeader::new("Warning limits").show(ui, |ui| {
-        egui::Grid::new("limits").num_columns(2).spacing([10.0, 6.0]).show(ui, |ui| {
-            ui.label("Clipped pixels")
-                .on_hover_text("Share of the beam's pixels that may clip before the reading is flagged.");
-            theme::wide_slider(
-                ui,
-                true,
-                &["1.00 %".into()],
-                egui::Slider::new(&mut f.max_clipped, 0.0..=0.01)
-                    .custom_formatter(|v, _| format!("{:.2} %", v * 100.0)),
-            );
-            ui.end_row();
-            ui.label("Tilt").on_hover_text("A line tilted more than this across the sensor is flagged.");
-            theme::wide_slider(
-                ui,
-                true,
-                &["100.0 mm/m".into()],
-                egui::Slider::new(&mut f.max_tilt, 0.001..=0.1)
-                    .custom_formatter(|v, _| format!("{:.1} mm/m", v * 1000.0)),
-            );
-            ui.end_row();
-            ui.label("Beam width").on_hover_text("A beam wider than this share of the frame is no reading.");
-            theme::wide_slider(
-                ui,
-                true,
-                &["100 %".into()],
-                egui::Slider::new(&mut f.max_width, 0.05..=1.0).custom_formatter(|v, _| format!("{:.0} %", v * 100.0)),
-            );
-            ui.end_row();
-        });
-    });
+    const CLIPPED: &str = "Share of the beam's pixels that may clip before the reading is flagged.";
+    const TILT: &str = "A line tilted more than this across the sensor is flagged. Turn the camera or the laser until the line runs level.";
+    const WIDTH: &str = "A beam wider than this share of the frame is no reading. A very wide beam is out of focus, or is light spread across the target.";
+    egui::CollapsingHeader::new("Warning limits")
+        .show(ui, |ui| {
+            egui::Grid::new("limits").num_columns(2).spacing([10.0, 6.0]).show(ui, |ui| {
+                ui.label("Clipped pixels").on_hover_text(CLIPPED);
+                theme::wide_slider(
+                    ui,
+                    true,
+                    &["1.00 %".into()],
+                    egui::Slider::new(&mut f.max_clipped, 0.0..=0.01)
+                        .custom_formatter(|v, _| format!("{:.2} %", v * 100.0)),
+                )
+                .on_hover_text(CLIPPED);
+                ui.end_row();
+                ui.label("Tilt").on_hover_text(TILT);
+                theme::wide_slider(
+                    ui,
+                    true,
+                    &["100.0 mm/m".into()],
+                    egui::Slider::new(&mut f.max_tilt, 0.001..=0.1)
+                        .custom_formatter(|v, _| format!("{:.1} mm/m", v * 1000.0)),
+                )
+                .on_hover_text(TILT);
+                ui.end_row();
+                ui.label("Beam width").on_hover_text(WIDTH);
+                theme::wide_slider(
+                    ui,
+                    true,
+                    &["100 %".into()],
+                    egui::Slider::new(&mut f.max_width, 0.05..=1.0)
+                        .custom_formatter(|v, _| format!("{:.0} %", v * 100.0)),
+                )
+                .on_hover_text(WIDTH);
+                ui.end_row();
+            });
+        })
+        .header_response
+        .on_hover_text(
+            "When a frame is flagged or dropped. A flagged reading shows an orange warning on Set up; a dropped one gives no reading.",
+        );
     let size = e.live.size.unwrap_or((1920, 1080));
     visuals::strips(ui, f, size);
     visuals::fit_zones(ui, f);
@@ -651,17 +740,21 @@ fn finder_section(app: &mut App, ui: &mut egui::Ui, e: &Engine) {
         f.roi = on.then_some(Roi { x: size.0 / 4, y: 0, width: size.0 / 2, height: size.1 });
     }
     if let Some(r) = &mut f.roi {
+        const X: &str = "Left edge of the searched part, in pixels from the left edge of the frame.";
+        const Y: &str = "Top edge of the searched part, in pixels from the top edge of the frame.";
+        const W: &str = "Width of the searched part, in pixels.";
+        const H: &str = "Height of the searched part, in pixels.";
         ui.horizontal(|ui| {
-            ui.label("x");
-            ui.add(egui::DragValue::new(&mut r.x).range(0..=size.0.saturating_sub(16)));
-            ui.label("y");
-            ui.add(egui::DragValue::new(&mut r.y).range(0..=size.1.saturating_sub(16)));
+            ui.label("x").on_hover_text(X);
+            ui.add(egui::DragValue::new(&mut r.x).range(0..=size.0.saturating_sub(16))).on_hover_text(X);
+            ui.label("y").on_hover_text(Y);
+            ui.add(egui::DragValue::new(&mut r.y).range(0..=size.1.saturating_sub(16))).on_hover_text(Y);
         });
         ui.horizontal(|ui| {
-            ui.label("w");
-            ui.add(egui::DragValue::new(&mut r.width).range(16..=size.0));
-            ui.label("h");
-            ui.add(egui::DragValue::new(&mut r.height).range(16..=size.1));
+            ui.label("w").on_hover_text(W);
+            ui.add(egui::DragValue::new(&mut r.width).range(16..=size.0)).on_hover_text(W);
+            ui.label("h").on_hover_text(H);
+            ui.add(egui::DragValue::new(&mut r.height).range(16..=size.1)).on_hover_text(H);
         });
     }
 }

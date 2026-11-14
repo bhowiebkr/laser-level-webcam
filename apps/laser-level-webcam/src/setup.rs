@@ -20,7 +20,10 @@ pub fn draw(app: &mut App, ui: &mut egui::Ui, e: &mut Engine) {
         ui.label(theme::dim(format!(
             "{}. Lift the block: the line should move down.",
             app.settings.orientation.describe()
-        )));
+        )))
+        .on_hover_text(
+            "How the camera's picture is turned now. To check the sign, lift the camera's block a little: the line should move down in the view. If it moves up, mirror the picture.",
+        );
     });
     ui.add_space(4.0);
 
@@ -142,11 +145,13 @@ fn readouts(app: &App, ui: &mut egui::Ui, e: &Engine) {
             warnings(ui, fix);
         }
         Some(Err(why)) => {
-            theme::chip(ui, no_beam_short(*why), theme::ERROR);
+            theme::chip(ui, no_beam_short(*why), theme::ERROR)
+                .on_hover_text("The finder found no beam in this frame, so the frame gives no reading. The reason is beside it.");
             ui.label(RichText::new(why.text()).color(theme::TEXT_DIM));
         }
         None => {
-            ui.label(theme::dim("No frame yet."));
+            ui.label(theme::dim("No frame yet."))
+                .on_hover_text("The readings start with the first frame from the camera. Pick a camera in the side panel.");
         }
     });
 }
@@ -363,14 +368,29 @@ fn live_view(app: &mut App, ui: &mut egui::Ui, e: &Engine, size: egui::Vec2) -> 
             theme::TEXT,
         );
     }
+    resp.on_hover_text(
+        "The camera's picture, turned as Orientation says.\n\
+         Solid line: the beam's centre found in this frame. Green when all is well, orange when a warning is up. The faint lines either side mark its width at half height.\n\
+         Orange box: the part of the frame searched; the shaded part is left out. The faint lines across it cut it into strips.\n\
+         Drag to search part of the frame; double-click for all of it. The bottom-left corner reads the pixel under the pointer (grey 0 to 255).",
+    );
     Some(Placed { img, k })
 }
+
+const PROFILE: &str = "The mean grey level (0 to 255) of each pixel across the line, over the searched part of the frame.\n\
+    White curve: the profile. Orange band: the fit window the centre is worked out in.\n\
+    Blue bands: where the background is fitted; the dashed blue line is that background.\n\
+    Red line and dot: the centre and the peak. White bar: the width at half height (FWHM).\n\
+    Red dashed line: the clip level. A beam that reaches it has a flat top.";
 
 /// The profile across the line on its side, beside an upright view. Px across the line run down
 /// the page the way the view shows them, so the beam's peak sits level with the line in the view.
 fn profile_beside(app: &App, ui: &mut egui::Ui, e: &Engine, size: egui::Vec2, placed: Option<Placed>) {
     let (resp, painter) = ui.allocate_painter(size, Sense::hover());
     let outer = resp.rect;
+    resp.on_hover_text(format!(
+        "{PROFILE}\nOn its side here: grey level runs left to right, and each pixel sits level with the same place in the view."
+    ));
     painter.rect_filled(outer, 6.0, theme::CANVAS);
     painter.rect_stroke(outer, 6.0, Stroke::new(1.0, theme::LINE), egui::StrokeKind::Inside);
     let font = FontId::proportional(11.0);
@@ -477,10 +497,12 @@ fn profile(app: &mut App, ui: &mut egui::Ui, e: &Engine, height: f32) {
     let mut zoom: bool = ui.data(|m| m.get_temp(zoom_id)).unwrap_or(true);
     let top = ui.cursor().top();
     ui.horizontal_wrapped(|ui| {
-        ui.label(theme::heading("Profile across the line"));
-        ui.selectable_value(&mut zoom, true, "Around the beam");
-        ui.selectable_value(&mut zoom, false, "Whole width");
-        ui.label(theme::dim("mean grey of each px across the line"));
+        let legend = format!("{PROFILE}\nHover over the graph to read a pixel in its top-right corner.");
+        ui.label(theme::heading("Profile across the line")).on_hover_text(&legend);
+        ui.selectable_value(&mut zoom, true, "Around the beam")
+            .on_hover_text("Show the beam and the background zones beside it.");
+        ui.selectable_value(&mut zoom, false, "Whole width").on_hover_text("Show every pixel across the line.");
+        ui.label(theme::dim("mean grey of each px across the line")).on_hover_text(&legend);
     });
     ui.data_mut(|m| m.insert_temp(zoom_id, zoom));
     let height = (height - (ui.cursor().top() - top)).max(100.0);

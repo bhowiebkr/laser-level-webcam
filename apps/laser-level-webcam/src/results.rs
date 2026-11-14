@@ -70,10 +70,11 @@ pub fn draw(app: &mut App, ui: &mut egui::Ui, e: &mut Engine) {
         Err(why) => {
             ui.add_space(20.0);
             ui.vertical_centered(|ui| {
-                ui.label(theme::heading(format!("No results for {} yet", run.name)));
-                ui.label(theme::dim(format!("{why}.")));
+                ui.label(theme::heading(format!("No results for {} yet", run.name)))
+                    .on_hover_text("Results need the zero station and at least one other station measured.");
+                ui.label(theme::dim(format!("{why}."))).on_hover_text("What is missing before results can be worked out.");
                 ui.add_space(8.0);
-                if ui.add(theme::primary("Measure")).clicked() {
+                if ui.add(theme::primary("Measure")).on_hover_text("Go to Measure to take the readings this run still needs.").clicked() {
                     app.screen = Screen::Measure;
                 }
             });
@@ -93,7 +94,12 @@ pub fn draw(app: &mut App, ui: &mut egui::Ui, e: &mut Engine) {
         ui.separator();
         ui.label("Units").on_hover_text("The unit heights are shown in, here and in the CSV.");
         for u in Unit::ALL {
-            ui.selectable_value(&mut app.settings.unit, u, u.label());
+            let name = match u {
+                Unit::Um => "micrometres (µm), a thousandth of a millimetre",
+                Unit::Mm => "millimetres (mm)",
+                Unit::Inch => "inches (in)",
+            };
+            ui.selectable_value(&mut app.settings.unit, u, u.label()).on_hover_text(format!("Show heights in {name}."));
         }
         ui.separator();
         ui.label("Drift").on_hover_text(
@@ -104,7 +110,7 @@ pub fn draw(app: &mut App, ui: &mut egui::Ui, e: &mut Engine) {
         ui.selectable_value(&mut app.settings.drift_correction, DriftCorrection::LastZero, "Last zero")
             .on_hover_text("Each reading against the last zero visit before it.");
     });
-    ui.label(theme::dim(view.help()));
+    ui.label(theme::dim(view.help())).on_hover_text("What the heights in the plot below are measured from.");
     ui.data_mut(|m| m.insert_temp(view_id, view));
     let plot_h = (ui.available_height() * 0.5).clamp(200.0, 420.0);
     match results.layout {
@@ -124,10 +130,17 @@ fn summary(ui: &mut egui::Ui, unit: Unit, name: &str, r: &Results) {
     };
     theme::card().show(ui, |ui| {
         ui.set_width(ui.available_width());
+        let pv_help = format!(
+            "{what}: the height between the highest and the lowest station, after the laser's tilt is taken out (the Shape view). Smaller is {}.",
+            if r.layout == Layout::Line { "straighter" } else { "flatter" }
+        );
         ui.horizontal(|ui| {
-            ui.label(RichText::new(format!("{what} of {name}")).size(16.0).color(theme::TEXT_DIM));
-            ui.label(RichText::new(with_unit(unit, r.pv_um)).size(26.0).strong().color(LASER));
-            ui.label(theme::dim("peak to valley"));
+            ui.label(RichText::new(format!("{what} of {name}")).size(16.0).color(theme::TEXT_DIM))
+                .on_hover_text(pv_help.as_str());
+            ui.label(RichText::new(with_unit(unit, r.pv_um)).size(26.0).strong().color(LASER))
+                .on_hover_text(pv_help.as_str());
+            ui.label(theme::dim("peak to valley"))
+                .on_hover_text("Peak to valley: highest point minus lowest point. It is the usual number for straightness and flatness.");
         });
         let within = r.pv_um <= r.pv_noise_um * 1.5;
         ui.label(theme::dim(if within {
@@ -142,7 +155,10 @@ fn summary(ui: &mut egui::Ui, unit: Unit, name: &str, r: &Results) {
                 with_unit(unit, r.pv_noise_um),
                 with_unit(unit, r.pv_scale_um)
             )
-        }));
+        }))
+        .on_hover_text(
+            "Noise: the peak to valley that random reading noise alone would give with this many stations. A result near it means the surface is better than this set-up can show. Scale: the part left open by the uncertainty of the µm-per-pixel scale.",
+        );
         theme::cards(ui, |ui| {
             stat(ui, "Stations", format!("{}", r.points.len()), theme::TEXT, "Stations with at least one visit.");
             match r.reference {
@@ -172,7 +188,9 @@ fn summary(ui: &mut egui::Ui, unit: Unit, name: &str, r: &Results) {
             }
             let flagged = r.points.iter().filter(|p| p.flags.any()).count();
             if flagged > 0 {
-                theme::card_chip(ui, format!("{flagged} station(s) with warnings"), theme::ACCENT);
+                theme::card_chip(ui, format!("{flagged} station(s) with warnings"), theme::ACCENT).on_hover_text(
+                    "Stations whose readings raised a check. They are orange in the plot; the Checks column in the table says why. Measure them again to clear it.",
+                );
             }
         });
     });
@@ -199,6 +217,16 @@ fn line_plot(ui: &mut egui::Ui, unit: Unit, r: &Results, view: View, height: f32
     }
     let y = plot::span(ys, 0.1);
     let (ax, painter, resp) = Axes::allocate(ui, height, x, y);
+    let shape = match view {
+        View::Scrape => "Red bars: how much to take off each station.".to_owned(),
+        View::Shim => "Blue bars: how much shim to put under each station.".to_owned(),
+        View::Measured => "Red dots and line: each station's height against the zero station. Dashed blue line: the straight line that fits them best; its slope is the laser's tilt.".to_owned(),
+        View::Flattened => "Red dots and line: each station's height against the best-fit straight line. Zero is on the line.".to_owned(),
+    };
+    let resp = resp.on_hover_text(format!(
+        "{shape}\nAcross: distance along the line, mm. Up: height, {}.\nWhite bars: ±1 standard error, how sure each station's height is. Orange dots: stations with warnings.\nMove the mouse over the plot to read the nearest station at the top right.",
+        unit.label()
+    ));
     ax.grid(&painter, |v| format!("{v:.0} mm"), y_label(unit, y[1] - y[0]));
     ax.hline(&painter, 0.0, Stroke::new(1.0, theme::faded(theme::TEXT, 70)));
     let bars = matches!(view, View::Shim | View::Scrape);
@@ -280,10 +308,19 @@ fn heat_map(ui: &mut egui::Ui, unit: Unit, r: &Results, view: View, height: f32)
     let dy = min_gap(r.points.iter().map(|p| p.y_mm), 100.0);
     let x = plot::span(r.points.iter().flat_map(|p| [p.x_mm - dx / 2.0, p.x_mm + dx / 2.0]), 0.02);
     let y = plot::span(r.points.iter().flat_map(|p| [p.y_mm - dy / 2.0, p.y_mm + dy / 2.0]), 0.02);
-    let (ax, painter, _) = Axes::allocate(ui, height, x, y);
+    let (ax, painter, resp) = Axes::allocate(ui, height, x, y);
     ax.grid(&painter, |v| format!("{v:.0} mm"), |v| format!("{v:.0} mm"));
     let max = r.points.iter().map(|p| view.value(p).abs()).fold(0.0, f64::max).max(1e-9);
     let signed = matches!(view, View::Flattened | View::Measured);
+    let colours = match view {
+        View::Scrape => "Grey: nothing to take off; red: the most to take off.",
+        View::Shim => "Grey: no shim needed; blue: the most shim.",
+        View::Flattened | View::Measured => "Blue: low; grey: zero; red: high.",
+    };
+    resp.on_hover_text(format!(
+        "The surface seen from above. Each square is a station, at its place along and across in mm.\nThe number in it is its height in {}. {colours}\nOrange border: a station with warnings.",
+        unit.label()
+    ));
     for p in &r.points {
         let v = view.value(p);
         let t = (v / max) as f32;
@@ -309,7 +346,8 @@ fn heat_map(ui: &mut egui::Ui, unit: Unit, r: &Results, view: View, height: f32)
     } else {
         format!("{} at full colour", with_unit(unit, max))
     };
-    ui.label(theme::dim(legend));
+    ui.label(theme::dim(legend))
+        .on_hover_text("The height that gets the strongest colour. Squares in between get a mix toward grey.");
 }
 
 /// What the points are copied or saved as.
@@ -363,7 +401,8 @@ fn export_bar(ui: &mut egui::Ui, unit: Unit, name: &str, r: &Results, drift: Dri
         Format::Json => r.json(name, drift),
     };
     ui.horizontal(|ui| {
-        ui.label(theme::heading("Points"));
+        ui.label(theme::heading("Points"))
+            .on_hover_text("Copy or save every station's result as a CSV table or as JSON.");
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if ui.button("Save…").on_hover_text(format.help()).clicked() {
                 let file = format!("{}.{}", files::file_stem(name), format.ext());
@@ -380,7 +419,7 @@ fn export_bar(ui: &mut egui::Ui, unit: Unit, name: &str, r: &Results, drift: Dri
                 }
             }
             if let Some(msg) = ui.data(|m| m.get_temp::<String>(msg_id)) {
-                ui.label(theme::dim(msg));
+                ui.label(theme::dim(msg)).on_hover_text("What the last copy or save did.");
             }
         });
     });
@@ -392,19 +431,26 @@ fn table(ui: &mut egui::Ui, unit: Unit, r: &Results) {
     let u = unit.label();
     egui::Grid::new("points").striped(true).num_columns(10).spacing([14.0, 4.0]).show(ui, |ui| {
         let heads = [
-            "Station".to_owned(),
-            "Along".to_owned(),
-            if grid { "Across".to_owned() } else { String::new() },
-            format!("Measured, {u}"),
-            format!("Shape, {u}"),
-            format!("Scrape, {u}"),
-            format!("Shim, {u}"),
-            format!("±, {u}"),
-            "Visits".to_owned(),
-            "Checks".to_owned(),
+            ("Station".to_owned(), "The station's name, or its number when it has none."),
+            ("Along".to_owned(), "How far along the surface the station is, mm."),
+            (
+                if grid { "Across".to_owned() } else { String::new() },
+                "How far across the surface the station is, mm.",
+            ),
+            (format!("Measured, {u}"), "Height against the zero station, as the laser saw it."),
+            (format!("Shape, {u}"), "Height against the best-fit line or plane: the surface's shape with the laser's tilt taken out."),
+            (format!("Scrape, {u}"), "How far above the lowest station: the metal to take off."),
+            (format!("Shim, {u}"), "How far below the highest station: the shim to put under."),
+            (format!("±, {u}"), "±1 standard error: how sure the station's height is, with the zero's own uncertainty included."),
+            ("Visits".to_owned(), "How many times the station was measured. Its height is the average of the visits."),
+            ("Checks".to_owned(), "ok, or the checks the station's readings raised. Hover over one to read what it means."),
         ];
-        for h in heads {
-            ui.label(theme::dim(h));
+        for (h, help) in heads {
+            if h.is_empty() {
+                ui.label("");
+            } else {
+                ui.label(theme::dim(h)).on_hover_text(help);
+            }
         }
         ui.end_row();
         for p in &r.points {
@@ -417,9 +463,10 @@ fn table(ui: &mut egui::Ui, unit: Unit, r: &Results) {
             ui.label(format!("{}", p.visits));
             let names: Vec<&str> = p.flags.names().collect();
             if names.is_empty() {
-                ui.colored_label(theme::OK, "ok");
+                ui.colored_label(theme::OK, "ok").on_hover_text("The station's readings raised no checks.");
             } else {
-                ui.colored_label(theme::ACCENT, names.join(", "));
+                let help: Vec<&str> = names.iter().map(|n| crate::measure::flag_help(n)).collect();
+                ui.colored_label(theme::ACCENT, names.join(", ")).on_hover_text(help.join("\n"));
             }
             ui.end_row();
         }

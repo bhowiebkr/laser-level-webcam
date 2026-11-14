@@ -18,8 +18,10 @@ pub fn draw(app: &mut App, ui: &mut egui::Ui, e: &mut Engine) {
     let Some(status) = e.status.clone() else {
         theme::card().show(ui, |ui| {
             ui.set_width(ui.available_width());
-            ui.label(RichText::new("No readings yet").size(20.0).strong());
-            ui.label(theme::dim("The drift estimate starts once the beam is found. See Set up."));
+            ui.label(RichText::new("No readings yet").size(20.0).strong())
+                .on_hover_text("Wait shows how the beam drifts while the laser and the camera warm up. It needs the beam first.");
+            ui.label(theme::dim("The drift estimate starts once the beam is found. See Set up."))
+                .on_hover_text("Open Set up, point the camera at the laser line, and check that the beam is found.");
             ui.add_space(4.0);
             plan_row(app, ui);
         });
@@ -51,16 +53,26 @@ pub fn draw(app: &mut App, ui: &mut egui::Ui, e: &mut Engine) {
 /// The planned run, which sets when the set-up counts as ready. Says whether to start the
 /// estimate again.
 fn plan_row(app: &mut App, ui: &mut egui::Ui) -> bool {
+    const RUN: &str = "How long your measurement will take: stations × time at each. Ready is when the drift expected over a run this long is inside the allowed drift. A longer run waits for a steadier set-up.";
+    const ALLOWED: &str = "How far the reading may drift over the planned run. Set it a few times smaller than the flatness you want to see. A smaller value waits longer, and noise above it reads as Too noisy to tell.";
+    let unit = app.settings.unit;
     let p = &mut app.settings.plan;
     let mut restart = false;
     ui.horizontal_wrapped(|ui| {
-        ui.label("Planned run").on_hover_text(
-            "How long your measurement will take: stations × time at each. Ready is when the drift expected over a run this long is inside the allowed drift.",
-        );
-        ui.add(egui::DragValue::new(&mut p.run_min).range(1.0..=480.0).speed(0.5).suffix(" min"));
+        ui.label("Planned run").on_hover_text(RUN);
+        ui.add(egui::DragValue::new(&mut p.run_min).range(1.0..=480.0).speed(0.5).suffix(" min")).on_hover_text(RUN);
         ui.add_space(8.0);
-        ui.label("Allowed drift").on_hover_text("How far the reading may drift over the run.");
-        ui.add(egui::DragValue::new(&mut p.tolerance_um).range(0.01..=100.0).speed(0.01).suffix(" µm"));
+        ui.label("Allowed drift").on_hover_text(ALLOWED);
+        // Kept in µm, shown in the unit picked on Results.
+        let mut allowed = unit.from_um(p.tolerance_um);
+        let drag = egui::DragValue::new(&mut allowed)
+            .range(unit.from_um(0.01)..=unit.from_um(100.0))
+            .speed(unit.from_um(0.01))
+            .max_decimals(unit.decimals())
+            .suffix(format!(" {}", unit.label()));
+        if ui.add(drag).on_hover_text(ALLOWED).changed() {
+            p.tolerance_um = unit.to_um(allowed).clamp(0.01, 100.0);
+        }
         ui.add_space(8.0);
         restart = ui
             .button("Start the estimate again")
@@ -116,23 +128,33 @@ fn banner(app: &mut App, ui: &mut egui::Ui, s: &Status) -> bool {
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.horizontal(|ui| {
-                let (dot, _) = ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::hover());
+                const STATE: &str = "Whether the set-up is steady enough for the planned run. Green: ready. Orange: still settling or drifting. Red: too noisy to tell. Each new estimate comes once a second.";
+                let (dot, dot_resp) = ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::hover());
                 ui.painter().circle_filled(dot.center(), 7.0, color);
-                ui.label(RichText::new(title).color(color).size(20.0).strong());
+                dot_resp.on_hover_text(STATE);
+                ui.label(RichText::new(title).color(color).size(20.0).strong()).on_hover_text(STATE);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let go = if s.readiness == Readiness::Ready {
-                        theme::primary("Measure")
+                    let (go, help) = if s.readiness == Readiness::Ready {
+                        (theme::primary("Measure"), "Go to Measure. The drift expected over the planned run is inside the allowed drift.")
                     } else {
-                        egui::Button::new("Measure anyway")
+                        (
+                            egui::Button::new("Measure anyway"),
+                            "Go to Measure before the set-up counts as ready. The readings may drift by more than the allowed drift.",
+                        )
                     };
-                    if ui.add(go).clicked() {
+                    if ui.add(go).on_hover_text(help).clicked() {
                         app.screen = Screen::Measure;
                     }
                 });
             });
             ui.label(theme::dim(detail));
             if let Readiness::Collecting { have_s, need_s } = s.readiness {
-                ui.add(egui::ProgressBar::new((have_s / need_s.max(1e-9)) as f32).desired_height(6.0));
+                ui.add(egui::ProgressBar::new((have_s / need_s.max(1e-9)) as f32).desired_height(6.0))
+                    .on_hover_text(format!(
+                        "Readings so far: {} of the {} the first drift estimate needs.",
+                        clock(have_s),
+                        clock(need_s)
+                    ));
             }
             ui.add_space(4.0);
             plan_row(app, ui)
@@ -235,12 +257,17 @@ fn history(app: &App, ui: &mut egui::Ui, e: &Engine, s: &Status, height: f32) {
     let unit = app.settings.unit;
     let run_s = app.settings.plan.run_min * 60.0;
     let bins = e.monitor.bins();
+    const HISTORY: &str = "The beam's position since the estimate started. Each dot is a one-second average, plotted against the reading now (0).\n\
+        Red curve: the settling curve fitted to the readings. Faded where it looks ahead; the dashed line is where it settles.\n\
+        Upright lines: green is when it will be ready (the green band is the range of that time), red is a knock, grey is where the estimate starts.\n\
+        Hover over the graph to read a point in its top-right corner.";
     ui.horizontal(|ui| {
-        ui.label(theme::heading("Position over time"));
-        ui.label(theme::dim("one-second averages, against the reading now"));
+        ui.label(theme::heading("Position over time")).on_hover_text(HISTORY);
+        ui.label(theme::dim("one-second averages, against the reading now")).on_hover_text(HISTORY);
     });
     if bins.len() < 2 {
-        ui.label(theme::dim("Collecting…"));
+        ui.label(theme::dim("Collecting…"))
+            .on_hover_text("The plot starts after two one-second averages.");
         return;
     }
     let reference = s.latest.unwrap_or(bins[bins.len() - 1].mean);
@@ -358,9 +385,11 @@ fn trace(app: &App, ui: &mut egui::Ui, e: &Engine, height: f32) {
     let mean = if n > 0 { e.trace.iter().map(|p| p[1]).sum::<f64>() / n as f64 } else { 0.0 };
     let sd =
         if n > 1 { (e.trace.iter().map(|p| (p[1] - mean).powi(2)).sum::<f64>() / (n - 1) as f64).sqrt() } else { 0.0 };
+    const TRACE: &str = "Every frame's reading over the last seconds, about their mean. It shows the frame-to-frame scatter: vibration, air currents and camera noise. A regular wave means something shakes; a sudden step is a knock.";
     ui.horizontal(|ui| {
-        ui.label(theme::heading(format!("The last {TRACE_S:.0} s, every frame")));
-        ui.label(theme::dim(format!("scatter {} about the mean", with_unit(unit, sd))));
+        ui.label(theme::heading(format!("The last {TRACE_S:.0} s, every frame"))).on_hover_text(TRACE);
+        ui.label(theme::dim(format!("scatter {} about the mean", with_unit(unit, sd))))
+            .on_hover_text("The standard deviation of these frames about their mean. Averaging many frames makes a reading steadier than this.");
     });
     if n < 2 {
         return;
@@ -368,7 +397,8 @@ fn trace(app: &App, ui: &mut egui::Ui, e: &Engine, height: f32) {
     let now = e.trace.back().map_or(0.0, |p| p[0]);
     let pts: Vec<[f64; 2]> = e.trace.iter().map(|p| [p[0] - now, unit.from_um(p[1] - mean)]).collect();
     let y = plot::span(pts.iter().map(|p| p[1]), 0.1);
-    let (ax, painter, _) = Axes::allocate(ui, height, [-TRACE_S, 0.0], y);
+    let (ax, painter, resp) = Axes::allocate(ui, height, [-TRACE_S, 0.0], y);
+    resp.on_hover_text(TRACE);
     ax.grid(&painter, |t| format!("{t:.0} s"), tick_label(unit, y[1] - y[0]));
     ax.line(&painter, pts, Stroke::new(1.0, theme::BLUE));
 }
