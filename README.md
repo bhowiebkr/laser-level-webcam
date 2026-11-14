@@ -1,6 +1,8 @@
 <div align="center">
 <h1>LaserVision: Real-time Laser Measurement with a Webcam</h1>
 
+<img src="images/step-1-set-up.webp" alt="The app's Set up step: camera settings on the left, the live view and the beam's profile on the right" width="900">
+
 See the GitHub Discussions tab for questions, comments, etc. I'll try to track progress updates over there now.
 
 </div>
