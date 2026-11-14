@@ -527,7 +527,11 @@ class MainWindow(QMainWindow):  # type: ignore
 
 def start() -> None:
     app = QApplication(sys.argv)
-    qdarktheme.setup_theme(additional_qss="QToolTip {color: black;}")
+    if hasattr(qdarktheme, "setup_theme"):
+        qdarktheme.setup_theme(additional_qss="QToolTip {color: black;}")
+    elif hasattr(qdarktheme, "load_stylesheet"):
+        # pyqtdarktheme before 2.0 has no setup_theme. Pip can pick such a version on Python 3.12 and newer.
+        app.setStyleSheet(qdarktheme.load_stylesheet() + "QToolTip {color: black;}")
 
     window = MainWindow()
 
