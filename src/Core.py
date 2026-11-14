@@ -60,6 +60,12 @@ def samples_recalc(samples: list[Sample]) -> None:
             s.shim = maxYError - s.linYError
             # Make lowest point zero for scraping, we are going to scrape off all the high areas.
             s.scrape = s.linYError - minYError
+    else:
+        # Too few samples for a fit. Clear the values of an earlier fit, which deleting a sample can leave.
+        for s in samples:
+            s.linYError = 0.0
+            s.shim = 0.0
+            s.scrape = 0.0
 
 
 class Core(QObject):  # type: ignore
@@ -119,6 +125,8 @@ class Core(QObject):  # type: ignore
         # Fix the indexes
         for index, sample in enumerate(self.samples):
             sample.x = index
+
+        samples_recalc(self.samples)
 
         if debug:
             print(f"After: {self.samples=}")
