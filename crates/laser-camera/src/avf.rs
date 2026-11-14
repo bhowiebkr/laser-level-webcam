@@ -305,18 +305,6 @@ impl AvfCamera {
             let input = AVCaptureDeviceInput::deviceInputWithDevice_error(&device).map_err(|e| os(&e))?;
             let output = AVCaptureVideoDataOutput::new();
             output.setAlwaysDiscardsLateVideoFrames(true);
-            let key = |k: &'static objc2_core_foundation::CFString| -> &'static NSString {
-                // CFString and NSString are the same object (toll-free bridged).
-                &*(std::ptr::from_ref(k).cast::<NSString>())
-            };
-            let pixel = NSNumber::new_u32(kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange);
-            let width = NSNumber::new_u32(mode.width);
-            let height = NSNumber::new_u32(mode.height);
-            let settings = NSDictionary::<NSString, AnyObject>::from_slices(
-                &[key(kCVPixelBufferPixelFormatTypeKey), key(kCVPixelBufferWidthKey), key(kCVPixelBufferHeightKey)],
-                &[&*pixel, &*width, &*height],
-            );
-            output.setVideoSettings(Some(&settings));
             output.setSampleBufferDelegate_queue(Some(ProtocolObject::from_ref(&*frames)), Some(&queue));
 
             session.beginConfiguration();
@@ -337,6 +325,26 @@ impl AvfCamera {
             device.setActiveFormat(&offer.format);
             device.setActiveVideoMinFrameDuration(offer.duration);
             device.setActiveVideoMaxFrameDuration(offer.duration);
+            // Negotiate against the selected source format. Earlier video settings can leave
+            // the output running at a different rate despite the frame-duration limits.
+            let key = |k: &'static objc2_core_foundation::CFString| -> &'static NSString {
+                // CFString and NSString are the same object (toll-free bridged).
+                &*(std::ptr::from_ref(k).cast::<NSString>())
+            };
+            let available = output.availableVideoCVPixelFormatTypes();
+            let pixel =
+                [kCVPixelFormatType_420YpCbCr8BiPlanarFullRange, kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange]
+                    .into_iter()
+                    .find(|p| available.iter().any(|v| v.unsignedIntValue() == *p))
+                    .ok_or(CameraError::NoMode)?;
+            let pixel = NSNumber::new_u32(pixel);
+            let width = NSNumber::new_u32(mode.width);
+            let height = NSNumber::new_u32(mode.height);
+            let settings = NSDictionary::<NSString, AnyObject>::from_slices(
+                &[key(kCVPixelBufferPixelFormatTypeKey), key(kCVPixelBufferWidthKey), key(kCVPixelBufferHeightKey)],
+                &[&*pixel, &*width, &*height],
+            );
+            output.setVideoSettings(Some(&settings));
             // The output has frame-time limits of its own. Without them a slow mode can still
             // send frames at the camera's fastest rate.
             if let Some(connection) = output.connectionWithMediaType(video()) {
