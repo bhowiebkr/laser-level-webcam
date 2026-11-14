@@ -120,6 +120,9 @@ class MainWindow(QMainWindow):  # type: ignore
         self.camera_combo.setToolTip(tt["cameras"])
         camera_device_settings_btn = QPushButton("Device Settings")
         camera_device_settings_btn.setToolTip(tt["cam_device"])
+        if sys.platform != "win32":
+            # The button opens the DirectShow settings dialog through ffmpeg, which exists only on Windows.
+            camera_device_settings_btn.hide()
         sensor_layout = QVBoxLayout()
         sensor_layout.setContentsMargins(1, 6, 1, 1)
         sensor_form = QFormLayout()
