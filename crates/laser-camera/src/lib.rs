@@ -10,6 +10,7 @@
 //!   controls. Pure Rust; runs anywhere, the browser included.
 //! - `mf` (Windows): Media Foundation for the frames, with the DirectShow camera control and
 //!   video proc amp interfaces and the kernel-streaming power-line property for the controls.
+//! - `web` (the browser): `getUserMedia`, opened with the asynchronous `web::open`.
 //!
 //! A source is used on the thread that opened it; [`capture`] runs one on its own thread.
 
@@ -18,6 +19,7 @@ use std::fmt;
 use laser_core::camera::{CameraSettings, ControlId, ControlInfo, ControlMode, ControlSetting, VideoMode};
 use laser_core::frame::{FrameError, Luma};
 
+mod browser;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod capture;
 #[cfg(windows)]
@@ -25,6 +27,8 @@ mod mf;
 pub mod synthetic;
 #[cfg(windows)]
 mod usb;
+#[cfg(target_arch = "wasm32")]
+pub mod web;
 
 /// One frame's luma plane, with no row padding.
 #[derive(Clone, Debug, PartialEq)]
@@ -58,6 +62,8 @@ pub struct DeviceInfo {
 pub enum Backend {
     Synthetic,
     MediaFoundation,
+    /// The browser's `getUserMedia`; opened only through `web::open`.
+    Browser,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -111,14 +117,27 @@ pub trait FrameSource {
 
     /// The next frame. Blocks until it arrives.
     fn next_frame(&mut self) -> Result<Frame, CameraError>;
+
+    /// A new frame if one has come, without waiting. A source that only blocks gives the next one.
+    fn try_frame(&mut self) -> Result<Option<Frame>, CameraError> {
+        self.next_frame().map(Some)
+    }
+
+    /// Settings the camera finished after [`FrameSource::set_control`] answered, as read back.
+    /// Only the browser's camera has any.
+    fn settled(&mut self) -> Vec<Applied> {
+        Vec::new()
+    }
 }
 
-/// The cameras on this machine, then the synthetic one.
+/// The cameras on this machine (the browser's, in the browser), then the synthetic one.
 pub fn devices() -> Vec<DeviceInfo> {
     #[allow(unused_mut)]
     let mut out: Vec<DeviceInfo> = Vec::new();
     #[cfg(windows)]
     out.extend(mf::devices().unwrap_or_default());
+    #[cfg(target_arch = "wasm32")]
+    out.extend(web::devices());
     out.push(synthetic::device());
     out
 }
@@ -146,6 +165,7 @@ pub fn open(settings: &CameraSettings) -> Result<(Box<dyn FrameSource>, Vec<Appl
         Backend::MediaFoundation => Box::new(mf::MfCamera::open(&device, settings.mode.as_ref())?),
         #[cfg(not(windows))]
         Backend::MediaFoundation => return Err(CameraError::NotFound(device.name)),
+        Backend::Browser => return Err(CameraError::Os(format!("{} opens only through web::open", device.name))),
     };
     let applied = apply(source.as_mut(), &settings.controls);
     Ok((source, applied))

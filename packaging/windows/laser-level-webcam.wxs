@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The Windows installer. Build it with build-msi.ps1 in this folder.
+
+  Installs the window app and the command-line tool in Program Files and adds a Start menu
+  shortcut. The user can choose a desktop shortcut and whether the folder goes on PATH (so that
+  `laser` works in a terminal). The last page can start the app. Uninstall removes all of it.
+  A newer installer replaces an older one in place; the UpgradeCode must never change.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <Package
+    Name="Laser Level Webcam"
+    Manufacturer="Bryan Howard"
+    Version="$(Version)"
+    UpgradeCode="9F47EA14-3981-4D6B-83BB-6308E27035D5"
+    Scope="perMachine"
+    Compressed="yes">
+
+    <SummaryInformation
+      Description="Laser Level Webcam $(Version) installer"
+      Keywords="laser level, webcam, straightness, flatness, surface plate, installer" />
+
+    <MajorUpgrade
+      AllowSameVersionUpgrades="yes"
+      DowngradeErrorMessage="A newer version of Laser Level Webcam is already installed." />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <!-- What Settings > Apps shows. -->
+    <Icon Id="AppIcon.ico" SourceFile="$(Root)\assets\icon.ico" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon.ico" />
+    <Property Id="ARPCOMMENTS" Value="Straightness and flatness from a laser line on a lensless webcam." />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/bhowiebkr/laser-level-webcam" />
+    <Property Id="ARPHELPLINK" Value="https://github.com/bhowiebkr/laser-level-webcam/discussions" />
+    <Property Id="ARPURLUPDATEINFO" Value="https://github.com/bhowiebkr/laser-level-webcam/releases" />
+    <Property Id="ARPREADME" Value="https://github.com/bhowiebkr/laser-level-webcam#readme" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Laser Level Webcam" />
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder" />
+    <StandardDirectory Id="DesktopFolder" />
+
+    <!-- The pages: welcome, licence, features and folder, ready, progress, finish. -->
+    <WixVariable Id="WixUILicenseRtf" Value="$(sys.SOURCEFILEDIR)License.rtf" />
+    <WixVariable Id="WixUIBannerBmp" Value="$(sys.SOURCEFILEDIR)banner.bmp" />
+    <WixVariable Id="WixUIDialogBmp" Value="$(sys.SOURCEFILEDIR)dialog.bmp" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Start Laser Level Webcam" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
+    <Property Id="WixShellExecTarget" Value="[#AppExe]" />
+    <CustomAction Id="StartApp" BinaryRef="Wix4UtilCA_X64" DllEntry="WixShellExec" Impersonate="yes" />
+    <UI>
+      <ui:WixUI Id="WixUI_FeatureTree" />
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="StartApp"
+        Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 and NOT Installed" />
+    </UI>
+
+    <Feature Id="Main" Title="Laser Level Webcam"
+      Description="The window app (laser-level-webcam.exe), the command-line tool (laser.exe) and a Start menu shortcut."
+      AllowAbsent="no" Display="expand" ConfigurableDirectory="INSTALLFOLDER">
+      <Component Directory="INSTALLFOLDER">
+        <File Id="AppExe" Source="$(Root)\target\release\laser-level-webcam.exe" KeyPath="yes" />
+      </Component>
+      <!-- Windows Installer counts the Start menu and the desktop as per-user data, so these key
+           paths are under HKCU. -->
+      <Component Directory="ProgramMenuFolder">
+        <Shortcut
+          Name="Laser Level Webcam"
+          Description="Straightness and flatness from a laser line on a lensless webcam"
+          Target="[INSTALLFOLDER]laser-level-webcam.exe"
+          WorkingDirectory="INSTALLFOLDER" />
+        <RegistryValue Root="HKCU" Key="Software\Laser Level Webcam" Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+      <Component Directory="INSTALLFOLDER">
+        <File Source="$(Root)\target\release\laser.exe" KeyPath="yes" />
+      </Component>
+      <Component Directory="INSTALLFOLDER">
+        <File Source="$(Root)\LICENSE" Name="LICENSE.txt" KeyPath="yes" />
+      </Component>
+
+      <Feature Id="DesktopShortcut" Title="Desktop shortcut" Description="A shortcut to the app on the desktop.">
+        <Component Directory="DesktopFolder">
+          <Shortcut
+            Name="Laser Level Webcam"
+            Description="Straightness and flatness from a laser line on a lensless webcam"
+            Target="[INSTALLFOLDER]laser-level-webcam.exe"
+            WorkingDirectory="INSTALLFOLDER" />
+          <RegistryValue Root="HKCU" Key="Software\Laser Level Webcam" Name="DesktopShortcut" Type="integer" Value="1" KeyPath="yes" />
+        </Component>
+      </Feature>
+
+      <Feature Id="Path" Title="Command line on PATH"
+        Description="Adds the install folder to PATH, so that the laser command works in any terminal.">
+        <Component Directory="INSTALLFOLDER">
+          <Environment Id="PATH" Name="PATH" Value="[INSTALLFOLDER]" Action="set" Part="last" System="yes" Permanent="no" />
+          <RegistryValue Root="HKLM" Key="Software\Laser Level Webcam" Name="OnPath" Type="integer" Value="1" KeyPath="yes" />
+        </Component>
+      </Feature>
+    </Feature>
+  </Package>
+</Wix>

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/laser-core", "crates/laser-camera", "apps/laser", "apps/laser-level-webcam"]
+members = ["crates/laser-core", "crates/laser-camera", "apps/laser", "apps/laser-level-webcam", "tools/browser-check", "tools/pack"]
 
 [workspace.package]
 version = "2.0.0-alpha.1"

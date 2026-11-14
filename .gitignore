@@ -5,6 +5,5 @@ dist/
 # Frames saved from a live camera for the benchmark example (large).
 /bench/data/
 
-# Local notes: the plan and machine-specific agent rules.
-/PLAN.md
+# Machine-specific agent rules.
 /AGENTS.local.md

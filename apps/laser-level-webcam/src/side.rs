@@ -7,10 +7,10 @@ use laser_core::camera::{
 };
 use laser_core::frame::Roi;
 
-use crate::app::App;
+use crate::app::{App, SensorAction};
 use crate::driver::Request;
 use crate::engine::{CameraState, CameraView, Engine};
-use crate::{setup, theme, visuals};
+use crate::{sensors, setup, theme, visuals};
 
 pub fn draw(app: &mut App, ui: &mut egui::Ui, e: &mut Engine) {
     section(ui, "Camera", true, CAMERA_INTRO, |ui| camera_section(app, ui, e));
@@ -289,6 +289,15 @@ fn camera_section(app: &mut App, ui: &mut egui::Ui, e: &mut Engine) {
     ui.horizontal(|ui| {
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if ui.button("Rescan").on_hover_text("Look for cameras again").clicked() {
+                // The browser lists its cameras later; the list is read again each frame there.
+                #[cfg(target_arch = "wasm32")]
+                {
+                    let ctx = ui.ctx().clone();
+                    wasm_bindgen_futures::spawn_local(async move {
+                        let _ = laser_camera::web::rescan().await;
+                        ctx.request_repaint();
+                    });
+                }
                 app.devices = laser_camera::devices();
             }
             egui::ComboBox::from_id_salt("camera")
@@ -423,7 +432,105 @@ fn control_row(app: &mut App, ui: &mut egui::Ui, info: &ControlInfo) {
     }
 }
 
+/// The sensors the user has saved: pick one, save this one, move the list to another computer.
+fn saved_sensors(app: &mut App, ui: &mut egui::Ui) {
+    let mut current = app.settings.sensor.clone();
+    current.name = current.name.trim().to_owned();
+    let saved = app.sensors.get(&current.name);
+    let changed = saved.is_some_and(|s| s.sensor != current);
+    let camera = app.camera_id.as_ref();
+    let linked = saved.is_some_and(|s| camera.is_some_and(|c| s.cameras.iter().any(|k| k.matches(c))));
+    let (mut pick, mut save, mut delete, mut action) = (None, false, false, None);
+    ui.horizontal_wrapped(|ui| {
+        ui.label("Saved");
+        let shown = match (saved, app.sensors.sensors.is_empty()) {
+            (_, true) => "None yet".to_owned(),
+            (Some(_), false) => current.name.clone(),
+            (None, false) => "Pick one".to_owned(),
+        };
+        egui::ComboBox::from_id_salt("saved_sensors")
+            .selected_text(shown)
+            .width(150.0)
+            .show_ui(ui, |ui| {
+                for s in &app.sensors.sensors {
+                    let k = &s.sensor;
+                    let text = format!("{}   {} µm, {} × {}", k.name, k.pixel_pitch_um, k.width_px, k.height_px);
+                    let on = saved.is_some_and(|x| std::ptr::eq(x, s));
+                    let names: Vec<&str> = s.cameras.iter().map(|c| c.name.as_str()).collect();
+                    let hover = if names.is_empty() {
+                        "Saved for no camera.".to_owned()
+                    } else {
+                        format!("Picked when {} opens.", names.join(" or "))
+                    };
+                    if ui.selectable_label(on, text).on_hover_text(hover).clicked() {
+                        pick = Some(k.clone());
+                    }
+                }
+            })
+            .response
+            .on_hover_text("The sensors you have saved. Pick one to use it.");
+        let (label, enabled) = match saved {
+            _ if current.name.is_empty() => ("Save", false),
+            None => ("Save", true),
+            Some(_) if changed => ("Save changes", true),
+            Some(_) if camera.is_some() && !linked => ("Save for this camera", true),
+            Some(_) => ("Saved", false),
+        };
+        let hover = match camera {
+            _ if current.name.is_empty() => "Give the sensor a name first.".to_owned(),
+            Some(c) => format!("Keep this sensor in the list. It is picked whenever {} opens.", c.name),
+            None => "Keep this sensor in the list.".to_owned(),
+        };
+        save = ui.add_enabled(enabled, egui::Button::new(label)).on_hover_text(hover).clicked();
+        delete = ui
+            .add_enabled(saved.is_some(), egui::Button::new("Delete"))
+            .on_hover_text("Take this sensor out of the list.")
+            .clicked();
+        if ui
+            .add_enabled(!app.sensors.sensors.is_empty(), egui::Button::new("Export…"))
+            .on_hover_text("Save the list to a file: a copy to keep, or to take to another computer or the browser version.")
+            .clicked()
+        {
+            action = Some(SensorAction::Export);
+        }
+        if ui
+            .button("Import…")
+            .on_hover_text("Add the sensors from an exported list. A sensor of the same name is replaced.")
+            .clicked()
+        {
+            action = Some(SensorAction::Import);
+        }
+    });
+    let state = match (saved, camera) {
+        _ if current.name.is_empty() => "Give the sensor a name to save it.".to_owned(),
+        (None, _) => "Not saved yet.".to_owned(),
+        _ if changed => "Changed since it was saved.".to_owned(),
+        (Some(_), Some(c)) if linked => format!("Saved. Picked whenever {} opens.", c.name),
+        (Some(_), Some(c)) => format!("Saved, but not for {}.", c.name),
+        (Some(_), None) => "Saved.".to_owned(),
+    };
+    ui.label(theme::dim(state)).on_hover_text(sensors::place());
+    if let Some(msg) = &app.sensor_msg {
+        ui.label(theme::dim(msg));
+    }
+    if let Some(k) = pick {
+        app.settings.sensor = k;
+        app.sensor_msg = None;
+    }
+    if save {
+        app.save_sensor();
+    }
+    if delete {
+        app.delete_sensor(&current.name);
+    }
+    if action.is_some() {
+        app.sensor_action = action;
+    }
+}
+
 fn sensor_section(app: &mut App, ui: &mut egui::Ui, e: &Engine) {
+    saved_sensors(app, ui);
+    ui.add_space(6.0);
     let s = &mut app.settings.sensor;
     egui::Grid::new("sensor").num_columns(2).spacing([10.0, 6.0]).show(ui, |ui| {
         ui.label("Name");

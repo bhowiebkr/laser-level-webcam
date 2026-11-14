@@ -17,9 +17,7 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use js_sys::{Array, Function, Object, Promise, Reflect};
-use laser_core::camera::{
-    CameraSettings, ControlId, ControlInfo, ControlMode, ControlSetting, ControlUnit, PixelFormat, VideoMode,
-};
+use laser_core::camera::{CameraSettings, ControlId, ControlInfo, ControlMode, ControlSetting, PixelFormat, VideoMode};
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
@@ -28,46 +26,43 @@ use web_sys::{
     MediaStreamTrack,
 };
 
+use crate::browser::{self, Ask, Value};
 use crate::{Applied, Backend, CameraError, DeviceInfo, Frame, FrameSource};
 
 /// The camera the browser picks, or the one the user picks in its prompt.
 pub const ANY: &str = "Browser camera";
 
-/// Sizes offered in the mode list, when the camera's range takes them.
-const SIZES: [(u32, u32); 6] = [(3840, 2160), (2592, 1944), (1920, 1080), (1280, 960), (1280, 720), (640, 480)];
-
-/// The size asked for when the settings name none.
-const DEFAULT_SIZE: (u32, u32) = (1920, 1080);
-
-/// The controls the spec has, with their mode and value names, and the unit of the value.
-const CONTROLS: [(ControlId, Option<&str>, &str, ControlUnit); 8] = [
-    (ControlId::Exposure, Some("exposureMode"), "exposureTime", ControlUnit::HundredMicroseconds),
-    (ControlId::WhiteBalance, Some("whiteBalanceMode"), "colorTemperature", ControlUnit::Kelvin),
-    (ControlId::Brightness, None, "brightness", ControlUnit::Raw),
-    (ControlId::Contrast, None, "contrast", ControlUnit::Raw),
-    (ControlId::Saturation, None, "saturation", ControlUnit::Raw),
-    (ControlId::Sharpness, None, "sharpness", ControlUnit::Raw),
-    (ControlId::Focus, Some("focusMode"), "focusDistance", ControlUnit::Raw),
-    (ControlId::Zoom, None, "zoom", ControlUnit::Raw),
-];
-
 thread_local! {
     /// The browser's cameras, as last listed. Their names are empty until the user allows one.
     static DEVICES: RefCell<Vec<DeviceInfo>> = const { RefCell::new(Vec::new()) };
+    /// Sizes a camera (by its id) gave another size for, so they are not offered again.
+    static MISSING: RefCell<Vec<(String, (u32, u32))>> = const { RefCell::new(Vec::new()) };
 }
 
 fn js_err(what: &str, e: &JsValue) -> CameraError {
-    let name = Reflect::get(e, &"name".into()).ok().and_then(|v| v.as_string()).unwrap_or_default();
+    let name = err_name(e);
     let message = Reflect::get(e, &"message".into()).ok().and_then(|v| v.as_string()).unwrap_or_default();
-    match name.as_str() {
-        "NotAllowedError" => {
-            CameraError::Os(format!("{what}: the camera was not allowed. Allow it in the browser, or pick the synthetic camera"))
-        }
-        "NotFoundError" | "OverconstrainedError" => CameraError::NotFound(format!("{what}: no camera fits ({message})")),
-        "NotReadableError" => CameraError::Os(format!("{what}: the camera is in use by another program")),
-        _ if message.is_empty() => CameraError::Os(format!("{what}: {e:?}")),
-        _ => CameraError::Os(format!("{what}: {message}")),
+    if name.is_empty() && message.is_empty() {
+        return CameraError::Os(format!("{what}: {e:?}"));
     }
+    browser::error(what, &name, &message)
+}
+
+/// The name of a browser error, such as `NotReadableError`.
+fn err_name(e: &JsValue) -> String {
+    Reflect::get(e, &"name".into()).ok().and_then(|v| v.as_string()).unwrap_or_default()
+}
+
+/// Wait this long, letting the browser run.
+async fn sleep(ms: i32) {
+    let promise = Promise::new(&mut |resolve, _| {
+        let waited =
+            web_sys::window().and_then(|w| w.set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, ms).ok());
+        if waited.is_none() {
+            let _ = resolve.call0(&JsValue::NULL);
+        }
+    });
+    let _ = JsFuture::from(promise).await;
 }
 
 fn get(obj: &JsValue, key: &str) -> Option<JsValue> {
@@ -81,6 +76,20 @@ fn num(obj: &JsValue, key: &str) -> Option<f64> {
 fn set(obj: &Object, key: &str, value: impl Into<JsValue>) {
     // Setting a field on a plain object made here does not fail.
     let _ = Reflect::set(obj, &key.into(), &value.into());
+}
+
+fn set_value(obj: &Object, key: &str, value: Value) {
+    match value {
+        Value::Text(t) => set(obj, key, t),
+        Value::Number(n) => set(obj, key, n),
+    }
+}
+
+/// A capability's lowest and highest value.
+fn range(caps: &JsValue, key: &str) -> Option<(f64, f64)> {
+    let r = get(caps, key)?;
+    let (min, max) = (num(&r, "min")?, num(&r, "max")?);
+    (min <= max).then_some((min, max))
 }
 
 fn call0(obj: &JsValue, method: &str) -> Option<JsValue> {
@@ -116,22 +125,44 @@ pub async fn rescan() -> Result<(), CameraError> {
 }
 
 /// The track constraints for this device and mode.
-fn constraints(device: &DeviceInfo, mode: Option<&VideoMode>) -> Object {
+fn constraints(device: &DeviceInfo, mode: Option<&VideoMode>, ask: Ask) -> Object {
     let video = Object::new();
     if !device.id.is_empty() {
         let exact = Object::new();
         set(&exact, "exact", device.id.as_str());
         set(&video, "deviceId", exact);
     }
-    let (w, h) = mode.map_or(DEFAULT_SIZE, |m| (m.width, m.height));
-    set(&video, "width", w);
-    set(&video, "height", h);
-    if let Some(m) = mode {
-        set(&video, "frameRate", m.fps);
+    for (key, value) in browser::size_fields(mode, ask) {
+        set_value(&video, key, value);
     }
-    // The camera's own sizes only: a size the browser scales to averages the beam's pixels.
-    set(&video, "resizeMode", "none");
     video
+}
+
+/// Ask the browser for the camera, asking for less each time it will not start.
+async fn get_stream(
+    media: &web_sys::MediaDevices,
+    device: &DeviceInfo,
+    mode: Option<&VideoMode>,
+) -> Result<(MediaStream, Object), CameraError> {
+    let mut failed = JsValue::UNDEFINED;
+    for ask in Ask::ALL {
+        let video_c = constraints(device, mode, ask);
+        let all = Object::new();
+        set(&all, "video", &video_c);
+        set(&all, "audio", false);
+        let promise = media.get_user_media_with_constraints(all.unchecked_ref()).map_err(|e| js_err("opening", &e))?;
+        match JsFuture::from(promise).await {
+            Ok(stream) => return Ok((stream.unchecked_into(), video_c)),
+            // Refused, or no such camera: asking for less does not help.
+            Err(e) if !browser::ask_less_after(&err_name(&e)) => {
+                return Err(js_err("opening", &e));
+            }
+            Err(e) => failed = e,
+        }
+        // Give the camera a moment to let go of the try that failed.
+        sleep(300).await;
+    }
+    Err(js_err("opening", &failed))
 }
 
 /// Ask for the camera the settings name (the one the browser picks if they name none or
@@ -144,28 +175,37 @@ pub async fn open(
     if let Some(name) = settings.device.as_deref().filter(|n| *n != ANY) {
         // A name saved from an earlier visit: the list may not be read yet.
         let _ = rescan().await;
-        device = devices().into_iter().find(|d| d.name == name).ok_or_else(|| CameraError::NotFound(name.to_owned()))?;
+        device =
+            devices().into_iter().find(|d| d.name == name).ok_or_else(|| CameraError::NotFound(name.to_owned()))?;
     }
     let window = web_sys::window().ok_or_else(|| CameraError::Os("no window".into()))?;
     let media = window.navigator().media_devices().map_err(|e| js_err("no camera access in this browser", &e))?;
-    let video_c = constraints(&device, settings.mode.as_ref());
-    let all = Object::new();
-    set(&all, "video", &video_c);
-    set(&all, "audio", false);
-    let promise = media.get_user_media_with_constraints(all.unchecked_ref()).map_err(|e| js_err("opening", &e))?;
-    let stream: MediaStream = JsFuture::from(promise).await.map_err(|e| js_err("opening", &e))?.unchecked_into();
+    let (stream, video_c) = get_stream(&media, &device, settings.mode.as_ref()).await?;
     let track: MediaStreamTrack =
         stream.get_video_tracks().get(0).dyn_into().map_err(|_| CameraError::Os("the stream has no video".into()))?;
+    // An open that fails from here on leaves nothing running. `Clone::clone` copies the handle;
+    // the stream's own `clone` method would start a second stream that nothing stops.
+    let mut undo = Undo { stream: Clone::clone(&stream), video: None };
     // Now the names can be read.
     let _ = rescan().await;
 
     let document = window.document().ok_or_else(|| CameraError::Os("no document".into()))?;
-    let video: HtmlVideoElement = document
-        .create_element("video")
-        .map_err(|e| js_err("making a video element", &e))?
-        .unchecked_into();
+    let video: HtmlVideoElement =
+        document.create_element("video").map_err(|e| js_err("making a video element", &e))?.unchecked_into();
     video.set_muted(true);
     let _ = video.set_attribute("playsinline", "");
+    // On the page, but out of sight: some browsers call back for shown frames only then.
+    let _ = video.style().set_property("position", "fixed");
+    let _ = video.style().set_property("left", "0");
+    let _ = video.style().set_property("top", "0");
+    let _ = video.style().set_property("width", "2px");
+    let _ = video.style().set_property("height", "2px");
+    let _ = video.style().set_property("opacity", "0");
+    let _ = video.style().set_property("pointer-events", "none");
+    if let Some(body) = document.body() {
+        let _ = body.append_child(&video);
+    }
+    undo.video = Some(video.clone());
     video.set_src_object(Some(&stream));
     let playing = video.play().map_err(|e| js_err("starting the video", &e))?;
     JsFuture::from(playing).await.map_err(|e| js_err("starting the video", &e))?;
@@ -174,10 +214,8 @@ pub async fn open(
     if w == 0 || h == 0 {
         return Err(CameraError::Os("the camera sends no picture".into()));
     }
-    let canvas: HtmlCanvasElement = document
-        .create_element("canvas")
-        .map_err(|e| js_err("making a canvas", &e))?
-        .unchecked_into();
+    let canvas: HtmlCanvasElement =
+        document.create_element("canvas").map_err(|e| js_err("making a canvas", &e))?.unchecked_into();
     canvas.set_width(w);
     canvas.set_height(h);
     let options = Object::new();
@@ -192,12 +230,25 @@ pub async fn open(
     let fps = num(&track_settings, "frameRate").filter(|f| *f > 0.0).unwrap_or(30.0);
     let mode = VideoMode { width: w, height: h, fps, format: PixelFormat::Rgba };
     let caps = call0(&track, "getCapabilities").unwrap_or(JsValue::UNDEFINED);
-    let modes = offered_modes(&caps, mode);
     let opened = DeviceInfo {
-        name: if device.name == ANY { format!("{} (browser)", track.label()) } else { device.name },
+        // The name it has in the list, so the list shows it picked.
+        name: if device.name == ANY && !track.label().is_empty() { track.label() } else { device.name },
         id: get(&track_settings, "deviceId").and_then(|v| v.as_string()).unwrap_or(device.id),
         backend: Backend::Browser,
     };
+    let missing: Vec<(u32, u32)> = MISSING.with(|m| {
+        let mut m = m.borrow_mut();
+        if let Some(asked) = settings.mode.filter(|a| (a.width, a.height) != (w, h)) {
+            let entry = (opened.id.clone(), (asked.width, asked.height));
+            if !m.contains(&entry) {
+                m.push(entry);
+            }
+        }
+        m.iter().filter(|(id, _)| *id == opened.id).map(|&(_, size)| size).collect()
+    });
+    let max = |key: &str| get(&caps, key).and_then(|r| num(&r, "max"));
+    let max_size = max("width").zip(max("height"));
+    let modes = browser::offered_modes(max_size, max("frameRate"), mode, &missing);
 
     let mut cam = WebCamera {
         device: opened,
@@ -208,7 +259,7 @@ pub async fn open(
         video,
         ctx,
         base: video_c,
-        wanted: Vec::new(),
+        wanted: Rc::new(RefCell::new(Vec::new())),
         shown: Rc::new(Cell::new(None)),
         stopped: Rc::new(Cell::new(false)),
         last: None,
@@ -216,33 +267,43 @@ pub async fn open(
         settled: Rc::new(RefCell::new(Vec::new())),
         pending: Rc::new(Cell::new(0)),
     };
+    // The camera undoes itself from now on.
+    std::mem::forget(undo);
     cam.watch_frames(Rc::new(repaint));
     let applied = crate::apply(&mut cam, &settings.controls);
     Ok((cam, applied))
 }
 
-/// The usual sizes inside the camera's range, at its highest frame rate up to 30 fps, and the
-/// mode it is in.
-fn offered_modes(caps: &JsValue, current: VideoMode) -> Vec<VideoMode> {
-    let range = |key: &str| {
-        let r = get(caps, key);
-        (r.as_ref().and_then(|r| num(r, "min")), r.as_ref().and_then(|r| num(r, "max")))
-    };
-    let (Some(w_max), Some(h_max)) = (range("width").1, range("height").1) else { return vec![current] };
-    let fps = range("frameRate").1.map_or(current.fps, |f| f.min(30.0));
-    let mut out: Vec<VideoMode> = SIZES
-        .iter()
-        .filter(|&&(w, h)| f64::from(w) <= w_max && f64::from(h) <= h_max)
-        .map(|&(width, height)| VideoMode { width, height, fps, format: PixelFormat::Rgba })
-        .collect();
-    if !out.iter().any(|m| (m.width, m.height) == (current.width, current.height)) {
-        out.insert(0, current);
+/// Stops the stream and takes the video off the page when an open fails half way.
+struct Undo {
+    stream: MediaStream,
+    video: Option<HtmlVideoElement>,
+}
+
+impl Drop for Undo {
+    fn drop(&mut self) {
+        stop(&self.stream, self.video.as_ref());
     }
-    out
+}
+
+/// Let go of the camera and take the video off the page.
+fn stop(stream: &MediaStream, video: Option<&HtmlVideoElement>) {
+    for t in stream.get_tracks().iter() {
+        if let Ok(t) = t.dyn_into::<MediaStreamTrack>() {
+            t.stop();
+        }
+    }
+    if let Some(v) = video {
+        v.set_src_object(None);
+        v.remove();
+    }
 }
 
 /// What the frame callback last saw: the frame's media time, s, and frames shown so far.
 type Shown = Option<(f64, u64)>;
+
+/// Called by the video with the time and the frame's details, for each frame it shows.
+type FrameCallback = Closure<dyn FnMut(f64, JsValue)>;
 
 /// An open browser camera. Its frames are read on the window's thread.
 pub struct WebCamera {
@@ -256,7 +317,9 @@ pub struct WebCamera {
     /// The constraints it was opened with; every control change sends them again, with all the
     /// controls asked for so far, since a new set replaces the old one.
     base: Object,
-    wanted: Vec<ControlSetting>,
+    /// The controls asked for so far. One the camera refuses is let go, so it does not fail
+    /// the next.
+    wanted: Rc<RefCell<Vec<ControlSetting>>>,
     shown: Rc<Cell<Shown>>,
     stopped: Rc<Cell<bool>>,
     /// The last frame read, as `shown` had it.
@@ -279,7 +342,7 @@ impl WebCamera {
         let video = self.video.clone();
         let shown = Rc::clone(&self.shown);
         let stopped = Rc::clone(&self.stopped);
-        let slot: Rc<RefCell<Option<Closure<dyn FnMut(f64, JsValue)>>>> = Rc::new(RefCell::new(None));
+        let slot: Rc<RefCell<Option<FrameCallback>>> = Rc::new(RefCell::new(None));
         let again = Rc::clone(&slot);
         *slot.borrow_mut() = Some(Closure::new(move |_now: f64, meta: JsValue| {
             if stopped.get() {
@@ -300,57 +363,45 @@ impl WebCamera {
         }
     }
 
-    /// The control's range and state, read from the track.
-    fn read(&self, id: ControlId) -> Option<ControlInfo> {
-        let &(_, mode_key, value_key, unit) = CONTROLS.iter().find(|c| c.0 == id)?;
-        let caps = call0(&self.track, "getCapabilities")?;
-        let now = call0(&self.track, "getSettings")?;
-        let range = get(&caps, value_key)?;
-        let (min, max) = (num(&range, "min")?, num(&range, "max")?);
-        let step = num(&range, "step").filter(|s| *s > 0.0).unwrap_or(1.0);
-        let value = num(&now, value_key).unwrap_or(min);
-        let auto = mode_key.and_then(|key| {
-            let modes: Array = get(&caps, key)?.dyn_into().ok()?;
-            let names: Vec<String> = modes.iter().filter_map(|m| m.as_string()).collect();
-            let has_auto = names.iter().any(|m| m == "continuous" || m == "single-shot");
-            (has_auto && names.iter().any(|m| m == "manual"))
-                .then(|| get(&now, key).and_then(|m| m.as_string()).is_none_or(|m| m != "manual"))
-        });
-        Some(ControlInfo {
-            id,
-            min: min.round() as i64,
-            max: max.round() as i64,
-            step: (step.round() as i64).max(1),
-            default: value.round() as i64,
-            value: value.round() as i64,
-            auto,
-            unit,
-        })
-    }
-
     /// Send the open constraints again with every control asked for so far.
     fn send_controls(&self) -> Result<Promise, CameraError> {
+        let caps = call0(&self.track, "getCapabilities").unwrap_or(JsValue::UNDEFINED);
         let advanced = Object::new();
-        for s in &self.wanted {
-            let Some(&(_, mode_key, value_key, _)) = CONTROLS.iter().find(|c| c.0 == s.id) else { continue };
-            match (s.mode, mode_key) {
-                (ControlMode::Auto, Some(key)) => set(&advanced, key, "continuous"),
-                (ControlMode::Auto, None) => {}
-                (ControlMode::Manual(v), key) => {
-                    if let Some(key) = key {
-                        set(&advanced, key, "manual");
-                    }
-                    set(&advanced, value_key, v as f64);
-                }
-            }
+        for (key, value) in browser::control_fields(&self.wanted.borrow(), |key| range(&caps, key)) {
+            set_value(&advanced, key, value);
         }
         let all = Object::assign(&Object::new(), &self.base);
         set(&all, "advanced", Array::of1(&advanced));
         self.track.apply_constraints_with_constraints(all.unchecked_ref()).map_err(|e| js_err("setting a control", &e))
     }
+
+    /// Control changes the browser has not finished; their answers come through
+    /// [`FrameSource::settled`].
+    pub fn busy(&self) -> bool {
+        self.pending.get() > 0
+    }
+
+    /// The browser's track, for checks that read it directly.
+    pub fn track(&self) -> &MediaStreamTrack {
+        &self.track
+    }
 }
 
-fn request_frame(video: &HtmlVideoElement, cb: &Closure<dyn FnMut(f64, JsValue)>) {
+/// A control's range and state, read from the track.
+fn read_control(track: &MediaStreamTrack, id: ControlId) -> Option<ControlInfo> {
+    let (mode_key, value_key, unit) = browser::keys(id)?;
+    let caps = call0(track, "getCapabilities")?;
+    let now = call0(track, "getSettings")?;
+    let step = get(&caps, value_key).and_then(|r| num(&r, "step"));
+    let auto = mode_key.and_then(|key| {
+        let modes: Array = get(&caps, key)?.dyn_into().ok()?;
+        let offered: Vec<String> = modes.iter().filter_map(|m| m.as_string()).collect();
+        browser::auto_state(&offered, get(&now, key).and_then(|m| m.as_string()).as_deref())
+    });
+    browser::control_info(id, unit, range(&caps, value_key)?, step, num(&now, value_key), auto)
+}
+
+fn request_frame(video: &HtmlVideoElement, cb: &FrameCallback) {
     if let Some(f) = get(video, "requestVideoFrameCallback").and_then(|f| f.dyn_into::<Function>().ok()) {
         let _ = f.call1(video, cb.as_ref());
     }
@@ -370,13 +421,13 @@ impl FrameSource for WebCamera {
     }
 
     fn controls(&mut self) -> Vec<ControlInfo> {
-        CONTROLS.iter().filter_map(|c| self.read(c.0)).collect()
+        browser::CONTROLS.iter().filter_map(|c| read_control(&self.track, c.0)).collect()
     }
 
     /// Asks the browser for the setting and answers with it as asked; the browser's own answer,
     /// read back from the track, comes later through [`FrameSource::settled`].
     fn set_control(&mut self, setting: ControlSetting) -> Result<ControlInfo, CameraError> {
-        let mut info = self.read(setting.id).ok_or(CameraError::NoControl(setting.id))?;
+        let mut info = read_control(&self.track, setting.id).ok_or(CameraError::NoControl(setting.id))?;
         match setting.mode {
             ControlMode::Auto if info.auto.is_none() => return Err(CameraError::NoControl(setting.id)),
             ControlMode::Auto => info.auto = Some(true),
@@ -385,23 +436,37 @@ impl FrameSource for WebCamera {
                 info.auto = info.auto.map(|_| false);
             }
         }
-        let asked = ControlSetting { mode: if let ControlMode::Manual(_) = setting.mode { ControlMode::Manual(info.value) } else { ControlMode::Auto }, ..setting };
-        self.wanted.retain(|s| s.id != setting.id);
-        self.wanted.push(asked);
-        let promise = self.send_controls()?;
-        let track = self.track.clone();
+        let asked = ControlSetting {
+            mode: if let ControlMode::Manual(_) = setting.mode {
+                ControlMode::Manual(info.value)
+            } else {
+                ControlMode::Auto
+            },
+            ..setting
+        };
+        browser::want(&mut self.wanted.borrow_mut(), asked);
+        let promise = match self.send_controls() {
+            Ok(p) => p,
+            Err(e) => {
+                browser::refused(&mut self.wanted.borrow_mut(), asked);
+                return Err(e);
+            }
+        };
+        // The handle, not the track's own `clone`, which starts a second track.
+        let track = Clone::clone(&self.track);
         let settled = Rc::clone(&self.settled);
         let pending = Rc::clone(&self.pending);
+        let wanted = Rc::clone(&self.wanted);
         pending.set(pending.get() + 1);
         wasm_bindgen_futures::spawn_local(async move {
             let result = JsFuture::from(promise).await;
             pending.set(pending.get().saturating_sub(1));
             let back = match result {
-                Ok(_) => {
-                    let cam = Readback { track };
-                    cam.read(setting.id).ok_or(CameraError::NoControl(setting.id))
+                Ok(_) => read_control(&track, setting.id).ok_or(CameraError::NoControl(setting.id)),
+                Err(e) => {
+                    browser::refused(&mut wanted.borrow_mut(), asked);
+                    Err(js_err("setting a control", &e))
                 }
-                Err(e) => Err(js_err("setting a control", &e)),
             };
             settled.borrow_mut().push(Applied { setting: asked, result: back });
         });
@@ -453,41 +518,10 @@ impl FrameSource for WebCamera {
     }
 }
 
-/// Reads a control off a track, for a setting the browser finished after the camera moved on.
-struct Readback {
-    track: MediaStreamTrack,
-}
-
-impl Readback {
-    fn read(&self, id: ControlId) -> Option<ControlInfo> {
-        let &(_, mode_key, value_key, unit) = CONTROLS.iter().find(|c| c.0 == id)?;
-        let caps = call0(&self.track, "getCapabilities")?;
-        let now = call0(&self.track, "getSettings")?;
-        let range = get(&caps, value_key)?;
-        let value = num(&now, value_key)?;
-        let auto = mode_key.and_then(|key| get(&now, key)).and_then(|m| m.as_string()).map(|m| m != "manual");
-        Some(ControlInfo {
-            id,
-            min: num(&range, "min")?.round() as i64,
-            max: num(&range, "max")?.round() as i64,
-            step: (num(&range, "step").unwrap_or(1.0).round() as i64).max(1),
-            default: value.round() as i64,
-            value: value.round() as i64,
-            auto,
-            unit,
-        })
-    }
-}
-
 impl Drop for WebCamera {
     fn drop(&mut self) {
         self.stopped.set(true);
-        for t in self.stream.get_tracks().iter() {
-            if let Ok(t) = t.dyn_into::<MediaStreamTrack>() {
-                t.stop();
-            }
-        }
-        self.video.set_src_object(None);
+        stop(&self.stream, Some(&self.video));
     }
 }
 

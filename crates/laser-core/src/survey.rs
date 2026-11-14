@@ -97,6 +97,13 @@ impl Session {
         serde_json::to_string_pretty(self).expect("a session always serialises")
     }
 
+    /// The same text without line breaks or indents, for the copy the app keeps between runs.
+    /// Every frame of every visit is in it, and the browser keeps at most a few megabytes for a
+    /// page, so the indents matter.
+    pub fn to_json_compact(&self) -> String {
+        serde_json::to_string(self).expect("a session always serialises")
+    }
+
     /// Read and check a session file.
     pub fn from_json(text: &str) -> Result<Session, LoadError> {
         // The version first, so a file from a newer version says so instead of failing on a field

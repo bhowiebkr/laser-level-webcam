@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use crate::driver::{Driver, Request};
 use crate::engine::{CameraState, Engine, lock};
 use crate::files::{self, Inbox};
+use crate::sensors::{self, CameraId, SensorLibrary};
 use crate::settings::{AppSettings, KEY, SESSION_KEY};
 use crate::{measure, results, setup, side, theme, wait};
 
@@ -55,6 +56,16 @@ enum FileAction {
     Save,
 }
 
+/// Something asked for from the saved sensors, done once the engine is unlocked.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum SensorAction {
+    Export,
+    Import,
+}
+
+/// The camera the sensor in the settings was last used with.
+const SENSOR_CAMERA_KEY: &str = "sensor_camera";
+
 pub struct App {
     pub settings: AppSettings,
     pub engine: Arc<Mutex<Engine>>,
@@ -71,6 +82,19 @@ pub struct App {
     inbox: Inbox,
     /// What happened to the last file saved or opened.
     file_msg: Option<String>,
+    /// The sensors the user has saved.
+    pub sensors: SensorLibrary,
+    /// Whether the saved sensors are written back to the computer (not in tests).
+    keep_sensors: bool,
+    /// The camera open now, as the saved sensors know cameras.
+    pub camera_id: Option<CameraId>,
+    /// The camera the sensor in the settings was last used with.
+    sensor_camera: Option<CameraId>,
+    pub sensor_action: Option<SensorAction>,
+    /// A sensor list the user picked to import, once read.
+    sensor_inbox: Inbox,
+    /// What happened to the saved sensors last.
+    pub sensor_msg: Option<String>,
 }
 
 impl App {
@@ -81,7 +105,13 @@ impl App {
             .storage
             .and_then(|s| eframe::get_value::<String>(s, SESSION_KEY))
             .and_then(|text| Session::from_json(&text).ok());
-        Self::with(&cc.egui_ctx, settings, session)
+        let mut app = Self::with(&cc.egui_ctx, settings, session);
+        let loaded = sensors::load();
+        app.sensors = loaded.library;
+        app.sensor_msg = loaded.problem;
+        app.keep_sensors = true;
+        app.sensor_camera = cc.storage.and_then(|s| eframe::get_value(s, SENSOR_CAMERA_KEY));
+        app
     }
 
     /// The app with these settings, and this session or a new one.
@@ -105,14 +135,93 @@ impl App {
             file_action: None,
             inbox: Inbox::default(),
             file_msg: None,
+            sensors: SensorLibrary::default(),
+            keep_sensors: false,
+            camera_id: None,
+            sensor_camera: None,
+            sensor_action: None,
+            sensor_inbox: Inbox::default(),
+            sensor_msg: None,
+        }
+    }
+
+    /// A camera has opened. A camera other than the one the sensor was last used with gets the
+    /// sensor saved for it; the same camera keeps the sensor as it is, edits and all.
+    pub fn camera_opened(&mut self, id: &CameraId) {
+        let same = self.sensor_camera.as_ref().is_some_and(|c| c.matches(id));
+        if !same {
+            match self.sensors.for_camera(id) {
+                Some(saved) if saved.sensor != self.settings.sensor => {
+                    self.settings.sensor = saved.sensor.clone();
+                    self.sensor_msg = Some(format!("Picked the saved sensor {} for {}.", saved.sensor.name, id.name));
+                }
+                Some(_) => {}
+                None if self.sensor_camera.is_some() => {
+                    self.sensor_msg = Some(format!(
+                        "No sensor is saved for {} yet. Check the sensor and save it.",
+                        id.name
+                    ));
+                }
+                None => {}
+            }
+        }
+        self.sensor_camera = Some(id.clone());
+    }
+
+    /// Save the sensor in the settings, for the camera that is open.
+    pub fn save_sensor(&mut self) {
+        let camera = self.camera_id.clone();
+        self.sensors.save(&self.settings.sensor, camera.as_ref());
+        if camera.is_some() {
+            self.sensor_camera = camera;
+        }
+        self.sensor_msg = None;
+        self.keep_sensor_list();
+    }
+
+    pub fn delete_sensor(&mut self, name: &str) {
+        if self.sensors.remove(name) {
+            self.sensor_msg = Some(format!("Deleted {}. The settings still hold it until changed.", name.trim()));
+            self.keep_sensor_list();
+        }
+    }
+
+    /// Write the saved sensors back to the computer.
+    fn keep_sensor_list(&mut self) {
+        if self.keep_sensors
+            && let Err(why) = sensors::store(&self.sensors)
+        {
+            self.sensor_msg = Some(why);
+        }
+    }
+
+    /// The open camera, if it has changed since the last frame.
+    fn watch_camera(&mut self, e: &Engine) {
+        let id = e
+            .camera
+            .device
+            .as_ref()
+            .filter(|_| e.camera.state == CameraState::Open)
+            .map(|d| CameraId::new(&d.name, e.camera.usb.as_ref().map(|u| (u.vendor_id, u.product_id))));
+        if id != self.camera_id {
+            if let Some(id) = &id {
+                self.camera_opened(id);
+            }
+            self.camera_id = id;
         }
     }
 
     /// Draw one frame.
     pub fn draw(&mut self, ui: &mut egui::Ui) {
         self.driver.pump();
+        // The browser names its cameras only once one is allowed; reading the list is cheap there.
+        #[cfg(target_arch = "wasm32")]
+        {
+            self.devices = laser_camera::devices();
+        }
         let engine = Arc::clone(&self.engine);
         let mut e = lock(&engine);
+        self.watch_camera(&e);
         self.upload_preview(ui.ctx(), &e);
 
         egui::Panel::top("steps")
@@ -197,6 +306,34 @@ impl App {
                 }
                 Err(why) => self.file_msg = Some(format!("Could not open {name}: {why}")),
             }
+        }
+        self.sensor_files(ctx);
+    }
+
+    /// Export or import the saved sensors.
+    fn sensor_files(&mut self, ctx: &egui::Context) {
+        match self.sensor_action.take() {
+            Some(SensorAction::Export) => {
+                let msg = files::save_text("sensors.json", "application/json", &self.sensors.to_json());
+                self.sensor_msg = Some(msg).filter(|m| !m.is_empty());
+            }
+            Some(SensorAction::Import) => {
+                let repaint = ctx.clone();
+                self.sensor_msg = self.sensor_inbox.open("json", move || repaint.request_repaint());
+            }
+            None => {}
+        }
+        if let Some((name, text)) = self.sensor_inbox.take() {
+            self.sensor_msg = Some(match SensorLibrary::from_json(&text) {
+                Ok(list) => match self.sensors.merge(list) {
+                    0 => format!("No saved sensors in {name}."),
+                    n => {
+                        self.keep_sensor_list();
+                        format!("Imported {n} sensor{} from {name}.", if n == 1 { "" } else { "s" })
+                    }
+                },
+                Err(why) => format!("Could not read {name}: {why}"),
+            });
         }
     }
 
@@ -317,7 +454,8 @@ impl eframe::App for App {
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, KEY, &self.settings);
         let session = self.session_to_save();
-        eframe::set_value(storage, SESSION_KEY, &session.to_json());
+        eframe::set_value(storage, SESSION_KEY, &session.to_json_compact());
+        eframe::set_value(storage, SENSOR_CAMERA_KEY, &self.sensor_camera);
     }
 }
 
@@ -468,6 +606,7 @@ mod tests {
         // A camera that is not there, so the driver stays idle and the test feeds the frames.
         settings.camera.device = Some("No such camera".into());
         let mut app = App::with(&ctx, settings, None);
+        app.sensors.save(&app.settings.sensor.clone(), None);
         draw_all(&mut app, &ctx);
         assert!(matches!(lock(&app.engine).camera.state, CameraState::Failed(_)));
 
@@ -501,6 +640,44 @@ mod tests {
         let e = lock(&app.engine);
         assert_eq!(e.current_run().unwrap().visits.len(), stations + 2);
         assert!(e.sampling.is_some());
+    }
+
+    #[test]
+    fn a_camera_gets_the_sensor_saved_for_it() {
+        use laser_core::camera::Sensor;
+        let ctx = egui::Context::default();
+        let mut settings = AppSettings::default();
+        settings.camera.device = Some("No such camera".into());
+        let mut app = App::with(&ctx, settings, None);
+        let c270 = CameraId::new("HD Webcam C270 (046d:0825)", None);
+        let other = CameraId::new("USB Camera", Some((0x0c45, 0x6366)));
+        let ov = Sensor { name: "OV2710".into(), pixel_pitch_um: 3.0, ..Sensor::default() };
+        let imx = Sensor { name: "IMX291".into(), pixel_pitch_um: 2.9, ..Sensor::default() };
+
+        app.settings.sensor = ov.clone();
+        app.camera_id = Some(c270.clone());
+        app.save_sensor();
+        app.settings.sensor = imx.clone();
+        app.camera_id = Some(other.clone());
+        app.save_sensor();
+        assert_eq!(app.sensors.sensors.len(), 2);
+
+        app.camera_opened(&CameraId::new("HD Webcam C270", Some((0x046d, 0x0825))));
+        assert_eq!(app.settings.sensor, ov, "another camera gets its own sensor");
+        assert!(app.sensor_msg.as_deref().unwrap().contains("OV2710"));
+
+        app.settings.sensor.pixel_pitch_um = 2.95;
+        app.camera_opened(&c270);
+        assert_eq!(app.settings.sensor.pixel_pitch_um, 2.95, "the same camera keeps the edits");
+
+        app.camera_opened(&CameraId::new("Unknown cam", None));
+        assert_eq!(app.settings.sensor.pixel_pitch_um, 2.95, "a camera with no saved sensor changes nothing");
+        assert!(app.sensor_msg.as_deref().unwrap().contains("No sensor is saved for Unknown cam"));
+
+        app.camera_opened(&other);
+        assert_eq!(app.settings.sensor, imx);
+        app.delete_sensor("imx291");
+        assert!(app.sensors.get("IMX291").is_none());
     }
 
     #[test]

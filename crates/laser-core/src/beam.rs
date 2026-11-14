@@ -225,8 +225,8 @@ fn find_in(frame: &Luma<'_>, cfg: &FinderConfig) -> Result<Fix, NoBeam> {
     let mut centres = Vec::with_capacity(strips.count);
     for s in 0..strips.count {
         let p = strips.profile(s);
-        let fallback = stats::quantile(&p, 0.1).unwrap_or(0.0);
-        let bg = Background::fit(&p, shape.left_end, shape.right_start).unwrap_or(Background::flat(fallback));
+        let bg = Background::fit(&p, shape.left_end, shape.right_start)
+            .unwrap_or_else(|| Background::flat(stats::quantile(&p, 0.1).unwrap_or(0.0)));
         let centre = if centroid_fits {
             centroid(&p, &bg, shape.centre, half_width)
         } else {
@@ -499,7 +499,13 @@ fn half_max_centre(sm: &[f64], bg: &Background, start: f64, fwhm: f64) -> Option
     let lo = (start - 0.5 * fwhm).floor().clamp(0.0, (n - 1) as f64) as usize;
     let hi = (start + 0.5 * fwhm).ceil().clamp(0.0, (n - 1) as f64) as usize;
     let (imax, top) = (lo..=hi).map(|i| (i, sm[i])).max_by(|a, b| a.1.total_cmp(&b.1))?;
-    let level = 0.5 * (top + bg.at(imax as f64));
+    // A window whose top is not above the background has no half maximum; without this check
+    // `crossing` divides by zero on a flat run below the level.
+    let floor = bg.at(imax as f64);
+    if top <= floor {
+        return None;
+    }
+    let level = 0.5 * (top + floor);
     let left = crossing(sm, imax, level, -1)?;
     let right = crossing(sm, imax, level, 1)?;
     Some(0.5 * (left + right))
@@ -572,4 +578,20 @@ fn clipped_fraction(frame: &Luma<'_>, axis: LineAxis, centre: f64, half_width: f
         }
     }
     if total == 0 { 0.0 } else { hits as f64 / total as f64 }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A strip whose window lies below the background has no half maximum. Before the check,
+    /// two equal pixels below the level gave 0/0 and a NaN centre.
+    #[test]
+    fn half_max_centre_needs_a_peak_above_the_background() {
+        let flat = [5.0; 9];
+        assert_eq!(half_max_centre(&flat, &Background::flat(10.0), 4.0, 2.0), None);
+        let peak = [0.0, 0.0, 2.0, 8.0, 10.0, 8.0, 2.0, 0.0, 0.0];
+        let c = half_max_centre(&peak, &Background::flat(0.0), 4.0, 4.0).unwrap();
+        assert!((c - 4.0).abs() < 1e-12, "{c}");
+    }
 }

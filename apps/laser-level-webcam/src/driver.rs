@@ -3,7 +3,8 @@
 //! Natively the camera has its own thread ([`laser_camera::capture`]) and this driver has another,
 //! which finds the beam in each frame and hands the result to the engine, so measuring carries on
 //! while the window is hidden. In the browser there are no threads: the window calls
-//! [`Driver::pump`] each frame, and the synthetic camera makes the frames that are due.
+//! [`Driver::pump`] each frame: the synthetic camera makes the frames that are due, and the
+//! browser's camera gives the frame it last showed.
 
 use std::sync::{Arc, Mutex};
 
@@ -175,7 +176,11 @@ mod native {
 
 #[cfg(target_arch = "wasm32")]
 mod web {
-    use laser_camera::FrameSource;
+    use std::cell::{Cell, RefCell};
+    use std::rc::Rc;
+
+    use laser_camera::web::WebCamera;
+    use laser_camera::{Applied, CameraError, FrameSource};
 
     use super::*;
     use crate::engine::{lock, process};
@@ -183,10 +188,20 @@ mod web {
     /// Frames made in one window frame at most; the camera's clock falls behind beyond that.
     const MAX_PER_PUMP: usize = 2;
 
+    /// What came of opening the browser's camera.
+    type Opened = Result<(WebCamera, Vec<Applied>), CameraError>;
+
     pub struct Driver {
         engine: Arc<Mutex<Engine>>,
-        repaint: Box<dyn Fn()>,
+        repaint: Rc<dyn Fn()>,
         source: Option<Box<dyn FrameSource>>,
+        /// The browser's camera, once the user has allowed it.
+        opening: Rc<RefCell<Option<Opened>>>,
+        /// Counts the opens, so the answer to one asked before the last is let go.
+        generation: Rc<Cell<u64>>,
+        /// Frames are made on the session's clock (the synthetic camera), not as the browser
+        /// shows them.
+        paced: bool,
         /// Session time the camera opened.
         opened_s: f64,
         last_detail: f64,
@@ -194,28 +209,46 @@ mod web {
 
     impl Driver {
         pub fn start(engine: Arc<Mutex<Engine>>, repaint: impl Fn() + Send + 'static) -> Driver {
-            Driver { engine, repaint: Box::new(repaint), source: None, opened_s: 0.0, last_detail: f64::NEG_INFINITY }
+            Driver {
+                engine,
+                repaint: Rc::new(repaint),
+                source: None,
+                opening: Rc::new(RefCell::new(None)),
+                generation: Rc::new(Cell::new(0)),
+                paced: true,
+                opened_s: 0.0,
+                last_detail: f64::NEG_INFINITY,
+            }
         }
 
         pub fn send(&mut self, request: Request) {
             let mut e = lock(&self.engine);
             match request {
                 Request::Open(settings) => {
+                    // Let go of the camera first: the browser may not give it twice.
+                    self.source = None;
+                    self.generation.set(self.generation.get() + 1);
                     e.opening(settings.device.as_deref());
-                    match laser_camera::open(&settings) {
-                        Ok((mut source, applied)) => {
-                            let (device, modes, mode) =
-                                (source.device().clone(), source.modes().to_vec(), source.mode());
-                            e.opened(device, modes, mode, source.controls(), applied);
-                            self.opened_s = e.now();
-                            self.source = Some(source);
-                            self.last_detail = f64::NEG_INFINITY;
+                    if settings.device.as_deref() == Some(laser_camera::synthetic::NAME) {
+                        match laser_camera::open(&settings) {
+                            Ok((mut source, applied)) => {
+                                let (device, modes, mode) =
+                                    (source.device().clone(), source.modes().to_vec(), source.mode());
+                                e.opened(device, modes, mode, source.controls(), applied);
+                                self.opened_s = e.now();
+                                self.source = Some(source);
+                                self.paced = true;
+                                self.last_detail = f64::NEG_INFINITY;
+                            }
+                            Err(err) => e.failed(&err),
                         }
-                        Err(err) => e.failed(&err),
+                    } else {
+                        self.open_browser(settings);
                     }
                 }
                 Request::Close => {
                     self.source = None;
+                    self.generation.set(self.generation.get() + 1);
                     e.closed();
                 }
                 Request::Set(s) => {
@@ -241,18 +274,60 @@ mod web {
             (self.repaint)();
         }
 
-        /// Make the frames that are due.
+        /// Ask the browser for the camera; [`Driver::pump`] takes it once the user allows it.
+        fn open_browser(&self, settings: CameraSettings) {
+            let generation = Rc::clone(&self.generation);
+            let wanted = generation.get();
+            let slot = Rc::clone(&self.opening);
+            let repaint = Rc::clone(&self.repaint);
+            wasm_bindgen_futures::spawn_local(async move {
+                let frames = Rc::clone(&repaint);
+                let result = laser_camera::web::open(&settings, move || frames()).await;
+                // A later open or a close wins; this camera is let go here.
+                if generation.get() == wanted {
+                    *slot.borrow_mut() = Some(result);
+                    repaint();
+                }
+            });
+        }
+
+        /// Take in the browser's camera once it is open, then the frames that are due.
         pub fn pump(&mut self) {
+            let opened = self.opening.borrow_mut().take();
+            if let Some(result) = opened {
+                let mut e = lock(&self.engine);
+                match result {
+                    Ok((mut cam, applied)) => {
+                        let (device, modes, mode) = (cam.device().clone(), cam.modes().to_vec(), cam.mode());
+                        e.opened(device, modes, mode, cam.controls(), applied);
+                        self.opened_s = e.now();
+                        self.source = Some(Box::new(cam));
+                        self.paced = false;
+                        self.last_detail = f64::NEG_INFINITY;
+                    }
+                    Err(err) => e.failed(&err),
+                }
+            }
             let Some(src) = &mut self.source else { return };
+            let settled = src.settled();
+            if !settled.is_empty() {
+                let mut e = lock(&self.engine);
+                for a in settled {
+                    e.control(a);
+                }
+            }
             let period = src.mode().frame_period_s();
             let elapsed = lock(&self.engine).now() - self.opened_s;
             for _ in 0..MAX_PER_PUMP {
-                let done = lock(&self.engine).live.frames;
-                if (done as f64) * period > elapsed {
-                    break;
+                if self.paced {
+                    let done = lock(&self.engine).live.frames;
+                    if (done as f64) * period > elapsed {
+                        break;
+                    }
                 }
-                let frame = match src.next_frame() {
-                    Ok(f) => f,
+                let frame = match src.try_frame() {
+                    Ok(Some(f)) => f,
+                    Ok(None) => break,
                     Err(err) => {
                         lock(&self.engine).failed(&err);
                         self.source = None;
@@ -263,6 +338,10 @@ mod web {
                 let cfg = lock(&self.engine).finder.clone();
                 let p = process(&frame, &cfg, detail);
                 lock(&self.engine).absorb(p);
+                if !self.paced {
+                    // The browser holds only the frame on show.
+                    break;
+                }
             }
             (self.repaint)();
         }

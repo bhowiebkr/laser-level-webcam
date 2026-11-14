@@ -303,7 +303,12 @@ fn history(app: &App, ui: &mut egui::Ui, e: &Engine, s: &Status, height: f32) {
     }
     ax.vline(&painter, s.t_s, Stroke::new(1.0, theme::faded(theme::TEXT, 90)));
     ax.line(&painter, bins.iter().map(|b| [b.t_s, y_of(b.mean)]), Stroke::new(1.0, theme::faded(theme::TEXT, 120)));
-    ax.dots(&painter, bins.iter().map(|b| [b.t_s, y_of(b.mean)]), 1.8, theme::TEXT);
+    // Closer than about 4 px the dots merge into a band that the line already shows. After an
+    // hour that is thousands of circles to draw on every frame, so they stop there.
+    let spread_px = ax.sx(bins[bins.len() - 1].t_s) - ax.sx(t0);
+    if bins.len() as f32 * 4.0 <= spread_px {
+        ax.dots(&painter, bins.iter().map(|b| [b.t_s, y_of(b.mean)]), 1.8, theme::TEXT);
+    }
     if let Some(f) = &s.settle {
         let from = f.t0_s.max(t0);
         let curve = |a: f64, b: f64| (0..=120).map(move |i| a + (b - a) * f64::from(i) / 120.0);

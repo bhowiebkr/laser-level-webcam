@@ -278,7 +278,11 @@ impl Sampler {
     }
 
     pub fn done(&self, now_s: f64, rule: &SampleRule, um_per_px: f64) -> bool {
-        rule.done(now_s - self.start_s, self.reading().as_ref(), um_per_px)
+        let elapsed = now_s - self.start_s;
+        // This runs on every frame; the reading matters only between the shortest and the
+        // longest sample, and only with a target.
+        let needed = rule.target_um.is_some() && elapsed >= rule.min_s && elapsed < rule.max_s;
+        rule.done(elapsed, needed.then(|| self.reading()).flatten().as_ref(), um_per_px)
     }
 
     pub fn finish(self) -> Vec<Subsample> {

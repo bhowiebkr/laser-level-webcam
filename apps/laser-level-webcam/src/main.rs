@@ -12,6 +12,7 @@ mod layout_check;
 mod measure;
 mod plot;
 mod results;
+mod sensors;
 mod settings;
 mod setup;
 mod side;
@@ -19,11 +20,17 @@ mod theme;
 mod visuals;
 mod wait;
 
+/// The name the desktop app keeps its settings and saved sensors under.
+#[cfg(not(target_arch = "wasm32"))]
+pub const APP_ID: &str = "laser-level-webcam";
+
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result {
+    let icon = eframe::icon_data::from_png_bytes(include_bytes!("../../../assets/icon.png")).expect("the app icon is a PNG");
     let mut options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_title("Laser Level Webcam")
+            .with_icon(icon)
             .with_inner_size([1280.0, 800.0])
             .with_min_inner_size([960.0, 600.0]),
         ..Default::default()
@@ -35,7 +42,7 @@ fn main() -> eframe::Result {
     }
     #[cfg(not(windows))]
     let _ = &mut options;
-    eframe::run_native("laser-level-webcam", options, Box::new(|cc| Ok(Box::new(app::App::new(cc)))))
+    eframe::run_native(APP_ID, options, Box::new(|cc| Ok(Box::new(app::App::new(cc)))))
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -53,6 +60,11 @@ fn main() {
             .await;
         if let Err(e) = started {
             eframe::web_sys::console::error_1(&e);
+            // Say why on the page, so it does not show "Loading…" for ever.
+            let why = e.as_string().or_else(|| e.dyn_ref::<js_sys::Error>().map(|e| String::from(e.message()))).unwrap_or_default();
+            if let Some(b) = eframe::web_sys::window().and_then(|w| w.document()).and_then(|d| d.get_element_by_id("loading")) {
+                b.set_text_content(Some(&format!("The app could not start: {why}")));
+            }
         }
     });
 }

@@ -38,15 +38,25 @@ fn download(name: &str, mime: &str, text: &str) -> Result<(), wasm_bindgen::JsVa
     use wasm_bindgen::JsCast;
     let parts = js_sys::Array::of1(&wasm_bindgen::JsValue::from_str(text));
     let options = web_sys::BlobPropertyBag::new();
-    options.set_type(mime);
+    options.set_type(&format!("{mime};charset=utf-8"));
     let blob = web_sys::Blob::new_with_str_sequence_and_options(&parts, &options)?;
     let url = web_sys::Url::create_object_url_with_blob(&blob)?;
     let document = web_sys::window().and_then(|w| w.document()).ok_or("no document")?;
     let a: web_sys::HtmlAnchorElement = document.create_element("a")?.dyn_into()?;
     a.set_href(&url);
     a.set_download(name);
+    // Firefox follows only a link on the page.
+    let body = document.body().ok_or("no body")?;
+    body.append_child(&a)?;
     a.click();
-    web_sys::Url::revoke_object_url(&url)?;
+    a.remove();
+    // Some browsers read the file after the click returns; let it go a minute later.
+    let free = wasm_bindgen::closure::Closure::once_into_js(move || {
+        let _ = web_sys::Url::revoke_object_url(&url);
+    });
+    web_sys::window()
+        .ok_or("no window")?
+        .set_timeout_with_callback_and_timeout_and_arguments_0(free.unchecked_ref(), 60_000)?;
     Ok(())
 }
 

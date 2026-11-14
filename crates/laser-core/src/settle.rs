@@ -184,15 +184,19 @@ pub fn fit(t: &[f64], x: &[f64], t0_s: f64) -> Option<SettleFit> {
 }
 
 /// Best `settled` and `amplitude` for one τ, by linear least squares.
+///
+/// One pass: the residual sum of squares comes from the same sums, so each point costs one
+/// `exp`. The monitor runs this a few hundred times a second on up to hours of bins.
 fn solve(t: &[f64], x: &[f64], t0: f64, tau: f64) -> Option<Candidate> {
     let n = t.len() as f64;
-    let (mut su, mut suu, mut sx, mut sux) = (0.0, 0.0, 0.0, 0.0);
+    let (mut su, mut suu, mut sx, mut sux, mut sxx) = (0.0, 0.0, 0.0, 0.0, 0.0);
     for (ti, xi) in t.iter().zip(x) {
         let u = (-(ti - t0) / tau).exp();
         su += u;
         suu += u * u;
         sx += xi;
         sux += u * xi;
+        sxx += xi * xi;
     }
     let det = n * suu - su * su;
     if det <= 1e-12 * n * suu.max(1e-300) {
@@ -200,8 +204,12 @@ fn solve(t: &[f64], x: &[f64], t0: f64, tau: f64) -> Option<Candidate> {
     }
     let amplitude = (n * sux - su * sx) / det;
     let settled = (sx - amplitude * su) / n;
-    let rss = t.iter().zip(x).map(|(ti, xi)| (xi - settled - amplitude * (-(ti - t0) / tau).exp()).powi(2)).sum();
-    Some(Candidate { tau_s: tau, settled, amplitude, rss })
+    // Σ(x − s − a·u)², expanded.
+    let rss = sxx - 2.0 * settled * sx - 2.0 * amplitude * sux
+        + n * settled * settled
+        + 2.0 * amplitude * settled * su
+        + amplitude * amplitude * suu;
+    Some(Candidate { tau_s: tau, settled, amplitude, rss: rss.max(0.0) })
 }
 
 #[cfg(test)]
@@ -222,6 +230,22 @@ mod tests {
         let truth = w.true_ready_s(600.0, 0.5);
         let r = f.ready_at(600.0, 0.5);
         assert!(r.earliest_s <= truth + 20.0 && r.latest_s.unwrap() >= truth - 20.0, "{r:?} vs {truth}");
+    }
+
+    /// The one-pass residual sum agrees with summing the residuals, for a large reading far from 0.
+    #[test]
+    fn one_pass_rss_matches_the_direct_sum() {
+        let mut rng = Rng::new(7);
+        let t: Vec<f64> = (0..3600).map(f64::from).collect();
+        let x: Vec<f64> = t.iter().map(|&ti| 500.0 * (-ti / 900.0).exp() + 0.02 * rng.normal()).collect();
+        let mean = x.iter().sum::<f64>() / x.len() as f64;
+        let xc: Vec<f64> = x.iter().map(|v| v - mean).collect();
+        for tau in [10.0, 900.0, 1e5] {
+            let c = solve(&t, &xc, 0.0, tau).unwrap();
+            let direct: f64 =
+                t.iter().zip(&xc).map(|(ti, xi)| (xi - c.settled - c.amplitude * (-ti / tau).exp()).powi(2)).sum();
+            assert!((c.rss - direct).abs() <= 1e-6 * direct.max(1e-9), "tau {tau}: {} vs {direct}", c.rss);
+        }
     }
 
     #[test]
