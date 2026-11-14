@@ -31,3 +31,4 @@ pub mod stats;
 pub mod survey;
 pub mod synth;
 pub mod units;
+pub mod uvc;

@@ -1,7 +1,9 @@
 //! Media Foundation camera (Windows).
 //!
 //! Frames come from an `IMFSourceReader` in the camera's own format, with the converters off,
-//! so NV12 and YUY2 arrive as the sensor's Y plane. Controls go through the DirectShow
+//! so NV12 and YUY2 arrive as the sensor's Y plane and MJPEG as the camera's own JPEGs, whose
+//! luma this crate decodes itself. Windows also lists NV12 types it decodes from the camera's
+//! MJPEG; the camera's USB descriptors (see `usb`) tell which modes the camera really sends. Controls go through the DirectShow
 //! `IAMCameraControl` and `IAMVideoProcAmp` interfaces of the media source, always with an
 //! explicit manual or auto flag (a setter that keeps the current flag leaves an automatic
 //! control on automatic). The power-line filter is the kernel-streaming video proc amp
@@ -11,9 +13,10 @@
 use std::ffi::c_void;
 
 use laser_core::camera::{
-    ControlId, ControlInfo, ControlMode, ControlSetting, ControlUnit, PixelFormat, VideoMode, pick_mode,
+    ControlId, ControlInfo, ControlMode, ControlSetting, ControlUnit, PixelFormat, VideoMode, find_mode, pick_mode,
 };
 use laser_core::frame::LumaImage;
+use laser_core::uvc::UvcDevice;
 use windows::Win32::Media::DirectShow::{
     CameraControl_Flags_Auto, CameraControl_Flags_Manual, IAMCameraControl, IAMVideoProcAmp, VideoProcAmp_Flags_Auto,
     VideoProcAmp_Flags_Manual,
@@ -30,7 +33,7 @@ use windows::Win32::Media::MediaFoundation::{
     MF_READWRITE_DISABLE_CONVERTERS, MF_SOURCE_READER_ALL_STREAMS, MF_SOURCE_READER_FIRST_VIDEO_STREAM,
     MF_SOURCE_READERF_ENDOFSTREAM, MF_SOURCE_READERF_ERROR, MF_VERSION, MFCreateAttributes,
     MFCreateSourceReaderFromMediaSource, MFEnumDeviceSources, MFSTARTUP_NOSOCKET, MFShutdown, MFStartup,
-    MFVideoFormat_L8, MFVideoFormat_NV12, MFVideoFormat_YUY2,
+    MFVideoFormat_L8, MFVideoFormat_MJPG, MFVideoFormat_NV12, MFVideoFormat_YUY2,
 };
 use windows::Win32::System::Com::{COINIT_MULTITHREADED, CoInitializeEx, CoTaskMemFree};
 use windows::core::{GUID, Interface, PWSTR};
@@ -126,6 +129,8 @@ fn pixel_format(subtype: GUID) -> Option<PixelFormat> {
         Some(PixelFormat::Yuyv)
     } else if subtype == MFVideoFormat_L8 {
         Some(PixelFormat::Grey)
+    } else if subtype == MFVideoFormat_MJPG {
+        Some(PixelFormat::Mjpeg)
     } else {
         None
     }
@@ -186,6 +191,7 @@ pub struct MfCamera {
     device: DeviceInfo,
     modes: Vec<VideoMode>,
     mode: VideoMode,
+    usb: Option<UvcDevice>,
     reader: IMFSourceReader,
     source: IMFMediaSource,
     camera: Option<IAMCameraControl>,
@@ -227,7 +233,17 @@ impl MfCamera {
                 i += 1;
             }
             let modes: Vec<VideoMode> = found.iter().map(|(m, _)| *m).collect();
-            let mode = pick_mode(&modes, wanted).ok_or(CameraError::NoMode)?;
+            // Left to choose, take what the camera itself sends over what Windows converts.
+            let usb = crate::usb::uvc(&device.id).ok();
+            let sent: Vec<VideoMode> = match &usb {
+                Some(u) => modes.iter().copied().filter(|m| u.sends(m)).collect(),
+                None => Vec::new(),
+            };
+            let mode = wanted
+                .and_then(|w| find_mode(&modes, w))
+                .or_else(|| pick_mode(&sent, None))
+                .or_else(|| pick_mode(&modes, None))
+                .ok_or(CameraError::NoMode)?;
             let index = found.iter().find(|(m, _)| *m == mode).map(|(_, i)| *i).ok_or(CameraError::NoMode)?;
             let t = reader.GetNativeMediaType(VIDEO, index).map_err(os)?;
             reader.SetStreamSelection(MF_SOURCE_READER_ALL_STREAMS.0 as u32, false).map_err(os)?;
@@ -238,6 +254,7 @@ impl MfCamera {
                 device: device.clone(),
                 modes,
                 mode,
+                usb,
                 camera: source.cast().ok(),
                 amp: source.cast().ok(),
                 ks: source.cast().ok(),
@@ -335,6 +352,10 @@ impl FrameSource for MfCamera {
         self.mode
     }
 
+    fn usb(&self) -> Option<&UvcDevice> {
+        self.usb.as_ref()
+    }
+
     fn controls(&mut self) -> Vec<ControlInfo> {
         ControlId::ALL.iter().filter_map(|&id| self.read(id)).collect()
     }
@@ -394,6 +415,7 @@ impl FrameSource for MfCamera {
                         PixelFormat::Yuyv => {
                             LumaImage::from_yuyv(w, h, 2 * w, bytes).map(|i| i.data).unwrap_or_default()
                         }
+                        PixelFormat::Mjpeg => jpeg_luma(bytes, w, h),
                         _ if bytes.len() >= w * h => bytes[..w * h].to_vec(),
                         _ => Vec::new(),
                     };
@@ -412,6 +434,19 @@ impl FrameSource for MfCamera {
             self.frames += 1;
             return Ok(Frame { width: w, height: h, data, t_s: (ts - first) as f64 * 1e-7, seq: self.seq });
         }
+    }
+}
+
+/// The luma plane of one of the camera's JPEGs, decoded here (the Y samples as coded, no colour
+/// conversion). Empty if it does not decode to `w`×`h`.
+fn jpeg_luma(bytes: &[u8], w: usize, h: usize) -> Vec<u8> {
+    use zune_jpeg::zune_core::colorspace::ColorSpace;
+    use zune_jpeg::zune_core::options::DecoderOptions;
+    let options = DecoderOptions::default().jpeg_set_out_colorspace(ColorSpace::Luma);
+    let mut d = zune_jpeg::JpegDecoder::new_with_options(std::io::Cursor::new(bytes), options);
+    match d.decode() {
+        Ok(y) if y.len() == w * h => y,
+        _ => Vec::new(),
     }
 }
 

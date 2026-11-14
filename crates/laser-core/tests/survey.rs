@@ -160,6 +160,13 @@ fn grid_plane_with_a_bump() {
     assert_eq!(top.station, 12);
     let csv = r.csv(Unit::Um);
     assert!(csv.lines().next().unwrap().contains("X (mm),Y (mm)"), "{csv}");
+    let json: serde_json::Value = serde_json::from_str(&r.json("grid", INTERP)).unwrap();
+    assert_eq!(json["run"], "grid");
+    assert_eq!(json["length_unit"], "um");
+    assert_eq!(json["points"].as_array().unwrap().len(), 25);
+    assert_eq!(json["points"][12]["station"], 12);
+    assert!((json["pv_um"].as_f64().unwrap() - r.pv_um).abs() < 1e-9);
+    assert_eq!(json["reference"]["kind"], "plane");
 }
 
 /// Bugs 7 and 8: delete and replace with no valid selection change nothing; results always come

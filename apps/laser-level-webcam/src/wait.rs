@@ -16,20 +16,25 @@ use crate::visuals::LASER;
 
 pub fn draw(app: &mut App, ui: &mut egui::Ui, e: &mut Engine) {
     let Some(status) = e.status.clone() else {
-        ui.add_space(20.0);
-        ui.vertical_centered(|ui| {
-            ui.label(theme::heading("No readings yet"));
+        theme::card().show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.label(RichText::new("No readings yet").size(20.0).strong());
             ui.label(theme::dim("The drift estimate starts once the beam is found. See Set up."));
+            ui.add_space(4.0);
+            plan_row(app, ui);
         });
         return;
     };
     // The graphs share the height left. In a short window they keep a usable height and the
     // screen scrolls.
     let full = ui.available_height();
+    let mut restart = false;
     theme::scroll(ui, |ui| {
         let top = ui.cursor().top();
         let left = |ui: &egui::Ui| full - (ui.cursor().top() - top);
-        banner(app, ui, &status);
+        if banner(app, ui, &status) {
+            restart = true;
+        }
         ui.add_space(6.0);
         tiles(app, ui, e, &status);
         ui.add_space(6.0);
@@ -38,9 +43,34 @@ pub fn draw(app: &mut App, ui: &mut egui::Ui, e: &mut Engine) {
         ui.add_space(6.0);
         trace(app, ui, e, (left(ui) - 28.0).max(110.0));
     });
+    if restart {
+        e.restart_monitor();
+    }
 }
 
-fn banner(app: &mut App, ui: &mut egui::Ui, s: &Status) {
+/// The planned run, which sets when the set-up counts as ready. Says whether to start the
+/// estimate again.
+fn plan_row(app: &mut App, ui: &mut egui::Ui) -> bool {
+    let p = &mut app.settings.plan;
+    let mut restart = false;
+    ui.horizontal_wrapped(|ui| {
+        ui.label("Planned run").on_hover_text(
+            "How long your measurement will take: stations × time at each. Ready is when the drift expected over a run this long is inside the allowed drift.",
+        );
+        ui.add(egui::DragValue::new(&mut p.run_min).range(1.0..=480.0).speed(0.5).suffix(" min"));
+        ui.add_space(8.0);
+        ui.label("Allowed drift").on_hover_text("How far the reading may drift over the run.");
+        ui.add(egui::DragValue::new(&mut p.tolerance_um).range(0.01..=100.0).speed(0.01).suffix(" µm"));
+        ui.add_space(8.0);
+        restart = ui
+            .button("Start the estimate again")
+            .on_hover_text("After a knock, or a change to the set-up: forget the readings so far.")
+            .clicked();
+    });
+    restart
+}
+
+fn banner(app: &mut App, ui: &mut egui::Ui, s: &Status) -> bool {
     let unit = app.settings.unit;
     let plan = app.settings.plan;
     let tol = with_unit(unit, plan.tolerance_um);
@@ -82,28 +112,32 @@ fn banner(app: &mut App, ui: &mut egui::Ui, s: &Status) {
             theme::OK,
         ),
     };
-    theme::card().show(ui, |ui| {
-        ui.set_width(ui.available_width());
-        ui.horizontal(|ui| {
-            let (dot, _) = ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::hover());
-            ui.painter().circle_filled(dot.center(), 7.0, color);
-            ui.label(RichText::new(title).color(color).size(20.0).strong());
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let go = if s.readiness == Readiness::Ready {
-                    theme::primary("Measure")
-                } else {
-                    egui::Button::new("Measure anyway")
-                };
-                if ui.add(go).clicked() {
-                    app.screen = Screen::Measure;
-                }
+    theme::card()
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.horizontal(|ui| {
+                let (dot, _) = ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::hover());
+                ui.painter().circle_filled(dot.center(), 7.0, color);
+                ui.label(RichText::new(title).color(color).size(20.0).strong());
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let go = if s.readiness == Readiness::Ready {
+                        theme::primary("Measure")
+                    } else {
+                        egui::Button::new("Measure anyway")
+                    };
+                    if ui.add(go).clicked() {
+                        app.screen = Screen::Measure;
+                    }
+                });
             });
-        });
-        ui.label(theme::dim(detail));
-        if let Readiness::Collecting { have_s, need_s } = s.readiness {
-            ui.add(egui::ProgressBar::new((have_s / need_s.max(1e-9)) as f32).desired_height(6.0));
-        }
-    });
+            ui.label(theme::dim(detail));
+            if let Readiness::Collecting { have_s, need_s } = s.readiness {
+                ui.add(egui::ProgressBar::new((have_s / need_s.max(1e-9)) as f32).desired_height(6.0));
+            }
+            ui.add_space(4.0);
+            plan_row(app, ui)
+        })
+        .inner
 }
 
 fn tiles(app: &App, ui: &mut egui::Ui, e: &Engine, s: &Status) {

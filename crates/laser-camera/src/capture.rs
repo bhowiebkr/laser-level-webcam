@@ -37,6 +37,8 @@ pub enum Event {
         mode: VideoMode,
         controls: Vec<ControlInfo>,
         applied: Vec<Applied>,
+        /// What the camera itself says it sends, from its USB descriptors.
+        usb: Option<laser_core::uvc::UvcDevice>,
     },
     Frame(Frame),
     Controls(Vec<ControlInfo>),
@@ -129,6 +131,7 @@ fn run(settings: &CameraSettings, commands: &Receiver<Command>, events: &SyncSen
         mode: source.mode(),
         controls: source.controls(),
         applied,
+        usb: source.usb().cloned(),
     };
     if events.send(opened).is_err() {
         return;

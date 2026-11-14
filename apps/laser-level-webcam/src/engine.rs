@@ -153,6 +153,8 @@ pub struct CameraView {
     pub controls: Vec<ControlInfo>,
     /// Settings the camera did not keep, newest last.
     pub refused: Vec<Applied>,
+    /// What the camera itself says it sends, from its USB descriptors.
+    pub usb: Option<laser_core::uvc::UvcDevice>,
 }
 
 impl CameraView {
@@ -312,6 +314,7 @@ impl Engine {
             mode: Some(mode),
             controls,
             refused: Vec::new(),
+            usb: None,
         };
         for a in applied {
             self.camera.note(a);

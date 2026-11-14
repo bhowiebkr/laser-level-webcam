@@ -1,48 +1,287 @@
-//! The settings panel. It shows the settings of the current step: camera, sensor and finder while
-//! setting up; the planned run while waiting; the sample rule while measuring; units and drift
-//! correction for the results.
+//! The settings panel of the set-up step: camera, orientation, sensor and beam finder. The other
+//! steps keep their few settings on their own screens.
 
 use eframe::egui::{self, RichText};
-use laser_core::camera::{self, ControlId, ControlInfo, ControlMode, ControlSetting, Mains, ModeScaling, VideoMode};
+use laser_core::camera::{
+    self, ControlId, ControlInfo, ControlMode, ControlSetting, Mains, ModeScaling, PixelFormat, VideoMode,
+};
 use laser_core::frame::Roi;
-use laser_core::survey::DriftCorrection;
-use laser_core::units::Unit;
 
-use crate::app::{App, Screen};
+use crate::app::App;
 use crate::driver::Request;
-use crate::engine::{CameraState, Engine};
+use crate::engine::{CameraState, CameraView, Engine};
 use crate::{setup, theme, visuals};
 
 pub fn draw(app: &mut App, ui: &mut egui::Ui, e: &mut Engine) {
-    match app.screen {
-        Screen::SetUp => {
-            section(ui, "Camera", true, |ui| camera_section(app, ui, e));
-            section(ui, "Orientation", true, |ui| orientation_section(app, ui, e));
-            section(ui, "Sensor", false, |ui| sensor_section(app, ui, e));
-            section(ui, "Beam finder", false, |ui| finder_section(app, ui, e));
-        }
-        Screen::Wait => {
-            section(ui, "Planned run", true, |ui| plan_section(app, ui, e));
-        }
-        Screen::Measure => {
-            section(ui, "Samples", true, |ui| sample_section(app, ui, e));
-        }
-        Screen::Results => {
-            section(ui, "Results", true, |ui| results_section(app, ui));
-        }
-    }
+    section(ui, "Camera", true, CAMERA_INTRO, |ui| camera_section(app, ui, e));
+    section(ui, "Orientation", true, ORIENTATION_INTRO, |ui| orientation_section(app, ui, e));
+    section(ui, "Sensor", false, SENSOR_INTRO, |ui| sensor_section(app, ui, e));
+    section(ui, "Beam finder", false, FINDER_INTRO, |ui| finder_section(app, ui, e));
 }
 
-fn section(ui: &mut egui::Ui, title: &str, open: bool, body: impl FnOnce(&mut egui::Ui)) {
+const CAMERA_INTRO: &str = "The camera the laser line falls on, and how its frames reach this app. \
+Pick the camera and a mode, press Lock for measuring so nothing automatic changes the beam while you \
+measure, then set the exposure so the beam's peak sits just under clipping.";
+const ORIENTATION_INTRO: &str = "Which way the camera's picture is turned, so the laser line runs \
+across the view and heights are read up and down it. Turn it until the line lies level, then check \
+the sign with a shim under the block as shown below.";
+const SENSOR_INTRO: &str = "The camera chip's real size, which turns pixels into micrometres: every \
+reading depends on it. Enter the pixel pitch and full resolution from the sensor's data sheet, and \
+say whether the camera's smaller modes scale the whole chip down or crop a window of it.";
+const FINDER_INTRO: &str = "How the beam's centre is worked out in each frame. The defaults suit a \
+clean line: raise Least signal if noise is read as a beam, and drag on the live view to leave out \
+dust or reflections.";
+
+fn section(ui: &mut egui::Ui, title: &str, open: bool, intro: &str, body: impl FnOnce(&mut egui::Ui)) {
     theme::card().show(ui, |ui| {
         ui.set_width(ui.available_width());
-        egui::CollapsingHeader::new(theme::heading(title)).default_open(open).show_unindented(ui, body);
+        egui::CollapsingHeader::new(theme::heading(title)).default_open(open).show_unindented(ui, |ui| {
+            ui.label(theme::dim(intro));
+            ui.add_space(4.0);
+            body(ui);
+        });
     });
     ui.add_space(4.0);
 }
 
-fn mode_text(m: &VideoMode) -> String {
-    format!("{}×{}  {:.0} fps  {}", m.width, m.height, m.fps, m.format.name())
+/// Where a mode's frames come from.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Source {
+    /// The camera sends it: it is in the camera's USB descriptors.
+    Camera,
+    /// Windows makes it, by decoding the camera's MJPEG.
+    Windows,
+}
+
+fn source_of(m: &VideoMode, cam: &CameraView) -> Source {
+    let made = match &cam.usb {
+        Some(u) => !u.sends(m),
+        // No descriptors: an NV12 mode with an MJPEG twin is Windows decoding it.
+        None => {
+            m.format == PixelFormat::Nv12
+                && cam.modes.iter().any(|o| {
+                    o.format == PixelFormat::Mjpeg
+                        && (o.width, o.height) == (m.width, m.height)
+                        && (o.fps - m.fps).abs() < 0.5
+                })
+        }
+    };
+    if made { Source::Windows } else { Source::Camera }
+}
+
+fn aspect(w: u32, h: u32) -> String {
+    let r = f64::from(w) / f64::from(h.max(1));
+    let known = [
+        ("16:9", 16.0 / 9.0),
+        ("16:10", 1.6),
+        ("5:3", 5.0 / 3.0),
+        ("3:2", 1.5),
+        ("4:3", 4.0 / 3.0),
+        ("5:4", 1.25),
+        ("11:9", 11.0 / 9.0),
+    ];
+    known.iter().find(|(_, v)| (r / v - 1.0).abs() < 0.015).map_or_else(|| format!("{r:.2}:1"), |(n, _)| (*n).into())
+}
+
+fn format_text(f: PixelFormat, source: Source) -> (&'static str, &'static str) {
+    match (f, source) {
+        (PixelFormat::Yuyv, _) => (
+            "Uncompressed (YUYV)",
+            "Every pixel as the camera's processor puts it out, nothing compressed: the best for measuring. Large sizes only come slowly, because the USB link carries no more.",
+        ),
+        (PixelFormat::Nv12, Source::Windows) => (
+            "NV12, decoded by Windows",
+            "Windows decodes the camera's MJPEG and hands it on as NV12. The JPEG compression is still in it: it is not raw.",
+        ),
+        (PixelFormat::Nv12, Source::Camera) => {
+            ("Uncompressed (NV12)", "Every pixel as the camera puts it out, nothing compressed.")
+        }
+        (PixelFormat::Grey, _) => ("Uncompressed grey", "Every pixel as the camera puts it out, nothing compressed."),
+        (PixelFormat::Mjpeg, _) => (
+            "MJPEG",
+            "Each frame compressed to a JPEG in the camera, so full size comes fast. JPEG works in 8×8 blocks and can bend the beam's edges. This app decodes it itself.",
+        ),
+        (PixelFormat::Rgba, _) => ("RGBA", "Colour from the browser, mixed back to grey."),
+    }
+}
+
+/// The mode among `modes` closest to `cur`: the nearest size first, then the nearest frame rate.
+fn nearest(modes: impl Iterator<Item = VideoMode>, cur: &VideoMode) -> Option<VideoMode> {
+    let cost = |m: &VideoMode| {
+        let size = (m.pixels() as f64 / cur.pixels().max(1) as f64).ln().abs();
+        size * 1000.0 + (m.fps - cur.fps).abs() - m.fps * 1e-3
+    };
+    modes.min_by(|a, b| cost(a).total_cmp(&cost(b)))
+}
+
+/// Source, format, size and frame rate, from the modes the camera opened with.
+fn mode_picker(app: &mut App, ui: &mut egui::Ui, cam: &CameraView) {
+    let Some(cur) = cam.mode else { return };
+    let src = source_of(&cur, cam);
+    let in_src: Vec<VideoMode> = cam.modes.iter().copied().filter(|m| source_of(m, cam) == src).collect();
+    let windows = cam.modes.iter().any(|m| source_of(m, cam) == Source::Windows);
+    let mut pick: Option<VideoMode> = None;
+
+    // One row per choice, the label first. Rows wrap in a narrow panel rather than overlap.
+    if windows {
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Frames from").on_hover_text(
+                "Who makes the frames. The camera's own list is read from its USB descriptors; Windows adds modes it makes by decoding the camera's MJPEG.",
+            );
+            let choices = [
+                (Source::Camera, "The camera", "Only what the camera itself sends over the cable."),
+                (
+                    Source::Windows,
+                    "Windows",
+                    "Modes Windows makes from the camera's MJPEG: the same picture as the camera's MJPEG, decoded by Windows. Not raw.",
+                ),
+            ];
+            for (s, text, help) in choices {
+                if ui.selectable_label(src == s, text).on_hover_text(help).clicked() && src != s {
+                    let all: Vec<VideoMode> = cam.modes.iter().copied().filter(|m| source_of(m, cam) == s).collect();
+                    let raw = all.iter().any(|m| m.format.is_raw_luma());
+                    pick = nearest(all.into_iter().filter(|m| !raw || m.format.is_raw_luma()), &cur);
+                }
+            }
+        });
+    }
+
+    let mut formats: Vec<PixelFormat> = Vec::new();
+    for m in &in_src {
+        if !formats.contains(&m.format) {
+            formats.push(m.format);
+        }
+    }
+    formats.sort_by_key(|f| !f.is_raw_luma());
+    ui.horizontal_wrapped(|ui| {
+        ui.label("Format").on_hover_text("How the pixels travel from the camera.");
+        for f in formats {
+            let (text, help) = format_text(f, src);
+            if ui.selectable_label(cur.format == f, text).on_hover_text(help).clicked() && cur.format != f {
+                pick = nearest(in_src.iter().copied().filter(|m| m.format == f), &cur);
+            }
+        }
+    });
+
+    let of_format: Vec<VideoMode> = in_src.iter().copied().filter(|m| m.format == cur.format).collect();
+    let mut sizes: Vec<(u32, u32)> = Vec::new();
+    for m in &of_format {
+        if !sizes.contains(&(m.width, m.height)) {
+            sizes.push((m.width, m.height));
+        }
+    }
+    sizes.sort_by_key(|&(w, h)| std::cmp::Reverse(u64::from(w) * u64::from(h)));
+    let size_text = |(w, h): (u32, u32)| format!("{w}×{h}   {}", aspect(w, h));
+    ui.horizontal(|ui| {
+        ui.label("Size").on_hover_text(
+            "Frame size in pixels, and its shape. A size of another shape can show a different part of the sensor.",
+        );
+        egui::ComboBox::from_id_salt("mode_size")
+            .width(ui.available_width())
+            .selected_text(size_text((cur.width, cur.height)))
+            .show_ui(ui, |ui| {
+                for wh in sizes {
+                    if ui.selectable_label((cur.width, cur.height) == wh, size_text(wh)).clicked()
+                        && (cur.width, cur.height) != wh
+                    {
+                        pick = nearest(of_format.iter().copied().filter(|m| (m.width, m.height) == wh), &cur);
+                    }
+                }
+            });
+    });
+
+    let mut rates: Vec<VideoMode> =
+        of_format.iter().copied().filter(|m| (m.width, m.height) == (cur.width, cur.height)).collect();
+    rates.sort_by(|a, b| b.fps.total_cmp(&a.fps));
+    ui.horizontal_wrapped(|ui| {
+        ui.label("Frame rate").on_hover_text("The frame rates the camera lists for this format and size.");
+        for m in rates {
+            if ui.selectable_label(m == cur, format!("{:.0} fps", m.fps)).clicked() && m != cur {
+                pick = Some(m);
+            }
+        }
+    });
+
+    if let Some(u) = &cam.usb
+        && src == Source::Camera
+        && cur.format.is_raw_luma()
+        && let (Some(need), Some(have)) = (u.raw_bytes_per_s(&cur), u.max_bytes_per_s)
+    {
+        let frac = need as f32 / have.max(1) as f32;
+        ui.add(egui::ProgressBar::new(frac.min(1.0)).text(format!(
+            "{:.1} of the {:.1} MB/s the USB link carries",
+            need as f64 / 1e6,
+            have as f64 / 1e6
+        )))
+        .on_hover_text(
+            "Uncompressed frames have to fit the camera's share of the USB link. That is why a large size only comes at a low frame rate.",
+        );
+    }
+    if let Some(u) = &cam.usb {
+        usb_report(ui, u);
+    }
+    if let Some(m) = pick {
+        app.settings.camera.mode = Some(m);
+        app.request(Request::Open(app.settings.camera.clone()));
+    }
+}
+
+/// The camera's own list, from its USB descriptors.
+fn usb_report(ui: &mut egui::Ui, u: &laser_core::uvc::UvcDevice) {
+    use laser_core::uvc::UvcEncoding;
+    egui::CollapsingHeader::new("What the camera reports").id_salt("usb_report").show(ui, |ui| {
+        let link = u
+            .max_bytes_per_s
+            .map_or_else(|| "a bulk video link".to_owned(), |b| format!("video link up to {:.1} MB/s", b as f64 / 1e6));
+        ui.label(theme::dim(format!(
+            "USB {:04x}:{:04x}, {}, {link}.",
+            u.vendor_id,
+            u.product_id,
+            u.speed.map_or("speed unknown", |s| s.name()),
+        )));
+        ui.label(theme::dim(
+            "Read from the camera's USB descriptors: every format, size and frame rate it sends itself. Anything else Windows lists is made from these.",
+        ));
+        let bayer = ["BA81", "GBRG", "GRBG", "RGGB", "BYR2", "BG16", "GB16", "GR16", "RG16"];
+        let raw_sensor = u.formats.iter().any(
+            |f| matches!(&f.encoding, UvcEncoding::Uncompressed { fourcc } if bayer.contains(&fourcc.trim_end())),
+        );
+        if !raw_sensor {
+            ui.label(theme::dim(
+                "It lists no raw sensor (Bayer) format. The least processed it sends is uncompressed, after the camera's own processing; sharpness, gamma, gain and the other controls set that processing.",
+            ));
+        }
+        egui::Grid::new("usb_formats").num_columns(3).striped(true).spacing([12.0, 2.0]).show(ui, |ui| {
+            ui.label(RichText::new("Format").strong());
+            ui.label(RichText::new("Size").strong());
+            ui.label(RichText::new("fps").strong());
+            ui.end_row();
+            for f in &u.formats {
+                let name = match &f.encoding {
+                    UvcEncoding::Uncompressed { fourcc } => format!("{} {} bit", fourcc.trim_end(), f.bits_per_pixel),
+                    UvcEncoding::Mjpeg => "MJPEG".into(),
+                    UvcEncoding::FrameBased { fourcc } => fourcc.trim_end().to_owned(),
+                };
+                for fr in &f.frames {
+                    ui.label(&name);
+                    ui.label(format!(
+                        "{}×{}  {}",
+                        fr.width,
+                        fr.height,
+                        aspect(fr.width.into(), fr.height.into())
+                    ));
+                    let fps: Vec<String> = fr.fps.iter().map(|r| format!("{r:.0}")).collect();
+                    ui.label(fps.join(" "));
+                    ui.end_row();
+                }
+            }
+        });
+        egui::CollapsingHeader::new("Descriptor bytes").id_salt("usb_bytes").show(ui, |ui| {
+            egui::ScrollArea::vertical().max_height(220.0).show(ui, |ui| {
+                ui.label(RichText::new(u.hex()).monospace().small());
+            });
+        });
+    });
 }
 
 fn camera_section(app: &mut App, ui: &mut egui::Ui, e: &mut Engine) {
@@ -67,18 +306,7 @@ fn camera_section(app: &mut App, ui: &mut egui::Ui, e: &mut Engine) {
         });
     });
     if !e.camera.modes.is_empty() {
-        let mode = e.camera.mode;
-        egui::ComboBox::from_id_salt("mode")
-            .width(ui.available_width())
-            .selected_text(mode.as_ref().map_or_else(String::new, mode_text))
-            .show_ui(ui, |ui| {
-                for m in e.camera.modes.clone() {
-                    if ui.selectable_label(mode == Some(m), mode_text(&m)).clicked() {
-                        app.settings.camera.mode = Some(m);
-                        app.request(Request::Open(app.settings.camera.clone()));
-                    }
-                }
-            });
+        mode_picker(app, ui, &e.camera);
     }
     ui.horizontal(|ui| {
         ui.label("Mains").on_hover_text(ControlId::PowerLineFrequency.help());
@@ -311,63 +539,4 @@ fn finder_section(app: &mut App, ui: &mut egui::Ui, e: &Engine) {
             ui.add(egui::DragValue::new(&mut r.height).range(16..=size.1));
         });
     }
-}
-
-fn plan_section(app: &mut App, ui: &mut egui::Ui, e: &mut Engine) {
-    let p = &mut app.settings.plan;
-    egui::Grid::new("plan").num_columns(2).spacing([10.0, 6.0]).show(ui, |ui| {
-        ui.label("Run length").on_hover_text("How long the measurement will take: stations × time at each.");
-        ui.add(egui::DragValue::new(&mut p.run_min).range(1.0..=480.0).speed(0.5).suffix(" min"));
-        ui.end_row();
-        ui.label("Allowed drift").on_hover_text(
-            "How far the reading may drift over the run. Ready means the drift expected over the run is below this.",
-        );
-        ui.add(egui::DragValue::new(&mut p.tolerance_um).range(0.01..=100.0).speed(0.01).suffix(" µm"));
-        ui.end_row();
-    });
-    ui.label(theme::dim(
-        "The set-up warms up after the laser and camera are switched on, and drifts as it does. Ready is when the drift over the planned run is inside the allowed drift.",
-    ));
-    if ui.button("Start the estimate again").on_hover_text("After a knock, or a change to the set-up.").clicked() {
-        e.restart_monitor();
-    }
-}
-
-fn sample_section(app: &mut App, ui: &mut egui::Ui, e: &Engine) {
-    let s = &mut app.settings.sample;
-    egui::Grid::new("sample").num_columns(2).spacing([10.0, 6.0]).show(ui, |ui| {
-        ui.label("Shortest").on_hover_text("A sample is at least this long.");
-        ui.add(egui::DragValue::new(&mut s.min_s).range(0.2..=120.0).speed(0.1).suffix(" s"));
-        ui.end_row();
-        ui.label("Longest").on_hover_text("A sample ends after this long, sure enough or not.");
-        ui.add(egui::DragValue::new(&mut s.max_s).range(0.5..=600.0).speed(0.1).suffix(" s"));
-        ui.end_row();
-        let mut target = s.target_um.is_some();
-        ui.checkbox(&mut target, "Stop when sure to")
-            .on_hover_text("End the sample once its uncertainty is below this.");
-        let mut t = s.target_um.unwrap_or(0.1);
-        ui.add_enabled(target, egui::DragValue::new(&mut t).range(0.001..=10.0).speed(0.001).suffix(" µm"));
-        s.target_um = target.then_some(t);
-        ui.end_row();
-    });
-    if s.max_s < s.min_s {
-        s.max_s = s.min_s;
-    }
-    let _ = e;
-}
-
-fn results_section(app: &mut App, ui: &mut egui::Ui) {
-    ui.horizontal(|ui| {
-        ui.label("Units");
-        for u in Unit::ALL {
-            ui.selectable_value(&mut app.settings.unit, u, u.label());
-        }
-    });
-    ui.horizontal(|ui| {
-        ui.label("Drift").on_hover_text("How the zero visits correct the drift.");
-        ui.selectable_value(&mut app.settings.drift_correction, DriftCorrection::Interpolate, "Interpolate")
-            .on_hover_text("The zero for each reading is interpolated in time between the zero visits around it.");
-        ui.selectable_value(&mut app.settings.drift_correction, DriftCorrection::LastZero, "Last zero")
-            .on_hover_text("Each reading against the last zero visit before it.");
-    });
 }

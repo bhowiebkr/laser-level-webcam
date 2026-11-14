@@ -9,7 +9,7 @@ use anyhow::{Context, Result, bail, ensure};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use laser_camera::Applied;
 use laser_core::beam::{self, FinderConfig, Fix, NoBeam};
-use laser_core::camera::{self, CameraSettings, ControlId, ControlMode, ControlSetting, Mains};
+use laser_core::camera::{self, CameraSettings, ControlId, ControlMode, ControlSetting, Mains, PixelFormat, VideoMode};
 use laser_core::frame::{LineAxis, LumaImage};
 use laser_core::monitor::{Monitor, MonitorConfig, RunPlan, Status};
 use laser_core::results::Results;
@@ -31,28 +31,43 @@ struct Cli {
     command: Command,
 }
 
+#[derive(Args)]
+struct CameraArgs {
+    /// Camera name; the first camera if left out.
+    name: Option<String>,
+    /// Print only the cameras' names.
+    #[arg(long)]
+    list: bool,
+    /// Print what the camera itself sends, read from its USB descriptors (works while another
+    /// program streams it), and nothing else.
+    #[arg(long)]
+    usb: bool,
+    /// Set a control first, as `id=value` or `id=auto`, e.g. `exposure=-7`, `white_balance=auto`.
+    #[arg(long = "set", value_parser = parse_setting)]
+    set: Vec<ControlSetting>,
+    /// Lock the camera for measuring (exposure, white balance and focus held; gain, sharpness and backlight off).
+    #[arg(long)]
+    lock: bool,
+    /// Mains frequency for --lock's power-line filter.
+    #[arg(long, value_enum, default_value_t = MainsArg::Hz50)]
+    mains: MainsArg,
+    /// Grab this many frames and report the frame rate by the camera's clock.
+    #[arg(long, default_value_t = 0)]
+    frames: u64,
+    /// Open this mode, as `WIDTHxHEIGHT[@FPS][:FORMAT]`, e.g. `1280x960` or `640x480@30:yuyv`.
+    /// Left out: the largest raw-luma mode.
+    #[arg(long, value_parser = parse_mode)]
+    mode: Option<ModeArg>,
+    /// Save the last frame's luma as PGM. With no --frames, 30 frames are grabbed first so
+    /// automatic exposure can settle.
+    #[arg(long)]
+    save: Option<PathBuf>,
+}
+
 #[derive(Subcommand)]
 enum Command {
     /// List the cameras, or show a camera's modes and controls (setting some first with --set).
-    Camera {
-        /// Camera name; the first camera if left out.
-        name: Option<String>,
-        /// Print only the cameras' names.
-        #[arg(long)]
-        list: bool,
-        /// Set a control first, as `id=value` or `id=auto`, e.g. `exposure=-7`, `white_balance=auto`.
-        #[arg(long = "set", value_parser = parse_setting)]
-        set: Vec<ControlSetting>,
-        /// Lock the camera for measuring (exposure, white balance and focus held; gain, sharpness and backlight off).
-        #[arg(long)]
-        lock: bool,
-        /// Mains frequency for --lock's power-line filter.
-        #[arg(long, value_enum, default_value_t = MainsArg::Hz50)]
-        mains: MainsArg,
-        /// Grab this many frames and report the frame rate by the camera's clock.
-        #[arg(long, default_value_t = 0)]
-        frames: u64,
-    },
+    Camera(CameraArgs),
     /// Find the beam in a PGM frame (P5 or P2, 8 or 16 bit).
     Find {
         frame: PathBuf,
@@ -281,7 +296,7 @@ impl From<Result<Fix, NoBeam>> for Reading {
 
 fn main() -> Result<()> {
     match Cli::parse().command {
-        Command::Camera { name, list, set, lock, mains, frames } => camera(name, list, &set, lock, mains, frames),
+        Command::Camera(args) => camera(args),
         Command::Find { frame, axis, strips } => {
             let img = read_pgm(&frame)?;
             let cfg = FinderConfig { axis: axis.into(), strips, ..FinderConfig::default() };
@@ -459,6 +474,46 @@ fn parse_setting(s: &str) -> std::result::Result<ControlSetting, String> {
     Ok(ControlSetting { id, mode })
 }
 
+/// A camera mode asked for on the command line; what is left out is chosen from the camera's modes.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct ModeArg {
+    width: u32,
+    height: u32,
+    fps: Option<f64>,
+    format: Option<PixelFormat>,
+}
+
+impl ModeArg {
+    /// The camera's best mode that matches: raw luma first, then the highest frame rate.
+    fn pick(&self, modes: &[VideoMode]) -> Option<VideoMode> {
+        modes
+            .iter()
+            .copied()
+            .filter(|m| m.width == self.width && m.height == self.height)
+            .filter(|m| self.fps.is_none_or(|f| (m.fps - f).abs() < 0.5))
+            .filter(|m| self.format.is_none_or(|f| m.format == f))
+            .max_by(|a, b| a.format.is_raw_luma().cmp(&b.format.is_raw_luma()).then(a.fps.total_cmp(&b.fps)))
+    }
+}
+
+fn parse_mode(s: &str) -> std::result::Result<ModeArg, String> {
+    let (rest, format) = match s.split_once(':') {
+        Some((rest, f)) => {
+            let format = serde_json::from_value(serde_json::Value::String(f.trim().to_lowercase()))
+                .map_err(|_| format!("unknown format {f:?}; the formats are nv12, yuyv, grey, mjpeg, rgba"))?;
+            (rest, Some(format))
+        }
+        None => (s, None),
+    };
+    let (size, fps) = match rest.split_once('@') {
+        Some((size, f)) => (size, Some(f.trim().parse().map_err(|_| format!("{f:?} is not a frame rate"))?)),
+        None => (rest, None),
+    };
+    let (w, h) = size.split_once(['x', 'X']).ok_or("expected WIDTHxHEIGHT")?;
+    let n = |v: &str| v.trim().parse().map_err(|_| format!("{v:?} is not a whole number"));
+    Ok(ModeArg { width: n(w)?, height: n(h)?, fps, format })
+}
+
 fn control_names() -> String {
     ControlId::ALL
         .iter()
@@ -474,20 +529,66 @@ fn applied_json(a: &Applied) -> serde_json::Value {
     }
 }
 
-fn camera(
-    name: Option<String>,
-    list: bool,
-    set: &[ControlSetting],
-    lock: bool,
-    mains: MainsArg,
-    frames: u64,
-) -> Result<()> {
+fn camera(args: CameraArgs) -> Result<()> {
+    let CameraArgs { name, list, usb, set, lock, mains, frames, mode, save } = args;
     if list {
         let names: Vec<_> = laser_camera::devices().into_iter().map(|d| d.name).collect();
         return print_pretty(&names);
     }
-    let settings = CameraSettings { device: name, controls: set.to_vec(), ..CameraSettings::default() };
+    if usb {
+        let all = laser_camera::devices();
+        let device = match &name {
+            Some(n) => all.iter().find(|d| &d.name == n).ok_or_else(|| anyhow::anyhow!("no camera {n:?}"))?,
+            None => all.first().ok_or_else(|| anyhow::anyhow!("no camera"))?,
+        };
+        let u = laser_camera::usb(device)?;
+        println!(
+            "{}  {:04x}:{:04x}  USB {:x}.{:02x}  {}",
+            device.name,
+            u.vendor_id,
+            u.product_id,
+            u.usb_version >> 8,
+            u.usb_version & 0xff,
+            u.speed.map_or("speed unknown", |s| s.name())
+        );
+        match u.max_bytes_per_s {
+            Some(b) => println!("video link carries at most {:.1} MB/s", b as f64 / 1e6),
+            None => println!("bulk video endpoint (no fixed bandwidth)"),
+        }
+        for f in &u.formats {
+            println!("format {}: {}  {} bits/pixel", f.index, f.encoding.name(), f.bits_per_pixel);
+            for fr in &f.frames {
+                let fps: Vec<String> = fr.fps.iter().map(|r| format!("{r:.1}")).collect();
+                println!(
+                    "  {}x{}  fps {}  (max {:.1} Mbit/s)",
+                    fr.width,
+                    fr.height,
+                    fps.join(" "),
+                    f64::from(fr.max_bit_rate) / 1e6
+                );
+            }
+        }
+        return Ok(());
+    }
+    let mut settings = CameraSettings { device: name, controls: set, ..CameraSettings::default() };
     let (mut cam, mut applied) = laser_camera::open(&settings)?;
+    if let Some(want) = mode {
+        let Some(found) = want.pick(cam.modes()) else {
+            let mut sizes: Vec<_> = cam.modes().iter().map(|m| (m.width, m.height)).collect();
+            sizes.sort_unstable_by(|a, b| b.cmp(a));
+            sizes.dedup();
+            let sizes: Vec<_> = sizes.iter().map(|(w, h)| format!("{w}x{h}")).collect();
+            bail!("the camera has no mode {want:?}; its sizes are {}", sizes.join(", "));
+        };
+        if found != cam.mode() {
+            // The mode is chosen when the camera opens, so open it again.
+            drop(cam);
+            settings.mode = Some(found);
+            (cam, applied) = laser_camera::open(&settings)?;
+            ensure!(cam.mode() == found, "the camera opened in {:?}, not {found:?}", cam.mode());
+        }
+    }
+    let frames = if save.is_some() && frames == 0 { 30 } else { frames };
     if lock {
         let mains = match mains {
             MainsArg::Hz50 => Mains::Hz50,
@@ -510,6 +611,9 @@ fn camera(
             "fps": if span > 0.0 { (last.seq - first.seq) as f64 / span } else { 0.0 },
             "peak": last.data.iter().copied().max().unwrap_or(0),
         });
+        if let Some(path) = &save {
+            write_pgm(path, &LumaImage { width: last.width, height: last.height, data: last.data })?;
+        }
     }
     print_pretty(&serde_json::json!({
         "device": cam.device().name,

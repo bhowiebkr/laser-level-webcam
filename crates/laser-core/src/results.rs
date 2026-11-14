@@ -192,6 +192,24 @@ impl Results {
     }
 }
 
+impl Results {
+    /// The whole result as JSON, for scripts and other programs. Lengths are in µm and positions
+    /// in mm whatever unit the window shows, so a reader never has to guess.
+    pub fn json(&self, run: &str, drift_correction: DriftCorrection) -> String {
+        #[derive(Serialize)]
+        struct Export<'a> {
+            run: &'a str,
+            length_unit: &'static str,
+            position_unit: &'static str,
+            drift_correction: DriftCorrection,
+            #[serde(flatten)]
+            results: &'a Results,
+        }
+        let out = Export { run, length_unit: "um", position_unit: "mm", drift_correction, results: self };
+        serde_json::to_string_pretty(&out).unwrap_or_else(|e| format!("{{\"error\": \"{e}\"}}"))
+    }
+}
+
 fn csv_field(s: &str) -> String {
     if s.contains([',', '"', '\n', '\r']) { format!("\"{}\"", s.replace('"', "\"\"")) } else { s.to_owned() }
 }

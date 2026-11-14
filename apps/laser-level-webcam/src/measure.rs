@@ -4,6 +4,7 @@
 
 use eframe::egui::{self, Align2, RichText, Stroke};
 use laser_core::monitor::Readiness;
+use laser_core::reading::SampleRule;
 use laser_core::survey::{Heights, Layout, Run, Station};
 
 use crate::app::{App, Screen};
@@ -76,11 +77,42 @@ pub fn draw(app: &mut App, ui: &mut egui::Ui, e: &mut Engine) {
             ui.label(theme::dim(format!("Heights: {why}.")));
         }
         ui.add_space(6.0);
-        theme::scroll(ui, |ui| {
-            visits_table(app, ui, e, run, heights.as_ref().ok(), &mut actions);
-            ui.add_space(8.0);
-            stations_editor(ui, run, e.sampling.is_some(), &mut actions);
-        });
+        let heights = heights.as_ref().ok();
+        let busy = e.sampling.is_some();
+        // Wide: the visits on the left, the run's figures and its stations beside them. Narrow:
+        // one under the other.
+        let w = ui.available_width();
+        if w >= 900.0 {
+            let side_w = (w * 0.34).clamp(340.0, 560.0);
+            let gap = 12.0;
+            let h = ui.available_height();
+            let down = egui::Layout::top_down(egui::Align::Min);
+            ui.horizontal_top(|ui| {
+                ui.spacing_mut().item_spacing.x = gap;
+                ui.allocate_ui_with_layout(egui::vec2(w - side_w - gap, h), down, |ui| {
+                    ui.push_id("visits", |ui| {
+                        theme::scroll(ui, |ui| visits_table(app, ui, e, run, heights, &mut actions))
+                    });
+                });
+                ui.allocate_ui_with_layout(egui::vec2(side_w, h), down, |ui| {
+                    ui.push_id("run", |ui| {
+                        theme::scroll(ui, |ui| {
+                            run_figures(app, ui, heights);
+                            ui.add_space(8.0);
+                            stations_editor(ui, run, busy, &mut actions);
+                        })
+                    });
+                });
+            });
+        } else {
+            theme::scroll(ui, |ui| {
+                visits_table(app, ui, e, run, heights, &mut actions);
+                ui.add_space(8.0);
+                run_figures(app, ui, heights);
+                ui.add_space(8.0);
+                stations_editor(ui, run, busy, &mut actions);
+            });
+        }
     }
     for a in actions {
         apply(e, a, ui, pick_id);
@@ -245,7 +277,7 @@ fn station_name(run: &Run, i: usize) -> String {
     if i == run.zero { format!("{name} (zero)") } else { name }
 }
 
-fn sample_card(app: &App, ui: &mut egui::Ui, e: &Engine, run: &Run, station: usize, actions: &mut Vec<Action>) {
+fn sample_card(app: &mut App, ui: &mut egui::Ui, e: &Engine, run: &Run, station: usize, actions: &mut Vec<Action>) {
     let unit = app.settings.unit;
     let now = e.frame_time().unwrap_or_else(|| e.now());
     theme::card().show(ui, |ui| {
@@ -316,6 +348,7 @@ fn sample_card(app: &App, ui: &mut egui::Ui, e: &Engine, run: &Run, station: usi
         } else {
             "Picked by hand. The plan's next station comes back after this sample."
         }));
+        sample_rule(ui, &mut app.settings.sample);
         ui.horizontal_wrapped(|ui| {
             if !open {
                 theme::chip(ui, "No camera", theme::ERROR);
@@ -580,7 +613,41 @@ fn visits_table(
             ui.end_row();
         }
     });
-    if let Some(h) = heights {
+}
+
+/// How long each sample is averaged. Longer samples average away more noise.
+fn sample_rule(ui: &mut egui::Ui, s: &mut SampleRule) {
+    ui.horizontal_wrapped(|ui| {
+        ui.label("Each sample").on_hover_text(
+            "How long each reading is averaged. Longer samples average away more noise; a target ends a sample early once it is sure enough.",
+        );
+        ui.label(theme::dim("at least"));
+        ui.add(egui::DragValue::new(&mut s.min_s).range(0.2..=120.0).speed(0.1).suffix(" s"))
+            .on_hover_text("A sample is at least this long.");
+        ui.label(theme::dim("at most"));
+        ui.add(egui::DragValue::new(&mut s.max_s).range(0.5..=600.0).speed(0.1).suffix(" s"))
+            .on_hover_text("A sample ends after this long, sure enough or not.");
+        let mut target = s.target_um.is_some();
+        ui.checkbox(&mut target, "or once good to")
+            .on_hover_text("End the sample once its uncertainty is below this.");
+        let mut t = s.target_um.unwrap_or(0.1);
+        ui.add_enabled(target, egui::DragValue::new(&mut t).range(0.001..=10.0).speed(0.001).suffix(" µm"));
+        s.target_um = target.then_some(t);
+    });
+    if s.max_s < s.min_s {
+        s.max_s = s.min_s;
+    }
+}
+
+/// The run as a whole: drift seen by the zero visits, and how well repeat visits agree.
+fn run_figures(app: &App, ui: &mut egui::Ui, heights: Option<&Heights>) {
+    let unit = app.settings.unit;
+    ui.label(theme::heading("This run"));
+    let Some(h) = heights else {
+        ui.label(theme::dim("Figures for the run come once it has heights."));
+        return;
+    };
+    {
         theme::cards(ui, |ui| {
             if let Some(c) = h.drift.closure_um {
                 stat(

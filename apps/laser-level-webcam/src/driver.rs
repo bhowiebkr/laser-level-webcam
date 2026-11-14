@@ -140,8 +140,11 @@ mod native {
                         repaint();
                     }
                 }
-                Ok(Event::Opened { device, modes, mode, controls, applied }) => {
-                    lock(engine).opened(device, modes, mode, controls, applied);
+                Ok(Event::Opened { device, modes, mode, controls, applied, usb }) => {
+                    let mut e = lock(engine);
+                    e.opened(device, modes, mode, controls, applied);
+                    e.camera.usb = usb;
+                    drop(e);
                     repaint();
                 }
                 Ok(Event::Controls(controls)) => {

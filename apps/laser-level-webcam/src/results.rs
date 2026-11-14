@@ -3,7 +3,7 @@
 
 use eframe::egui::{self, Align2, Color32, RichText, Stroke};
 use laser_core::results::{Point, Reference, Results};
-use laser_core::survey::Layout;
+use laser_core::survey::{DriftCorrection, Layout};
 use laser_core::units::Unit;
 
 use crate::app::{App, Screen};
@@ -86,11 +86,25 @@ pub fn draw(app: &mut App, ui: &mut egui::Ui, e: &mut Engine) {
     summary(ui, unit, &run.name, &results);
     ui.add_space(6.0);
     ui.horizontal_wrapped(|ui| {
+        ui.label("Show").on_hover_text("Which heights the plot and the colours show.");
         for v in View::ALL {
             ui.selectable_value(&mut view, v, v.label()).on_hover_text(v.help());
         }
-        ui.label(theme::dim(view.help()));
+        ui.separator();
+        ui.label("Units").on_hover_text("The unit heights are shown in, here and in the CSV.");
+        for u in Unit::ALL {
+            ui.selectable_value(&mut app.settings.unit, u, u.label());
+        }
+        ui.separator();
+        ui.label("Drift").on_hover_text(
+            "How the zero visits take the drift out. Interpolate when the drift is smooth; use the last zero when the visits are far apart.",
+        );
+        ui.selectable_value(&mut app.settings.drift_correction, DriftCorrection::Interpolate, "Interpolate")
+            .on_hover_text("The zero for each reading is interpolated in time between the zero visits around it.");
+        ui.selectable_value(&mut app.settings.drift_correction, DriftCorrection::LastZero, "Last zero")
+            .on_hover_text("Each reading against the last zero visit before it.");
     });
+    ui.label(theme::dim(view.help()));
     ui.data_mut(|m| m.insert_temp(view_id, view));
     let plot_h = (ui.available_height() * 0.5).clamp(200.0, 420.0);
     match results.layout {
@@ -98,7 +112,7 @@ pub fn draw(app: &mut App, ui: &mut egui::Ui, e: &mut Engine) {
         Layout::Grid => heat_map(ui, unit, &results, view, plot_h),
     }
     ui.add_space(6.0);
-    export_bar(ui, unit, &run.name, &results);
+    export_bar(ui, unit, &run.name, &results, e.session.drift_correction);
     ui.add_space(4.0);
     theme::scroll(ui, |ui| table(ui, unit, &results));
 }
@@ -298,24 +312,79 @@ fn heat_map(ui: &mut egui::Ui, unit: Unit, r: &Results, view: View, height: f32)
     ui.label(theme::dim(legend));
 }
 
-fn export_bar(ui: &mut egui::Ui, unit: Unit, name: &str, r: &Results) {
+/// What the points are copied or saved as.
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+enum Format {
+    #[default]
+    Csv,
+    Json,
+}
+
+impl Format {
+    const ALL: [Format; 2] = [Format::Csv, Format::Json];
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Csv => "CSV",
+            Self::Json => "JSON",
+        }
+    }
+
+    fn help(self) -> &'static str {
+        match self {
+            Self::Csv => "A table for a spreadsheet, in the unit shown, one row per station.",
+            Self::Json => {
+                "Everything in the result for a script or another program: the stations, the fitted line or plane, straightness or flatness, drift and repeatability. Heights in µm, positions in mm."
+            }
+        }
+    }
+
+    fn ext(self) -> &'static str {
+        match self {
+            Self::Csv => "csv",
+            Self::Json => "json",
+        }
+    }
+
+    fn mime(self) -> &'static str {
+        match self {
+            Self::Csv => "text/csv",
+            Self::Json => "application/json",
+        }
+    }
+}
+
+fn export_bar(ui: &mut egui::Ui, unit: Unit, name: &str, r: &Results, drift: DriftCorrection) {
     let msg_id = ui.scope_id().with("export_msg");
+    let format_id = ui.scope_id().with("export_format");
+    let mut format: Format = ui.data(|m| m.get_temp(format_id)).unwrap_or_default();
+    let text = |f: Format| match f {
+        Format::Csv => r.csv(unit),
+        Format::Json => r.json(name, drift),
+    };
     ui.horizontal(|ui| {
         ui.label(theme::heading("Points"));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.button("Copy as CSV").on_hover_text("For a spreadsheet: paste it in.").clicked() {
-                ui.ctx().copy_text(r.csv(unit));
-                ui.data_mut(|m| m.insert_temp(msg_id, "Copied.".to_owned()));
-            }
-            if ui.button("Save CSV…").clicked() {
-                let msg = files::save_text(&format!("{}.csv", files::file_stem(name)), "text/csv", &r.csv(unit));
+            if ui.button("Save…").on_hover_text(format.help()).clicked() {
+                let file = format!("{}.{}", files::file_stem(name), format.ext());
+                let msg = files::save_text(&file, format.mime(), &text(format));
                 ui.data_mut(|m| m.insert_temp(msg_id, msg));
+            }
+            if ui.button("Copy").on_hover_text("Paste it into a spreadsheet, a script or another program.").clicked() {
+                ui.ctx().copy_text(text(format));
+                ui.data_mut(|m| m.insert_temp(msg_id, format!("Copied as {}.", format.label())));
+            }
+            for f in Format::ALL.iter().rev() {
+                if ui.selectable_value(&mut format, *f, f.label()).on_hover_text(f.help()).changed() {
+                    ui.data_mut(|m| m.remove::<String>(msg_id));
+                }
             }
             if let Some(msg) = ui.data(|m| m.get_temp::<String>(msg_id)) {
                 ui.label(theme::dim(msg));
             }
         });
     });
+    ui.data_mut(|m| m.insert_temp(format_id, format));
 }
 
 fn table(ui: &mut egui::Ui, unit: Unit, r: &Results) {

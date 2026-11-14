@@ -23,6 +23,8 @@ pub mod capture;
 #[cfg(windows)]
 mod mf;
 pub mod synthetic;
+#[cfg(windows)]
+mod usb;
 
 /// One frame's luma plane, with no row padding.
 #[derive(Clone, Debug, PartialEq)]
@@ -96,6 +98,11 @@ pub trait FrameSource {
     /// The mode it is running in.
     fn mode(&self) -> VideoMode;
 
+    /// What the camera itself says it sends, from its USB descriptors, if it is a USB camera.
+    fn usb(&self) -> Option<&laser_core::uvc::UvcDevice> {
+        None
+    }
+
     /// The controls as they are now. Controls the camera lacks are left out.
     fn controls(&mut self) -> Vec<ControlInfo>;
 
@@ -114,6 +121,15 @@ pub fn devices() -> Vec<DeviceInfo> {
     out.extend(mf::devices().unwrap_or_default());
     out.push(synthetic::device());
     out
+}
+
+/// What the camera itself says it sends, from its USB descriptors. Works while it streams.
+pub fn usb(device: &DeviceInfo) -> Result<laser_core::uvc::UvcDevice, CameraError> {
+    match device.backend {
+        #[cfg(windows)]
+        Backend::MediaFoundation => usb::uvc(&device.id),
+        _ => Err(CameraError::Os(format!("{} is not a USB camera", device.name))),
+    }
 }
 
 /// Open the camera the settings name (the first one if they name none) in their mode (or the

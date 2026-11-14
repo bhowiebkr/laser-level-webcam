@@ -122,15 +122,18 @@ impl App {
             .frame(egui::Frame::new().fill(theme::PANEL).inner_margin(Margin::symmetric(12, 4)))
             .show(ui, |ui| status_bar(ui, &e));
         let screen_w = ui.ctx().content_rect().width();
-        egui::Panel::left("settings")
-            .resizable(true)
-            .default_size((screen_w * 0.27).clamp(320.0, 560.0))
-            .min_size(290.0)
-            .max_size((screen_w * 0.5).max(300.0))
-            .frame(egui::Frame::new().fill(theme::BACKGROUND).inner_margin(Margin::symmetric(10, 10)))
-            .show(ui, |ui| {
-                theme::scroll(ui, |ui| side::draw(self, ui, &mut e));
-            });
+        // Only the set-up step has enough settings for a column; the others keep theirs on screen.
+        if self.screen == Screen::SetUp {
+            egui::Panel::left("settings")
+                .resizable(true)
+                .default_size((screen_w * 0.27).clamp(320.0, 560.0))
+                .min_size(290.0)
+                .max_size((screen_w * 0.5).max(300.0))
+                .frame(egui::Frame::new().fill(theme::BACKGROUND).inner_margin(Margin::symmetric(10, 10)))
+                .show(ui, |ui| {
+                    theme::scroll(ui, |ui| side::draw(self, ui, &mut e));
+                });
+        }
         egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(theme::BACKGROUND).inner_margin(Margin::same(10)))
             .show(ui, |ui| match self.screen {

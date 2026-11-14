@@ -71,17 +71,23 @@ impl std::fmt::Display for VideoMode {
 /// as it is, then the highest frame rate. A scaled-down mode averages pixels together and hides
 /// the beam's shape; MJPEG adds block artefacts at the beam's edges.
 pub fn pick_mode(modes: &[VideoMode], wanted: Option<&VideoMode>) -> Option<VideoMode> {
-    if let Some(w) = wanted
-        && let Some(m) = modes
-            .iter()
-            .find(|m| m.width == w.width && m.height == w.height && m.format == w.format && (m.fps - w.fps).abs() < 0.5)
-    {
-        return Some(*m);
+    if let Some(m) = wanted.and_then(|w| find_mode(modes, w)) {
+        return Some(m);
     }
     modes.iter().copied().max_by(|a, b| {
         (a.format.is_raw_luma(), a.pixels(), a.fps >= 5.0)
             .cmp(&(b.format.is_raw_luma(), b.pixels(), b.fps >= 5.0))
             .then(a.fps.total_cmp(&b.fps))
+    })
+}
+
+/// The mode in the list with the same size, format and frame rate.
+pub fn find_mode(modes: &[VideoMode], wanted: &VideoMode) -> Option<VideoMode> {
+    modes.iter().copied().find(|m| {
+        m.width == wanted.width
+            && m.height == wanted.height
+            && m.format == wanted.format
+            && (m.fps - wanted.fps).abs() < 0.5
     })
 }
 
