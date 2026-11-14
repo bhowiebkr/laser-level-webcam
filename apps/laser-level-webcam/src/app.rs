@@ -562,6 +562,18 @@ fn status_bar(ui: &mut egui::Ui, e: &Engine) {
     });
 }
 
+/// Wait until the driver has given up on a camera that is not there, so the frames a test feeds are
+/// the only ones and the screens stop changing on their own.
+#[cfg(test)]
+pub(crate) fn wait_until_failed(app: &App) {
+    use std::time::{Duration, Instant};
+    let end = Instant::now() + Duration::from_secs(20);
+    while !matches!(lock(&app.engine).camera.state, CameraState::Failed(_)) {
+        assert!(Instant::now() < end, "the camera that is not there did not fail");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use laser_camera::FrameSource;
@@ -607,8 +619,8 @@ mod tests {
         settings.camera.device = Some("No such camera".into());
         let mut app = App::with(&ctx, settings, None);
         app.sensors.save(&app.settings.sensor.clone(), None);
+        wait_until_failed(&app);
         draw_all(&mut app, &ctx);
-        assert!(matches!(lock(&app.engine).camera.state, CameraState::Failed(_)));
 
         let small = Synthetic::open(None).modes()[3];
         let mut cam = Synthetic::open(Some(small));

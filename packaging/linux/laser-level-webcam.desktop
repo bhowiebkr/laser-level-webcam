@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Laser Level Webcam
+Comment=Straightness and flatness from a laser line on a lensless webcam
+Exec=laser-level-webcam
+Icon=laser-level-webcam
+Terminal=false
+Categories=Science;Engineering;

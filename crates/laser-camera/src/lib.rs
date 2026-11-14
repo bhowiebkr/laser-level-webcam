@@ -10,6 +10,8 @@
 //!   controls. Pure Rust; runs anywhere, the browser included.
 //! - `mf` (Windows): Media Foundation for the frames, with the DirectShow camera control and
 //!   video proc amp interfaces and the kernel-streaming power-line property for the controls.
+//! - `v4l2` (Linux): Video4Linux2, memory-mapped streaming and the node's controls.
+//! - `avf` (macOS): AVFoundation for the frames. macOS gives no camera controls.
 //! - `web` (the browser): `getUserMedia`, opened with the asynchronous `web::open`.
 //!
 //! A source is used on the thread that opened it; [`capture`] runs one on its own thread.
@@ -19,6 +21,8 @@ use std::fmt;
 use laser_core::camera::{CameraSettings, ControlId, ControlInfo, ControlMode, ControlSetting, VideoMode};
 use laser_core::frame::{FrameError, Luma};
 
+#[cfg(target_os = "macos")]
+mod avf;
 mod browser;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod capture;
@@ -27,6 +31,8 @@ mod mf;
 pub mod synthetic;
 #[cfg(windows)]
 mod usb;
+#[cfg(all(target_os = "linux", target_pointer_width = "64"))]
+mod v4l2;
 #[cfg(target_arch = "wasm32")]
 pub mod web;
 
@@ -62,6 +68,10 @@ pub struct DeviceInfo {
 pub enum Backend {
     Synthetic,
     MediaFoundation,
+    /// Video4Linux2 (Linux); the id is the `/dev/video*` node.
+    V4l2,
+    /// AVFoundation (macOS); the id is the device's unique ID.
+    AvFoundation,
     /// The browser's `getUserMedia`; opened only through `web::open`.
     Browser,
 }
@@ -104,6 +114,11 @@ pub trait FrameSource {
     /// The mode it is running in.
     fn mode(&self) -> VideoMode;
 
+    /// The simulated block the line moves with. Only the synthetic camera has one.
+    fn block(&self) -> Option<synthetic::Block> {
+        None
+    }
+
     /// What the camera itself says it sends, from its USB descriptors, if it is a USB camera.
     fn usb(&self) -> Option<&laser_core::uvc::UvcDevice> {
         None
@@ -136,6 +151,10 @@ pub fn devices() -> Vec<DeviceInfo> {
     let mut out: Vec<DeviceInfo> = Vec::new();
     #[cfg(windows)]
     out.extend(mf::devices().unwrap_or_default());
+    #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
+    out.extend(v4l2::devices());
+    #[cfg(target_os = "macos")]
+    out.extend(avf::devices());
     #[cfg(target_arch = "wasm32")]
     out.extend(web::devices());
     out.push(synthetic::device());
@@ -147,6 +166,8 @@ pub fn usb(device: &DeviceInfo) -> Result<laser_core::uvc::UvcDevice, CameraErro
     match device.backend {
         #[cfg(windows)]
         Backend::MediaFoundation => usb::uvc(&device.id),
+        #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
+        Backend::V4l2 => v4l2::uvc(&device.id),
         _ => Err(CameraError::Os(format!("{} is not a USB camera", device.name))),
     }
 }
@@ -160,15 +181,66 @@ pub fn open(settings: &CameraSettings) -> Result<(Box<dyn FrameSource>, Vec<Appl
         None => all.into_iter().next().ok_or_else(|| CameraError::NotFound(String::new()))?,
     };
     let mut source: Box<dyn FrameSource> = match device.backend {
-        Backend::Synthetic => Box::new(synthetic::Synthetic::open(settings.mode)),
+        Backend::Synthetic => {
+            let mut cam = synthetic::Synthetic::open(settings.mode);
+            cam.block = Some(synthetic::Block::default());
+            Box::new(cam)
+        }
         #[cfg(windows)]
         Backend::MediaFoundation => Box::new(mf::MfCamera::open(&device, settings.mode.as_ref())?),
-        #[cfg(not(windows))]
-        Backend::MediaFoundation => return Err(CameraError::NotFound(device.name)),
+        #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
+        Backend::V4l2 => Box::new(v4l2::V4l2Camera::open(&device, settings.mode.as_ref())?),
+        #[cfg(target_os = "macos")]
+        Backend::AvFoundation => Box::new(avf::AvfCamera::open(&device, settings.mode.as_ref())?),
+        #[allow(unreachable_patterns)]
+        Backend::MediaFoundation | Backend::V4l2 | Backend::AvFoundation => {
+            return Err(CameraError::NotFound(device.name));
+        }
         Backend::Browser => return Err(CameraError::Os(format!("{} opens only through web::open", device.name))),
     };
     let applied = apply(source.as_mut(), &settings.controls);
     Ok((source, applied))
+}
+
+/// The luma plane of one of the camera's JPEGs, decoded here (the Y samples as coded, no colour
+/// conversion). Empty if it does not decode to `w`×`h`.
+#[cfg(any(windows, all(target_os = "linux", target_pointer_width = "64")))]
+fn jpeg_luma(bytes: &[u8], w: usize, h: usize) -> Vec<u8> {
+    use zune_jpeg::zune_core::colorspace::ColorSpace;
+    use zune_jpeg::zune_core::options::DecoderOptions;
+    let options = DecoderOptions::default().jpeg_set_out_colorspace(ColorSpace::Luma);
+    let mut d = zune_jpeg::JpegDecoder::new_with_options(std::io::Cursor::new(bytes), options);
+    match d.decode() {
+        Ok(y) if y.len() == w * h => y,
+        _ => Vec::new(),
+    }
+}
+
+/// Frame times and numbers from the camera's own timestamps.
+#[cfg(any(target_os = "macos", all(target_os = "linux", target_pointer_width = "64")))]
+#[derive(Default)]
+struct Clock {
+    first: Option<f64>,
+    last: f64,
+    seq: u64,
+}
+
+#[cfg(any(target_os = "macos", all(target_os = "linux", target_pointer_width = "64")))]
+impl Clock {
+    fn started(&self) -> bool {
+        self.first.is_some()
+    }
+
+    /// The time from the first frame, s, and the frame number ([`Frame::seq`]: frame times with
+    /// no frame count too) of a frame stamped `t` s at `fps`.
+    fn stamp(&mut self, t: f64, fps: f64) -> (f64, u64) {
+        let first = *self.first.get_or_insert(t);
+        if t != first {
+            self.seq += ((t - self.last) * fps.max(1.0)).round().max(1.0) as u64;
+        }
+        self.last = t;
+        (t - first, self.seq)
+    }
 }
 
 /// What happened to one setting.

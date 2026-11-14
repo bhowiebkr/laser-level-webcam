@@ -20,6 +20,8 @@ Until now, the difference between repeated measurements is 0.5 µm to 2 µm.
 - [How it works](#how-it-works)
 - [Getting started](#getting-started)
   - [The Windows app](#the-windows-app)
+  - [The Mac app](#the-mac-app)
+  - [The Linux app](#the-linux-app)
   - [The browser version](#the-browser-version)
   - [Build from the source code](#build-from-the-source-code)
 - [The four steps](#the-four-steps)
@@ -92,6 +94,60 @@ To use the app without the installer:
 
 The app keeps your settings and the open session when you close the window. They come back when you start the app again.
 
+### The Mac app
+
+The Mac app operates with live cameras on macOS 11 (Big Sur) and newer, on Apple silicon and on Intel Macs. It is one universal app.
+
+1. Download the macOS zip file (`laser-level-webcam-<version>-macos-universal.zip`) from [Releases](https://github.com/bhowiebkr/laser-level-webcam/releases).
+2. Open the zip file. Safari opens it for you.
+3. Drag **Laser Level Webcam** into the **Applications** folder.
+4. Start the app. macOS says that it cannot verify the app, because the app has no Apple developer signature. Click **Done**.
+5. Open **System Settings** > **Privacy & Security**. Below **Security**, click **Open Anyway** for Laser Level Webcam. Then click **Open Anyway** again and type your password. You do this only one time.
+6. When macOS asks for permission to use the camera, click **Allow**.
+
+Instead of steps 4 and 5, you can remove the download mark in Terminal:
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/Laser Level Webcam.app"
+```
+
+If you clicked **Don't Allow** for the camera, open **System Settings** > **Privacy & Security** > **Camera** and turn on **Laser Level Webcam**.
+
+The zip file also contains `laser`, the [command-line tool](#the-command-line-tool). The first time that `laser` uses the camera, macOS asks for permission for the terminal app.
+
+The differences from the Windows app are:
+
+- macOS gives the app no camera controls. Thus the Mac app has no exposure, gain or white balance settings, and no **Lock for measuring**. The camera keeps its automatic exposure.
+- macOS decodes the frames of the camera. The app gets the luma from these frames. The **Format** list shows the formats that the camera sends.
+- macOS does not give the USB descriptors. Thus **What the camera reports** is not available, and the app finds a [saved sensor](#sensor) by the name of the camera.
+
+### The Linux app
+
+The Linux app operates with live cameras through Video4Linux (V4L2) on 64-bit x86 Linux. It needs glibc 2.35 or newer, for example Ubuntu 22.04, Debian 12 or Fedora 36 and newer, and a desktop with X11 or Wayland.
+
+1. Download the Linux file (`laser-level-webcam-<version>-linux-x64.tar.gz`) from [Releases](https://github.com/bhowiebkr/laser-level-webcam/releases).
+2. Extract it:
+
+   ```bash
+   tar -xzf laser-level-webcam-*-linux-x64.tar.gz
+   ```
+
+3. Start the app from the folder:
+
+   ```bash
+   ./laser-level-webcam-*-linux-x64/laser-level-webcam
+   ```
+
+The folder also contains `laser`, the [command-line tool](#the-command-line-tool), and an icon and a desktop entry. To add the app to the menu of your desktop, copy `laser-level-webcam` to `~/.local/bin`, `laser-level-webcam.png` to `~/.local/share/icons`, and `laser-level-webcam.desktop` to `~/.local/share/applications`.
+
+If the app finds no camera, your user may not have permission to use `/dev/video*`. Add your user to the `video` group, then log out and log in again:
+
+```bash
+sudo usermod -aG video "$USER"
+```
+
+The Linux app reads the modes, the controls and the USB descriptors of the camera, the same as the Windows app. The exposure value is in steps of 100 µs: 20 is 2 ms.
+
 ### The browser version
 
 The browser version is the same app, compiled to WebAssembly. It uses the camera through the browser. It is tested in Chrome on Windows. Edge and other Chromium browsers use the same camera functions. Firefox gives fewer camera controls.
@@ -102,7 +158,7 @@ The browser version is one file, `laser-level-webcam-<version>-web.html`. You do
 2. Open the file in Chrome or Edge. For example, double-click the file, or drag it into the browser window.
 3. When the browser asks for permission to use the camera, click **Allow**.
 
-The differences from the Windows app are:
+The differences from the Windows and Linux apps are:
 
 - The browser gives colour frames that it has processed. The app calculates the luma from these frames. The app cannot get the YUYV or MJPEG data from the camera.
 - The browser does not give the USB descriptors. Thus **Frames from** and **What the camera reports** are not available.
@@ -131,6 +187,14 @@ The differences from the Windows app are:
    ```bash
    cargo run --release -p laser-level-webcam
    ```
+
+On Linux, install the libraries for the window before you build. On Ubuntu and Debian, use this command:
+
+```bash
+sudo apt install pkg-config libx11-dev libxcursor-dev libxrandr-dev libxi-dev libxkbcommon-dev libwayland-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libgl1-mesa-dev
+```
+
+On a Mac, install the Xcode command-line tools (`xcode-select --install`).
 
 To build the browser version, you must have the WebAssembly target and [trunk](https://trunkrs.dev):
 
@@ -192,7 +256,25 @@ To build the Windows installer, you must have the [.NET SDK](https://dotnet.micr
 
 The installer goes into the `dist` folder.
 
-The app icon and the pictures in the installer come from code. To make them again, use this command:
+To build the Mac zip file with the universal app, use these commands on a Mac. The script signs the app ad hoc.
+
+```bash
+rustup target add aarch64-apple-darwin x86_64-apple-darwin
+```
+
+```bash
+bash packaging/macos/build-app.sh
+```
+
+To build the Linux `.tar.gz` file, use this command on Linux:
+
+```bash
+bash packaging/linux/build-tar.sh
+```
+
+These files also go into the `dist` folder. GitHub Actions builds all the release files for each push to `main` (`.github/workflows/build.yml`). When a version tag is pushed, it makes a draft release with the files.
+
+The app icon (`.ico`, `.png` and the Mac `.icns`) and the pictures in the installer come from code. To make them again, use this command:
 
 ```bash
 cargo run --release -p pack -- icons
@@ -297,7 +379,7 @@ The usual controls of a webcam, and how to set them for measurements:
 
 | Control | Setting | Reason |
 | --- | --- | --- |
-| Exposure | Locked, peak just below white | The time that each pixel collects light. If the exposure is too long, the top of the beam clips flat, and the centre is not clear. If the exposure is too short, the beam is lost in the noise. Auto exposure changes the exposure between frames, so the brightness of the beam changes. On Windows, the value is log₂ seconds: −9 is 1/512 s (1.95 ms). |
+| Exposure | Locked, peak just below white | The time that each pixel collects light. If the exposure is too long, the top of the beam clips flat, and the centre is not clear. If the exposure is too short, the beam is lost in the noise. Auto exposure changes the exposure between frames, so the brightness of the beam changes. On Windows, the value is log₂ seconds: −9 is 1/512 s (1.95 ms). On Linux, the value is in steps of 100 µs. |
 | Gain | Minimum | Amplification after the pixel. Gain increases the noise together with the signal, so it does not make the reading better. Use the exposure instead. |
 | White balance | Locked | Colour gains. The luma of a red beam comes mostly from the red gain. Thus auto white balance changes the brightness of the beam when the room light changes. |
 | Power line filter | Your mains frequency, set by **Mains** | This filter is important only with auto exposure. It keeps the exposure at a whole number of flicker periods. With manual exposure, use a whole number of flicker periods (10 ms at 50 Hz, 8.3 ms at 60 Hz). Alternatively, use only the laser to light the target. |
@@ -379,7 +461,7 @@ The line below the diagram gives the number of sensor px in one frame px.
 | Export… | Saves the list to a file, `sensors.json`. Use it to keep a copy, or to move the list to another computer or to the browser version. |
 | Import… | Adds the sensors from an exported file. A sensor with the same name is replaced. |
 
-The app finds a camera by its USB vendor and product ID. If the IDs are not known, it uses the name of the camera. The Windows app keeps the list in `%APPDATA%\laser-level-webcam\data\sensors.json`. The browser version keeps the list in the browser storage. Hold the pointer on the line below the buttons to see where the list is.
+The app finds a camera by its USB vendor and product ID. If the IDs are not known, it uses the name of the camera. The Windows app keeps the list in `%APPDATA%\laser-level-webcam\data\sensors.json`, the Mac app in `~/Library/Application Support/laser-level-webcam/sensors.json`, and the Linux app in `~/.local/share/laser-level-webcam/sensors.json`. The browser version keeps the list in the browser storage. Hold the pointer on the line below the buttons to see where the list is.
 
 #### Beam finder
 
@@ -596,7 +678,7 @@ This step shows the straightness (a line) or the flatness (a surface) of the run
 
 The options of the `camera` command are:
 
-- `--usb` shows what the camera sends, from its USB descriptors. This option also operates while a different program uses the camera.
+- `--usb` shows what the camera sends, from its USB descriptors. This option also operates while a different program uses the camera. It is not available on macOS.
 - `--set id=value` sets a control first.
 - `--lock` locks the camera for measuring.
 - `--mode WIDTHxHEIGHT[@FPS][:FORMAT]` opens the mode that you specify.

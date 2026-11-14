@@ -4,7 +4,8 @@
 //! Gaussian line, sigma 80 px, background 16, amplitude 160, read noise 2, shot gain 0.5, seed 1.
 //! Spec v2 adds what real set-ups have: tilt, an ambient gradient, clipping, and warm-up drift
 //! ([`WarmUp`]) with a known time constant and steps. [`SurveySim`] makes whole surveys of a
-//! surface with a known shape.
+//! surface with a known shape, and [`Surface`] is the slightly out-of-flat surface the synthetic
+//! camera is measured on.
 
 use serde::{Deserialize, Serialize};
 
@@ -12,7 +13,7 @@ use crate::frame::{LineAxis, LumaImage};
 use crate::reading::{FrameResult, Subsample};
 use crate::rng::Rng;
 use crate::scale::Scale;
-use crate::survey::{Run, SurveyError};
+use crate::survey::{Run, Station, SurveyError};
 
 /// One synthetic frame with a Gaussian laser line.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -228,5 +229,118 @@ impl SurveySim {
             t += self.visit_s + self.move_s;
         }
         Ok(t)
+    }
+}
+
+/// A surface a little out of flat, under a laser that is not quite square to it: what the block
+/// sits on when the synthetic camera is measured with. The shape is a bow, a twist, a long wave
+/// and some roughness, scaled to the run's own size, so a line or a grid of any spacing gets the
+/// same kind of surface. The same station always has the same height.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Surface {
+    /// Rise of the middle over the ends, µm: half a sine wave along the run, and across a grid.
+    pub bow_um: f64,
+    /// Rise of two opposite corners over the other two, µm. A line has none.
+    pub twist_um: f64,
+    /// Size of a long wave across the run, µm.
+    pub wave_um: f64,
+    /// Standard deviation of the roughness from station to station, µm.
+    pub rough_um: f64,
+    /// Slope of the laser to the surface, µm per m, in x and in y.
+    pub tilt_um_per_m: [f64; 2],
+    /// Standard deviation of where the block sits each time it is put down, µm.
+    pub placement_um: f64,
+}
+
+impl Default for Surface {
+    /// About 8 µm out of flat, under a laser 35 µm per m off square: a good surface plate.
+    fn default() -> Self {
+        Self {
+            bow_um: 6.0,
+            twist_um: 3.0,
+            wave_um: 1.2,
+            rough_um: 0.4,
+            tilt_um_per_m: [35.0, -20.0],
+            placement_um: 0.25,
+        }
+    }
+}
+
+impl Surface {
+    /// Height of the surface at station `i` of `run`, µm.
+    pub fn height_um(&self, run: &Run, i: usize) -> f64 {
+        use std::f64::consts::PI;
+        let s = &run.stations[i];
+        // Where the station is across the run, 0 to 1, in x and in y; none when the run has no
+        // size that way.
+        let across = |f: fn(&Station) -> f64| {
+            let (lo, hi) = run.stations.iter().map(f).fold((f64::MAX, f64::MIN), |(a, b), v| (a.min(v), b.max(v)));
+            (hi > lo).then(|| (f(s) - lo) / (hi - lo))
+        };
+        let (u, v) = (across(|s| s.x_mm), across(|s| s.y_mm));
+        let (u0, v0) = (u.unwrap_or(0.5), v.unwrap_or(0.5));
+        let bow = |w: Option<f64>| w.map_or(1.0, |w| (PI * w).sin());
+        let twist = match (u, v) {
+            (Some(u), Some(v)) => (2.0 * u - 1.0) * (2.0 * v - 1.0),
+            _ => 0.0,
+        };
+        let wave = (2.0 * PI * (1.3 * u0 + 0.7 * v0) + 0.6).sin();
+        // The roughness comes from the station's place, so each station keeps its own.
+        let place = |mm: f64| (mm * 1000.0).round() as i64 as u64;
+        let rough = Rng::new(place(s.x_mm) ^ place(s.y_mm).rotate_left(32) ^ 0x5eed).normal();
+        self.bow_um * bow(u) * bow(v) + self.twist_um * twist + self.wave_um * wave + self.rough_um * rough
+    }
+
+    /// Height of station `i` against the laser, above the zero station, µm: what the camera sees
+    /// when the block moves from the zero station to station `i`.
+    pub fn seen_um(&self, run: &Run, i: usize) -> f64 {
+        let against_laser = |i: usize| {
+            let s = &run.stations[i];
+            self.height_um(run, i) - (self.tilt_um_per_m[0] * s.x_mm + self.tilt_um_per_m[1] * s.y_mm) / 1000.0
+        };
+        against_laser(i) - against_laser(run.zero)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn peak_to_valley(run: &Run, surface: &Surface) -> f64 {
+        let h: Vec<f64> = (0..run.stations.len()).map(|i| surface.height_um(run, i)).collect();
+        h.iter().copied().fold(f64::MIN, f64::max) - h.iter().copied().fold(f64::MAX, f64::min)
+    }
+
+    #[test]
+    fn surface_is_a_little_out_of_flat_on_a_line_and_a_grid() {
+        let surface = Surface::default();
+        let line = Run::line("line", 21, 50.0);
+        let grid = Run::grid("grid", 9, 7, 50.0, 50.0);
+        for run in [&line, &grid] {
+            let pv = peak_to_valley(run, &surface);
+            assert!((3.0..15.0).contains(&pv), "{} p-v {pv}", run.name);
+            assert_eq!(surface.seen_um(run, run.zero), 0.0);
+        }
+        // A line has no twist: the far end of the line sees the laser's slope and the surface.
+        let last = line.stations.len() - 1;
+        let tilt = surface.tilt_um_per_m[0] * line.stations[last].x_mm / 1000.0;
+        let seen = surface.seen_um(&line, last);
+        let surface_part = surface.height_um(&line, last) - surface.height_um(&line, line.zero);
+        assert!((seen - (surface_part - tilt)).abs() < 1e-9, "{seen} {surface_part} {tilt}");
+    }
+
+    #[test]
+    fn a_station_keeps_its_height() {
+        let surface = Surface::default();
+        let grid = Run::grid("grid", 5, 4, 100.0, 100.0);
+        let again = Run::grid("grid", 5, 4, 100.0, 100.0);
+        for i in 0..grid.stations.len() {
+            assert_eq!(surface.height_um(&grid, i), surface.height_um(&again, i));
+        }
+        // Neighbours differ: the roughness is not the same everywhere.
+        assert_ne!(
+            surface.height_um(&grid, 1) - surface.height_um(&grid, 0),
+            surface.height_um(&grid, 2) - surface.height_um(&grid, 1)
+        );
     }
 }

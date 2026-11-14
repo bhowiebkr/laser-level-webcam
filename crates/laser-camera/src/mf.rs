@@ -415,7 +415,7 @@ impl FrameSource for MfCamera {
                         PixelFormat::Yuyv => {
                             LumaImage::from_yuyv(w, h, 2 * w, bytes).map(|i| i.data).unwrap_or_default()
                         }
-                        PixelFormat::Mjpeg => jpeg_luma(bytes, w, h),
+                        PixelFormat::Mjpeg => crate::jpeg_luma(bytes, w, h),
                         _ if bytes.len() >= w * h => bytes[..w * h].to_vec(),
                         _ => Vec::new(),
                     };
@@ -434,19 +434,6 @@ impl FrameSource for MfCamera {
             self.frames += 1;
             return Ok(Frame { width: w, height: h, data, t_s: (ts - first) as f64 * 1e-7, seq: self.seq });
         }
-    }
-}
-
-/// The luma plane of one of the camera's JPEGs, decoded here (the Y samples as coded, no colour
-/// conversion). Empty if it does not decode to `w`×`h`.
-fn jpeg_luma(bytes: &[u8], w: usize, h: usize) -> Vec<u8> {
-    use zune_jpeg::zune_core::colorspace::ColorSpace;
-    use zune_jpeg::zune_core::options::DecoderOptions;
-    let options = DecoderOptions::default().jpeg_set_out_colorspace(ColorSpace::Luma);
-    let mut d = zune_jpeg::JpegDecoder::new_with_options(std::io::Cursor::new(bytes), options);
-    match d.decode() {
-        Ok(y) if y.len() == w * h => y,
-        _ => Vec::new(),
     }
 }
 

@@ -184,6 +184,43 @@ fn ico() -> Vec<u8> {
     out
 }
 
+/// The icon as macOS app icons sit on their canvas: the tile at 824/1024 of the side, centred, so
+/// it lines up with the other apps in the Dock.
+fn mac_icon(size: u32) -> Pixmap {
+    let inner = (size as f32 * 824.0 / 1024.0).round() as u32;
+    let mut pm = Pixmap::new(size, size).expect("an icon size above 0");
+    let at = ((size - inner) / 2) as i32;
+    pm.draw_pixmap(at, at, icon(inner).as_ref(), &PixmapPaint::default(), Transform::identity(), None);
+    pm
+}
+
+/// A macOS `.icns` file with a PNG for each size and scale that Finder and the Dock ask for.
+fn icns() -> Vec<u8> {
+    const ENTRIES: [(&[u8; 4], u32); 10] = [
+        (b"icp4", 16),
+        (b"icp5", 32),
+        (b"ic11", 32),
+        (b"ic12", 64),
+        (b"ic07", 128),
+        (b"ic13", 256),
+        (b"ic08", 256),
+        (b"ic14", 512),
+        (b"ic09", 512),
+        (b"ic10", 1024),
+    ];
+    let mut body = Vec::new();
+    for (kind, size) in ENTRIES {
+        let data = png(&mac_icon(size));
+        body.extend(kind);
+        body.extend((data.len() as u32 + 8).to_be_bytes());
+        body.extend(data);
+    }
+    let mut out = b"icns".to_vec();
+    out.extend((body.len() as u32 + 8).to_be_bytes());
+    out.extend(body);
+    out
+}
+
 /// A 24-bit `.bmp` file of an opaque picture, as the installer needs.
 fn bmp(pm: &Pixmap) -> Vec<u8> {
     let (w, h) = (pm.width(), pm.height());
@@ -266,6 +303,7 @@ fn write(path: &Path, bytes: &[u8]) -> Result<(), String> {
 pub fn write_all(root: &Path) -> Result<(), String> {
     write(&root.join("assets/icon.ico"), &ico())?;
     write(&root.join("assets/icon.png"), &png(&icon(256)))?;
+    write(&root.join("assets/icon.icns"), &icns())?;
     write(&root.join("packaging/windows/banner.bmp"), &bmp(&banner()))?;
     write(&root.join("packaging/windows/dialog.bmp"), &bmp(&dialog()))?;
     Ok(())

@@ -39,6 +39,8 @@ pub enum Event {
         applied: Vec<Applied>,
         /// What the camera itself says it sends, from its USB descriptors.
         usb: Option<laser_core::uvc::UvcDevice>,
+        /// The synthetic camera's simulated block.
+        block: Option<crate::synthetic::Block>,
     },
     Frame(Frame),
     Controls(Vec<ControlInfo>),
@@ -132,6 +134,7 @@ fn run(settings: &CameraSettings, commands: &Receiver<Command>, events: &SyncSen
         controls: source.controls(),
         applied,
         usb: source.usb().cloned(),
+        block: source.block(),
     };
     if events.send(opened).is_err() {
         return;
