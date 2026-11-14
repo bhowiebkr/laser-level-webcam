@@ -1,7 +1,7 @@
-//! The beam finder on the frames the Python baseline used (`bench/python/synthetic.py`, spec v1),
-//! with the same tests: time per frame, a line at the middle, near the edge and missing, sub-pixel
-//! steps, positions across the sensor, spread at one position, and the scale. Also the frames saved
-//! from the live camera, if `bench/data/live` has them.
+//! The beam finder on the frames the Python baseline used (`bench/python/synthetic.py` on the
+//! `python` branch, spec v1), with the same tests: time per frame, a line at the middle, near the
+//! edge and missing, sub-pixel steps, positions across the sensor, spread at one position, and the
+//! scale. Also the frames saved from the live camera, if `bench/data/live` has them.
 //!
 //! ```text
 //! cargo run --release -p laser-core --example bench [-- --dump frame0.y8]

@@ -467,10 +467,10 @@ cargo run --release -p laser -- help
 The Python program lives on the [`python` branch](https://github.com/bhowiebkr/laser-level-webcam/tree/python). The rest of this section is its original README.
 
 ### Webcam sensor GUI
-![Webcam_Sensor_GUI](images/Webcam_Sensor_GUI.png)
+![Webcam_Sensor_GUI](https://raw.githubusercontent.com/bhowiebkr/laser-level-webcam/python/images/Webcam_Sensor_GUI.png)
 
 ### LinuxCNC remote driver GUI
-![LinuxCNC_remote_driver_GUI](images/LinuxCNC_remote_driver_GUI.png)
+![LinuxCNC_remote_driver_GUI](https://raw.githubusercontent.com/bhowiebkr/laser-level-webcam/python/images/LinuxCNC_remote_driver_GUI.png)
 
 Current version on github has the linuxcnc remove driver seen in this video:
 [![Video](http://img.youtube.com/vi/wpInsrcQAus/0.jpg)](https://www.youtube.com/watch?v=wpInsrcQAus)
