@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/laser-core", "crates/laser-camera", "apps/laser", "apps/laser-level-webcam", "tools/browser-check", "tools/pack"]
 
 [workspace.package]
-version = "2.0.0-alpha.2"
+version = "2.0.0-alpha.3"
 edition = "2024"
 rust-version = "1.97"
 publish = false
