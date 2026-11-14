@@ -1,0 +1,88 @@
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:151);ones (numpy\_core\numeric.py:232) 1
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:190);fit_gaussian (src\curves.py:20) 3
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:190);fit_gaussian (src\curves.py:35);curve_fit (scipy\optimize\_minpack_py.py:1021);leastsq (scipy\optimize\_minpack_py.py:490);triu (numpy\lib\_twodim_base_impl.py:550);tri (numpy\lib\_twodim_base_impl.py:438);_min_int (numpy\lib\_twodim_base_impl.py:49);iinfo.min (numpy\_core\getlimits.py:430) 1
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:190);fit_gaussian (src\curves.py:35);curve_fit (scipy\optimize\_minpack_py.py:1021);leastsq (scipy\optimize\_minpack_py.py:490) 1
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:190);fit_gaussian (src\curves.py:20);max (numpy\_core\fromnumeric.py:3123);_wrapreduction (numpy\_core\fromnumeric.py:83) 1
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:190);fit_gaussian (src\curves.py:35);curve_fit (scipy\optimize\_minpack_py.py:1021);leastsq (scipy\optimize\_minpack_py.py:426);_check_func (scipy\optimize\_minpack_py.py:24);_lightweight_memoizer.<locals>._memoized_func (scipy\optimize\_minpack_py.py:518);all (numpy\_core\fromnumeric.py:2634);_wrapreduction_any_all (numpy\_core\fromnumeric.py:88) 14
+thread (33500): MainThread;<module> (laser-level-webcam.py:5);start (src\main.py:532);PixmapWidget.setPixmap (src\Widgets.py:193) 80
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:190);fit_gaussian (src\curves.py:21);nanstd (numpy\lib\_nanfunctions_impl.py:1997);nanvar (numpy\lib\_nanfunctions_impl.py:1804);var (numpy\_core\fromnumeric.py:4210) 1
+thread (33500): MainThread;<module> (laser-level-webcam.py:5);start (src\main.py:532);PixmapWidget.paintEvent (src\Widgets.py:185) 42
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:152);convolve (numpy\_core\numeric.py:902) 13
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:151);ones (numpy\_core\numeric.py:233) 3
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:142);mean (numpy\_core\fromnumeric.py:3824);_mean (numpy\_core\_methods.py:134) 6
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:158);_clip (numpy\_core\_methods.py:113) 1
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:190);fit_gaussian (src\curves.py:21) 1
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:190);fit_gaussian (src\curves.py:35);curve_fit (scipy\optimize\_minpack_py.py:1021);leastsq (scipy\optimize\_minpack_py.py:426);_check_func (scipy\optimize\_minpack_py.py:24);_lightweight_memoizer.<locals>._memoized_func (scipy\optimize\_minpack_py.py:518);all (numpy\_core\fromnumeric.py:2634);_wrapreduction_any_all (numpy\_core\fromnumeric.py:99) 1
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:190);fit_gaussian (src\curves.py:35);curve_fit (scipy\optimize\_minpack_py.py:1021);leastsq (scipy\optimize\_minpack_py.py:426);_check_func (scipy\optimize\_minpack_py.py:24);_lightweight_memoizer.<locals>._memoized_func (scipy\optimize\_minpack_py.py:523);_wrap_func.<locals>.func_wrapped (scipy\optimize\_minpack_py.py:540) 3
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:190);fit_gaussian (src\curves.py:35);curve_fit (scipy\optimize\_minpack_py.py:1021);leastsq (scipy\optimize\_minpack_py.py:439);_lightweight_memoizer.<locals>._memoized_func (scipy\optimize\_minpack_py.py:516);_wrap_func.<locals>.func_wrapped (scipy\optimize\_minpack_py.py:540) 71
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:142);mean (numpy\_core\fromnumeric.py:3824) 1
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:142);raw_view (qimage2ndarray\__init__.py:86);_qimage_or_filename_view (qimage2ndarray\__init__.py:73);qimageview (qimage2ndarray\qimageview_python.py:148) 2
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:190);fit_gaussian (src\curves.py:35);curve_fit (scipy\optimize\_minpack_py.py:1021);leastsq (scipy\optimize\_minpack_py.py:439);_lightweight_memoizer.<locals>._memoized_func (scipy\optimize\_minpack_py.py:523);_wrap_func.<locals>.func_wrapped (scipy\optimize\_minpack_py.py:540) 1
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:190);fit_gaussian (src\curves.py:35);mean (numpy\_core\fromnumeric.py:3824);_mean (numpy\_core\_methods.py:120);_count_reduce_items (numpy\_core\_methods.py:78) 1
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:190);fit_gaussian (src\curves.py:35);curve_fit (scipy\optimize\_minpack_py.py:1021);leastsq (scipy\optimize\_minpack_py.py:439) 211
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:190);fit_gaussian (src\curves.py:35);curve_fit (scipy\optimize\_minpack_py.py:1021);leastsq (scipy\optimize\_minpack_py.py:497) 1
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:152);convolve (numpy\_core\numeric.py:895) 1
+thread (33500): MainThread;<module> (laser-level-webcam.py:5);start (src\main.py:532);AnalyserWidget.paintEvent (src\Widgets.py:213) 13
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:148) 8
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:190);fit_gaussian (src\curves.py:20);max (numpy\_core\fromnumeric.py:3123);_wrapreduction (numpy\_core\fromnumeric.py:67) 1
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:190);fit_gaussian (src\curves.py:35) 1
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:190);fit_gaussian (src\curves.py:35);curve_fit (scipy\optimize\_minpack_py.py:1021);leastsq (scipy\optimize\_minpack_py.py:488) 1
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:190);fit_gaussian (src\curves.py:21);nanstd (numpy\lib\_nanfunctions_impl.py:1997);nanvar (numpy\lib\_nanfunctions_impl.py:1804);var (numpy\_core\fromnumeric.py:4232);_var (numpy\_core\_methods.py:190) 2
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:190);fit_gaussian (src\curves.py:21);nanstd (numpy\lib\_nanfunctions_impl.py:1997);nanvar (numpy\lib\_nanfunctions_impl.py:1804);var (numpy\_core\fromnumeric.py:4232);_var (numpy\_core\_methods.py:168) 1
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:190);fit_gaussian (src\curves.py:35);curve_fit (scipy\optimize\_minpack_py.py:1021);leastsq (scipy\optimize\_minpack_py.py:490);triu (numpy\lib\_twodim_base_impl.py:550);tri (numpy\lib\_twodim_base_impl.py:442) 1
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:165);nan_to_num (numpy\lib\_type_check_impl.py:469) 1
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:203) 5
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:190);fit_gaussian (src\curves.py:35);curve_fit (scipy\optimize\_minpack_py.py:1021);leastsq (scipy\optimize\_minpack_py.py:490);triu (numpy\lib\_twodim_base_impl.py:550);tri (numpy\lib\_twodim_base_impl.py:438) 4
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:190);fit_gaussian (src\curves.py:35);curve_fit (scipy\optimize\_minpack_py.py:1021);leastsq (scipy\optimize\_minpack_py.py:494) 1
+thread (31184) 39
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:190);fit_gaussian (src\curves.py:21);nanstd (numpy\lib\_nanfunctions_impl.py:1997);nanvar (numpy\lib\_nanfunctions_impl.py:1804);var (numpy\_core\fromnumeric.py:4232);_var (numpy\_core\_methods.py:204) 1
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:190);fit_gaussian (src\curves.py:35);curve_fit (scipy\optimize\_minpack_py.py:1021);leastsq (scipy\optimize\_minpack_py.py:426);_check_func (scipy\optimize\_minpack_py.py:24);_lightweight_memoizer.<locals>._memoized_func (scipy\optimize\_minpack_py.py:518) 1
+thread (33500): MainThread;<module> (laser-level-webcam.py:5);start (src\main.py:532);Core.onFramePassedFromCamera (src\Core.py:166) 6
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:142);mean (numpy\_core\fromnumeric.py:3824);_mean (numpy\_core\_methods.py:120);_count_reduce_items (numpy\_core\_methods.py:84) 2
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:140) 398
+thread (33500): MainThread;<module> (laser-level-webcam.py:5);start (src\main.py:532);AnalyserWidget.set_data (src\Widgets.py:237) 7
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:155);_amin (numpy\_core\_methods.py:45) 4
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:190);fit_gaussian (src\curves.py:35);curve_fit (scipy\optimize\_minpack_py.py:1021);leastsq (scipy\optimize\_minpack_py.py:491) 1
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:190);fit_gaussian (src\curves.py:35);curve_fit (scipy\optimize\_minpack_py.py:1021);leastsq (scipy\optimize\_minpack_py.py:498) 2
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:190);fit_gaussian (src\curves.py:35);curve_fit (scipy\optimize\_minpack_py.py:1074) 1
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:190) 1
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:158) 6
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:162) 11
+thread (33500): MainThread;<module> (laser-level-webcam.py:5);start (src\main.py:532);AnalyserWidget.paintEvent (src\Widgets.py:217);property.__get__ (enum.py:202) 1
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:169) 93
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:142) 2
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:172);property.__get__ (enum.py:202);Enum.value (enum.py:1229) 1
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:186) 1
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:190);fit_gaussian (src\curves.py:35);curve_fit (scipy\optimize\_minpack_py.py:1021);leastsq (scipy\optimize\_minpack_py.py:453) 2
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:190);fit_gaussian (src\curves.py:35);curve_fit (scipy\optimize\_minpack_py.py:1021);leastsq (scipy\optimize\_minpack_py.py:439);_lightweight_memoizer.<locals>._memoized_func (scipy\optimize\_minpack_py.py:516);_wrap_func.<locals>.func_wrapped (scipy\optimize\_minpack_py.py:540);fit_gaussian.<locals>.gaussian (src\curves.py:29) 514
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:190);fit_gaussian (src\curves.py:35);curve_fit (scipy\optimize\_minpack_py.py:940) 1
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:190);fit_gaussian (src\curves.py:35);curve_fit (scipy\optimize\_minpack_py.py:1021);leastsq (scipy\optimize\_minpack_py.py:439);_lightweight_memoizer.<locals>._memoized_func (scipy\optimize\_minpack_py.py:515) 3
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:190);fit_gaussian (src\curves.py:35);curve_fit (scipy\optimize\_minpack_py.py:1054) 1
+thread (26960) 3
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:142);mean (numpy\_core\fromnumeric.py:3824);_mean (numpy\_core\_methods.py:121) 1
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:190);fit_gaussian (src\curves.py:35);curve_fit (scipy\optimize\_minpack_py.py:1021);leastsq (scipy\optimize\_minpack_py.py:439);_lightweight_memoizer.<locals>._memoized_func (scipy\optimize\_minpack_py.py:518) 2
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:147) 480
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:142);mean (numpy\_core\fromnumeric.py:3824);_mean (numpy\_core\_methods.py:132) 155
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:190);fit_gaussian (src\curves.py:35);curve_fit (scipy\optimize\_minpack_py.py:1021);leastsq (scipy\optimize\_minpack_py.py:434) 2
+thread (33500): MainThread;<module> (laser-level-webcam.py:5);start (src\main.py:532);AnalyserWidget.paintEvent (src\Widgets.py:210) 1
+thread (33500): MainThread;<module> (laser-level-webcam.py:5);start (src\main.py:532);AnalyserWidget.paintEvent (src\Widgets.py:209) 2
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:190);fit_gaussian (src\curves.py:21);nanstd (numpy\lib\_nanfunctions_impl.py:1997);nanvar (numpy\lib\_nanfunctions_impl.py:1804) 1
+thread (33500): MainThread;<module> (laser-level-webcam.py:5);start (src\main.py:532);AnalyserWidget.paintEvent (src\Widgets.py:218) 1
+thread (33500): MainThread;<module> (laser-level-webcam.py:5);start (src\main.py:532);PixmapWidget.paintEvent (src\Widgets.py:179) 1
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:168) 15
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:181) 21
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:190);fit_gaussian (src\curves.py:35);mean (numpy\_core\fromnumeric.py:3824);_mean (numpy\_core\_methods.py:142) 1
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:190);fit_gaussian (src\curves.py:35);curve_fit (scipy\optimize\_minpack_py.py:916);prepare_bounds (scipy\optimize\_lsq\least_squares.py:105);resize (numpy\_core\fromnumeric.py:1589);reshape (numpy\_core\fromnumeric.py:299);_wrapfunc (numpy\_core\fromnumeric.py:49) 1
+thread (33500): MainThread;<module> (laser-level-webcam.py:5);start (src\main.py:532);AnalyserWidget.paintEvent (src\Widgets.py:219) 1
+thread (33500): MainThread;<module> (laser-level-webcam.py:5);start (src\main.py:532);AnalyserWidget.paintEvent (src\Widgets.py:217) 6
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:190);fit_gaussian (src\curves.py:35);curve_fit (scipy\optimize\_minpack_py.py:1021);leastsq (scipy\optimize\_minpack_py.py:439);_lightweight_memoizer.<locals>._memoized_func (scipy\optimize\_minpack_py.py:516);_wrap_func.<locals>.func_wrapped (scipy\optimize\_minpack_py.py:539) 1
+thread (33500): MainThread;<module> (laser-level-webcam.py:5);start (src\main.py:532) 317
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:184) 93
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:190);fit_gaussian (src\curves.py:35);mean (numpy\_core\fromnumeric.py:3824) 1
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:158);_clip (numpy\_core\_methods.py:97) 1
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:190);fit_gaussian (src\curves.py:35);curve_fit (scipy\optimize\_minpack_py.py:916);prepare_bounds (scipy\optimize\_lsq\least_squares.py:105);resize (numpy\_core\fromnumeric.py:1571);ravel (numpy\_core\fromnumeric.py:1983) 1
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:190);fit_gaussian (src\curves.py:35);curve_fit (scipy\optimize\_minpack_py.py:1021);leastsq (scipy\optimize\_minpack_py.py:426);_check_func (scipy\optimize\_minpack_py.py:24);_lightweight_memoizer.<locals>._memoized_func (scipy\optimize\_minpack_py.py:523);_wrap_func.<locals>.func_wrapped (scipy\optimize\_minpack_py.py:540);fit_gaussian.<locals>.gaussian (src\curves.py:29) 5
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:191) 6
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:151) 4
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:190);fit_gaussian (src\curves.py:35);curve_fit (scipy\optimize\_minpack_py.py:1021);leastsq (scipy\optimize\_minpack_py.py:434);finfo.__new__ (numpy\_core\getlimits.py:180) 1
+thread (31184);FrameWorker.setVideoFrame (src\Workers.py:190);fit_gaussian (src\curves.py:21);nanstd (numpy\lib\_nanfunctions_impl.py:1997);nanvar (numpy\lib\_nanfunctions_impl.py:1804);var (numpy\_core\fromnumeric.py:4232);_var (numpy\_core\_methods.py:188) 1

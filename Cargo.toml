@@ -1,0 +1,30 @@
+[workspace]
+resolver = "3"
+members = ["crates/laser-core", "crates/laser-camera", "apps/laser", "apps/laser-level-webcam"]
+
+[workspace.package]
+version = "2.0.0-alpha.1"
+edition = "2024"
+rust-version = "1.97"
+publish = false
+license = "MIT"
+repository = "https://github.com/bhowiebkr/laser-level-webcam"
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+
+[workspace.dependencies]
+laser-core = { path = "crates/laser-core" }
+laser-camera = { path = "crates/laser-camera" }
+anyhow = "1.0"
+clap = { version = "4.6", features = ["derive", "env"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["float_roundtrip"] }
+
+[profile.dev]
+debug = 1
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 2
+debug = false

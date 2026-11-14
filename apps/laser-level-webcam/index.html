@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Laser Level Webcam</title>
+    <!-- Built and served by trunk: `trunk serve` in this folder. -->
+    <link data-trunk rel="rust" data-bin="laser-level-webcam" data-wasm-opt="z">
+    <style>
+        html, body {
+            margin: 0;
+            height: 100%;
+            overflow: hidden;
+            background: rgb(22, 24, 27);
+            color: rgb(230, 232, 234);
+            font-family: system-ui, sans-serif;
+        }
+        #laser_canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        #loading {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="laser_canvas"></canvas>
+    <div id="loading">Loading…</div>
+    <script>
+        // The app draws over the canvas once it starts; drop the message then.
+        new MutationObserver((_, o) => {
+            const c = document.getElementById("laser_canvas");
+            if (c && c.width > 0) {
+                document.getElementById("loading")?.remove();
+                o.disconnect();
+            }
+        }).observe(document.getElementById("laser_canvas"), { attributes: true });
+    </script>
+</body>
+</html>

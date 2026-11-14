@@ -138,3 +138,11 @@ temp
 UML
 *.csv
 coverage/*
+
+# Local notes: the plan and machine-specific agent rules.
+/PLAN.md
+/AGENTS.local.md
+
+# Raw frames saved by the benchmark harness (large).
+/bench/data/
+/target

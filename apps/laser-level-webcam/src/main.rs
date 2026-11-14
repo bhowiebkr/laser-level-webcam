@@ -1,0 +1,58 @@
+//! Laser Level Webcam: measure the straightness and flatness of a surface with a laser line and a
+//! webcam sensor.
+
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+mod app;
+mod driver;
+mod engine;
+mod files;
+#[cfg(test)]
+mod layout_check;
+mod measure;
+mod plot;
+mod results;
+mod settings;
+mod setup;
+mod side;
+mod theme;
+mod visuals;
+mod wait;
+
+#[cfg(not(target_arch = "wasm32"))]
+fn main() -> eframe::Result {
+    let mut options = eframe::NativeOptions {
+        viewport: eframe::egui::ViewportBuilder::default()
+            .with_title("Laser Level Webcam")
+            .with_inner_size([1280.0, 800.0])
+            .with_min_inner_size([960.0, 600.0]),
+        ..Default::default()
+    };
+    #[cfg(windows)]
+    if let eframe::egui_wgpu::WgpuSetup::CreateNew(setup) = &mut options.wgpu_options.wgpu_setup {
+        use eframe::egui_wgpu::wgpu::Backends;
+        setup.instance_descriptor.backends = Backends::from_env().unwrap_or(Backends::DX12);
+    }
+    #[cfg(not(windows))]
+    let _ = &mut options;
+    eframe::run_native("laser-level-webcam", options, Box::new(|cc| Ok(Box::new(app::App::new(cc)))))
+}
+
+#[cfg(target_arch = "wasm32")]
+fn main() {
+    use eframe::wasm_bindgen::JsCast;
+
+    wasm_bindgen_futures::spawn_local(async {
+        let canvas = eframe::web_sys::window()
+            .and_then(|w| w.document())
+            .and_then(|d| d.get_element_by_id("laser_canvas"))
+            .and_then(|c| c.dyn_into::<eframe::web_sys::HtmlCanvasElement>().ok())
+            .expect("a canvas with id laser_canvas");
+        let started = eframe::WebRunner::new()
+            .start(canvas, eframe::WebOptions::default(), Box::new(|cc| Ok(Box::new(app::App::new(cc)))))
+            .await;
+        if let Err(e) = started {
+            eframe::web_sys::console::error_1(&e);
+        }
+    });
+}
