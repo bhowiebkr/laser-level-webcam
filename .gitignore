@@ -138,3 +138,6 @@ temp
 UML
 *.csv
 coverage/*
+
+# Raw frames saved by the benchmark harness (large).
+/bench/data/
