@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Known limits
+    url: https://github.com/bhowiebkr/laser-level-webcam/blob/main/STATUS.md#known-limits
+    about: Read these first. A request to remove a limit is a feature request.
+  - name: Security problem
+    url: https://github.com/bhowiebkr/laser-level-webcam/blob/main/SECURITY.md
+    about: Do not open a public issue for a security problem.

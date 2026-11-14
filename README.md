@@ -675,6 +675,7 @@ This step shows the straightness (a line) or the flatness (a surface) of the run
 | `warm-up` | Writes a synthetic warm-up log. |
 | `survey-sim` | Writes a simulated survey of a known surface to a session file. |
 | `results` | Gives the straightness or flatness of a run in a session file, with scrape and shim for each station. |
+| `report` | Writes an issue report with the build, the system and the cameras, checks it, and files it with the GitHub CLI. Refer to [Report a problem](#report-a-problem). |
 
 The options of the `camera` command are:
 
@@ -858,6 +859,14 @@ Use the tool from left to right. The tips in [Tips for good readings](#tips-for-
 - Set the smoothing to a high value.
 - Keep the tool on for a minimum of 5 minutes, so that the temperature of the webcam sensor is stable. The reading drifts while the sensor becomes warm. To find the time for your sensor, start with a cold sensor. Take the same measurement again and again until the samples do not drift. **File > Cyclic measurement** does this.
 - Disable auto exposure and auto colour temperature. Disable all the "auto" settings in the device configuration. To open these settings, click the extra attribute button (bottom left).
+
+## Report a problem
+
+1. Read the known limits in [STATUS.md](STATUS.md#known-limits). A request to remove a limit is a feature request.
+2. Search the [issues](https://github.com/bhowiebkr/laser-level-webcam/issues?q=is%3Aissue), open and closed.
+3. Open a **Bug report** or a **Feature request** on the [issues](https://github.com/bhowiebkr/laser-level-webcam/issues/new/choose) page.
+
+`laser report` writes the report for you, with the build, the system and the cameras filled in. It checks the report for private text and searches for the same problem before it files the issue. [CONTRIBUTING.md](CONTRIBUTING.md#file-an-issue-from-an-agent) tells how to use it, also from an AI agent. Report a security problem privately, as [SECURITY.md](SECURITY.md) tells.
 
 ## License
 

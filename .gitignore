@@ -7,3 +7,6 @@ dist/
 
 # Machine-specific agent rules.
 /AGENTS.local.md
+
+# Reports and other files that agents and tools make.
+/artifacts/

@@ -1,6 +1,8 @@
 //! `laser`: the beam finder, the heat-drift monitor and the survey results from the command line.
 //! Every command prints JSON, so scripts and tests can read the answer.
 
+mod report;
+
 use std::fs;
 use std::io::{self, BufWriter, Write};
 use std::path::{Path, PathBuf};
@@ -167,6 +169,12 @@ enum Command {
         /// Unit of the CSV. The session's when left out.
         #[arg(long, value_enum)]
         unit: Option<UnitArg>,
+    },
+    /// Write an issue report, check it, search for duplicates and file it with gh. Sends
+    /// nothing without --submit.
+    Report {
+        #[command(subcommand)]
+        action: report::Action,
     },
 }
 
@@ -397,6 +405,15 @@ fn main() -> Result<()> {
                 write_atomic(&path, results.csv(unit).as_bytes())?;
             }
             print_pretty(&RunResults { run: &r.name, drift_correction: mode, results })
+        }
+        Command::Report { action } => {
+            let (out, ok) = report::run(action)?;
+            print_pretty(&out)?;
+            if !ok {
+                io::stdout().flush()?;
+                std::process::exit(1);
+            }
+            Ok(())
         }
     }
 }

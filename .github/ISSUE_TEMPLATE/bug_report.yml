@@ -1,0 +1,112 @@
+name: Bug report
+description: The program did something wrong or failed. Incomplete reports are welcome when the gaps are stated.
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The known limits in STATUS.md are feature requests. Agents: follow CONTRIBUTING.md and file with `laser report`.
+
+        Write `NOT_ENOUGH_INFO` and the reason for anything unknown. Keep observed results apart from reasoning and guesses, and never claim a run that did not happen.
+  - type: checkboxes
+    id: before-submitting
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched open and closed issues.
+          required: true
+        - label: I removed credentials, private paths, camera names that identify a person, and files I cannot share.
+          required: true
+  - type: dropdown
+    id: program
+    attributes:
+      label: Program
+      options:
+        - Windows app
+        - Mac app
+        - Linux app
+        - Browser version
+        - laser command-line tool
+        - Python 1.x (python branch)
+        - Unknown
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Camera list or live view
+        - Camera modes or controls
+        - Orientation
+        - Sensor or scale
+        - Beam finder
+        - Wait (heat drift)
+        - Measure
+        - Results
+        - Sessions, settings or saved sensors
+        - Install, start or package
+        - Documentation
+        - Other or unknown
+    validations:
+      required: true
+  - type: textarea
+    id: observed-behavior
+    attributes:
+      label: Observed behavior
+      description: What happened, with the exact error text.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: The smallest steps or `laser` commands. Try the Synthetic camera too. Say whether you ran them and how often they failed.
+    validations:
+      required: true
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected behavior
+      description: What should have happened, and what that expectation is based on.
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: Who is affected, and whether readings, sessions, settings or saved sensors were lost or wrong.
+    validations:
+      required: true
+  - type: input
+    id: build
+    attributes:
+      label: Build
+      description: Version and commit. `laser report` fills this in.
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: System
+      description: Operating system, processor and GPU, or the browser and its version. `laser report` fills this in.
+    validations:
+      required: true
+  - type: textarea
+    id: cameras
+    attributes:
+      label: Cameras
+      description: Camera names, backends and USB IDs. `laser report` fills this in. Remove a name that identifies a person, such as a phone camera.
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: "`laser` output, screenshots and source references. Label each item as observed, source-derived, hypothesis or proposed check, and note what still works."
+  - type: input
+    id: reporter
+    attributes:
+      label: Reported by
+      description: A person, or the agent and model and whether a person reviewed this report.
+    validations:
+      required: true

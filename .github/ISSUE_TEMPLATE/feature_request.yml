@@ -1,0 +1,65 @@
+name: Feature request
+description: Ask for a new feature, or for a known limit in STATUS.md to be removed.
+title: "[Feature] "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Agents: follow CONTRIBUTING.md and file with `laser report`. Write `NOT_ENOUGH_INFO` and the reason for anything unknown.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Cameras and controls
+        - Sensor or scale
+        - Beam finder
+        - Wait (heat drift)
+        - Measure
+        - Results
+        - Sessions, settings or saved sensors
+        - Platforms and install
+        - Command-line tool
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: current-limitation
+    attributes:
+      label: Current limitation
+      description: What the program cannot do now. Name the known limit in STATUS.md when there is one.
+    validations:
+      required: true
+  - type: textarea
+    id: use-cases
+    attributes:
+      label: Use cases
+      description: The measuring work that needs this, and who does it.
+    validations:
+      required: true
+  - type: textarea
+    id: desired-outcome
+    attributes:
+      label: Desired outcome
+      description: What you want to be able to do. Describe the result, not a design.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: What you do now instead, and other ways to get the same result.
+  - type: textarea
+    id: references
+    attributes:
+      label: References
+      description: Related issues, documents, camera or laser specifications, or other tools.
+  - type: input
+    id: reporter
+    attributes:
+      label: Requested by
+      description: A person, or the agent and model and whether a person reviewed this request.
+    validations:
+      required: true
