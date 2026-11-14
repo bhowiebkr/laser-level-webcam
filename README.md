@@ -357,7 +357,7 @@ This section sets the camera that receives the laser line. It also sets how the 
 
 1. Select the camera.
 2. Below **Frames from**, select **The camera**.
-3. Select **Uncompressed (YUYV)** at the full size of the sensor.
+3. Keep the format, size and frame rate that the app selects. Refer to **Format** below.
 4. Set **Mains** to the frequency of your mains power.
 5. Click **Lock for measuring**. This stops all automatic changes to the beam during the measurement.
 6. Click **Step the exposure** until the app shows that the exposure is good. The peak of the beam must be just below the clip level.
@@ -366,7 +366,7 @@ This section sets the camera that receives the laser line. It also sets how the 
 | --- | --- |
 | Camera, Rescan | The camera that the app uses. **Rescan** looks for cameras again, for example after you connect a camera. |
 | Frames from | This setting shows only when Windows adds its own modes. **The camera** shows only the modes that the camera sends through the cable. The app reads these modes from the USB descriptors of the camera. **Windows** shows the modes that Windows makes when it decodes the MJPEG frames of the camera (NV12). These modes still contain the JPEG compression, so they are not raw. |
-| Format | How the camera sends the pixels. The list shows the uncompressed formats first. **Uncompressed (YUYV)** contains all the pixels from the processor of the camera, without compression. It is the best format for measurements. In this format, large sizes come slowly, because the USB link cannot carry more data. **MJPEG** compresses each frame to a JPEG in the camera, so the full size comes quickly. JPEG uses blocks of 8×8 pixels and can change the shape of the edges of the beam. The app decodes MJPEG itself. |
+| Format | How the camera sends the pixels. The list shows the uncompressed formats first. **Uncompressed (YUYV)** contains all the pixels from the processor of the camera, without compression. In this format, large sizes come slowly, because the USB link cannot carry more data. **MJPEG** compresses each frame to a JPEG in the camera, so the full size comes quickly. JPEG uses blocks of 8×8 pixels and can change the shape of the edges of the beam. The app decodes MJPEG itself. When you have not selected a mode, the app selects the largest uncompressed size. If MJPEG gives that size at a higher frame rate, the app selects MJPEG at its highest frame rate, because more frames give more samples. Try **Uncompressed (YUYV)** too, and compare the readings. |
 | Size | The frame size in pixels, and its shape. A size with a different shape can show a different part of the sensor. Refer to **Smaller modes** in [Sensor](#sensor). |
 | Frame rate | The frame rates that the camera gives for this format and size. |
 | USB link bar | For uncompressed modes, the bar compares the data rate of the mode with the part of the USB link that the camera gets. For example, 1920×1080 YUYV at 5 fps needs 20.7 MB/s, and a USB 2.0 webcam gets 24.6 MB/s. Thus the full size without compression comes only at 5 fps. |

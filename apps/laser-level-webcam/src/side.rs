@@ -87,7 +87,7 @@ fn format_text(f: PixelFormat, source: Source) -> (&'static str, &'static str) {
     match (f, source) {
         (PixelFormat::Yuyv, _) => (
             "Uncompressed (YUYV)",
-            "Every pixel as the camera's processor puts it out, nothing compressed: the best for measuring. Large sizes only come slowly, because the USB link carries no more.",
+            "Every pixel as the camera's processor puts it out, nothing compressed. Large sizes only come slowly, because the USB link carries no more. Try it against MJPEG: fewer frames give fewer samples.",
         ),
         (PixelFormat::Nv12, Source::Windows) => (
             "NV12, decoded by Windows",
@@ -99,7 +99,7 @@ fn format_text(f: PixelFormat, source: Source) -> (&'static str, &'static str) {
         (PixelFormat::Grey, _) => ("Uncompressed grey", "Every pixel as the camera puts it out, nothing compressed."),
         (PixelFormat::Mjpeg, _) => (
             "MJPEG",
-            "Each frame compressed to a JPEG in the camera, so full size comes fast. JPEG works in 8×8 blocks and can bend the beam's edges. This app decodes it itself.",
+            "Each frame compressed to a JPEG in the camera, so full size comes fast. JPEG works in 8×8 blocks and can bend the beam's edges. This app decodes it itself. A camera opens in MJPEG when it gives the largest uncompressed size at a higher frame rate.",
         ),
         (PixelFormat::Rgba, _) => ("RGBA", "Colour from the browser, mixed back to grey."),
     }

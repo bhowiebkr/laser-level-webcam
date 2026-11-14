@@ -69,16 +69,29 @@ impl std::fmt::Display for VideoMode {
 
 /// The mode to open: the one asked for if the camera has it, else the most pixels with the luma
 /// as it is, then the highest frame rate. A scaled-down mode averages pixels together and hides
-/// the beam's shape; MJPEG adds block artefacts at the beam's edges.
+/// the beam's shape. When MJPEG gives that size at a higher frame rate, the fastest MJPEG mode of
+/// that size is taken instead: uncompressed often comes at only a few frames a second, and more
+/// frames give more samples. MJPEG adds block artefacts at the beam's edges, so the user can still
+/// pick uncompressed.
 pub fn pick_mode(modes: &[VideoMode], wanted: Option<&VideoMode>) -> Option<VideoMode> {
     if let Some(m) = wanted.and_then(|w| find_mode(modes, w)) {
         return Some(m);
     }
-    modes.iter().copied().max_by(|a, b| {
+    let best = modes.iter().copied().max_by(|a, b| {
         (a.format.is_raw_luma(), a.pixels(), a.fps >= 5.0)
             .cmp(&(b.format.is_raw_luma(), b.pixels(), b.fps >= 5.0))
             .then(a.fps.total_cmp(&b.fps))
-    })
+    })?;
+    let faster = modes
+        .iter()
+        .copied()
+        .filter(|m| {
+            m.format == PixelFormat::Mjpeg
+                && (m.width, m.height) == (best.width, best.height)
+                && m.fps > best.fps + 0.5
+        })
+        .max_by(|a, b| a.fps.total_cmp(&b.fps));
+    Some(faster.unwrap_or(best))
 }
 
 /// The mode in the list with the same size, format and frame rate.
@@ -547,11 +560,40 @@ mod tests {
             m(1280, 720, 30.0, PixelFormat::Nv12),
             m(1920, 1080, 2.0, PixelFormat::Nv12),
         ];
-        assert_eq!(pick_mode(&modes, None), Some(modes[1]));
+        // MJPEG gives the full size at 30 fps, uncompressed at 5 fps.
+        assert_eq!(pick_mode(&modes, None), Some(modes[0]));
+        assert_eq!(pick_mode(&modes, Some(&modes[1])), Some(modes[1]));
         assert_eq!(pick_mode(&modes, Some(&modes[2])), Some(modes[2]));
         let missing = m(640, 480, 30.0, PixelFormat::Yuyv);
-        assert_eq!(pick_mode(&modes, Some(&missing)), Some(modes[1]));
+        assert_eq!(pick_mode(&modes, Some(&missing)), Some(modes[0]));
         assert_eq!(pick_mode(&[], None), None);
+
+        // Without MJPEG, the most pixels with the luma as it is.
+        let raw = &modes[1..];
+        assert_eq!(pick_mode(raw, None), Some(modes[1]));
+
+        // The fastest MJPEG mode of the size that uncompressed gives.
+        let several = [
+            m(1920, 1080, 5.0, PixelFormat::Yuyv),
+            m(1920, 1080, 15.0, PixelFormat::Mjpeg),
+            m(1920, 1080, 30.0, PixelFormat::Mjpeg),
+            m(1280, 720, 60.0, PixelFormat::Mjpeg),
+        ];
+        assert_eq!(pick_mode(&several, None), Some(several[2]));
+    }
+
+    #[test]
+    fn mode_choice_keeps_uncompressed_when_mjpeg_is_no_faster() {
+        let m = |width, height, fps, format| VideoMode { width, height, fps, format };
+        // The same frame rate in both formats.
+        let same = [m(1280, 720, 30.0, PixelFormat::Mjpeg), m(1280, 720, 30.0, PixelFormat::Yuyv)];
+        assert_eq!(pick_mode(&same, None), Some(same[1]));
+        // MJPEG is faster only at a smaller size.
+        let smaller = [m(1920, 1080, 10.0, PixelFormat::Nv12), m(1280, 720, 30.0, PixelFormat::Mjpeg)];
+        assert_eq!(pick_mode(&smaller, None), Some(smaller[0]));
+        // Only MJPEG: the most pixels, then the highest frame rate.
+        let only = [m(1920, 1080, 15.0, PixelFormat::Mjpeg), m(1920, 1080, 30.0, PixelFormat::Mjpeg)];
+        assert_eq!(pick_mode(&only, None), Some(only[1]));
     }
 
     #[test]
