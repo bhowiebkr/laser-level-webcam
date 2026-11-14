@@ -62,6 +62,13 @@ Navigate to the cloned repository directory using the cd command:
 cd laser-level-webcam
 ```
 
+Check that you have Python 3.11:
+```sh
+python --version
+```
+
+It should print `Python 3.11`, for example `Python 3.11.9`. Python 3.12 and newer cannot install `pyqtdarktheme` 2.1.0, which this program needs.
+
 Next, create a virtual environment for isolating the program's dependencies. Run the following commands:
 
 2a. if you are missing virtualenv, install it with pip
@@ -107,9 +114,9 @@ This command uses `pip` to install the packages specified in the requirements.tx
 After installing the required packages, you are ready to run the Python program:
 
 ```sh
-python.exe laser_level_tool/main.py
+python laser-level-webcam.py
 ```
-We run the `main.py` file in the `laser_level_tool` directory
+This runs `laser-level-webcam.py` in the repository root, which starts the program.
 
 ## Usage
 
