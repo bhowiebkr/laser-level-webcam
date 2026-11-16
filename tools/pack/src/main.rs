@@ -3,6 +3,9 @@
 //! ```text
 //! cargo run -p pack -- icons             the app icon and the installer pictures
 //! cargo run -p pack -- web [--no-trunk]  the browser version as one HTML file in dist/
+//! cargo run -p pack -- licenses [--target T]... [--out FILE]
+//!                                        the licences of the packages in the programs, for
+//!                                        these targets (default: this computer), in one text file
 //! cargo run -p pack -- check [FILE] [--show] [--timeout S]
 //!                                        open that file from its folder in Chrome with a fake
 //!                                        camera, and check that the app starts and gets frames
@@ -10,6 +13,7 @@
 
 mod check;
 mod icons;
+mod licenses;
 mod web;
 
 use std::path::{Path, PathBuf};
@@ -35,6 +39,27 @@ fn run(args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str) {
         Some("icons") => icons::write_all(&root),
         Some("web") => web::build(&root, !args.iter().any(|a| a == "--no-trunk")).map(|_| ()),
+        Some("licenses") => {
+            let (mut targets, mut out) = (Vec::new(), root.join("target").join("THIRD-PARTY-LICENSES.txt"));
+            let mut it = args[1..].iter();
+            while let Some(a) = it.next() {
+                match a.as_str() {
+                    "--target" => targets.push(it.next().ok_or("--target needs a target")?.clone()),
+                    "--out" => out = PathBuf::from(it.next().ok_or("--out needs a file")?),
+                    other => return Err(format!("unknown argument {other}")),
+                }
+            }
+            if targets.is_empty() {
+                targets.push(licenses::host()?);
+            }
+            let text = licenses::text(&root, &targets)?;
+            if let Some(dir) = out.parent() {
+                std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+            }
+            std::fs::write(&out, &text).map_err(|e| format!("{}: {e}", out.display()))?;
+            println!("wrote {} ({} bytes)", out.display(), text.len());
+            Ok(())
+        }
         Some("check") => {
             let mut page = default_page(&root);
             let (mut show, mut timeout) = (false, Duration::from_secs(60));
@@ -55,7 +80,7 @@ fn run(args: &[String]) -> Result<(), String> {
             println!("PASS {ok}");
             Ok(())
         }
-        _ => Err("usage: pack icons | pack web [--no-trunk] | pack check [FILE] [--show] [--timeout S]".into()),
+        _ => Err("usage: pack icons | pack web [--no-trunk] | pack licenses [--target T]... [--out FILE] | pack check [FILE] [--show] [--timeout S]".into()),
     }
 }
 

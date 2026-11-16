@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Builds the macOS release: dist/laser-level-webcam-<version>-macos-universal.zip
 #
-# The zip holds "Laser Level Webcam.app", the `laser` command-line tool, the README and the
-# LICENSE. Both programs are universal: one file with the Apple silicon and the Intel code.
+# The zip holds "Laser Level Webcam.app", the `laser` command-line tool, the README, the
+# LICENSE and the third-party licences. Both programs are universal: one file with the Apple silicon and the Intel code.
 # Runs on a Mac with Xcode or its command-line tools. Needs both Rust targets, once:
 #   rustup target add aarch64-apple-darwin x86_64-apple-darwin
 #
@@ -33,6 +33,8 @@ plutil -lint "$app/Contents/Info.plist"
 printf 'APPL????' > "$app/Contents/PkgInfo"
 cp assets/icon.icns "$app/Contents/Resources/AppIcon.icns"
 cp README.md LICENSE "$stage/"
+cargo run --release --locked -p pack -- licenses --target aarch64-apple-darwin --target x86_64-apple-darwin \
+    --out "$stage/THIRD-PARTY-LICENSES.txt"
 
 codesign --force --sign - "$stage/laser"
 codesign --force --deep --sign - "$app"

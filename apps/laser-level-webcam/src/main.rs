@@ -13,11 +13,15 @@ mod files;
 mod layout_check;
 mod measure;
 mod plot;
+#[cfg(not(target_arch = "wasm32"))]
+mod renderer;
 mod results;
 mod sensors;
 mod settings;
 mod setup;
 mod side;
+#[cfg(all(test, windows))]
+mod start_check;
 mod theme;
 mod visuals;
 mod wait;
@@ -44,6 +48,16 @@ fn main() -> eframe::Result {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn run() -> eframe::Result {
+    renderer::start(
+        renderer::order(),
+        |r| eframe::run_native(APP_ID, native_options(r), Box::new(|cc| Ok(Box::new(app::App::new(cc))))),
+        |r, e| crash::note(&format!("The window did not open with {r}: {e}. The app tries the next renderer.")),
+    )
+}
+
+/// The window, drawn with this renderer.
+#[cfg(not(target_arch = "wasm32"))]
+fn native_options(renderer: renderer::Renderer) -> eframe::NativeOptions {
     let icon = eframe::icon_data::from_png_bytes(include_bytes!("../../../assets/icon.png")).expect("the app icon is a PNG");
     let mut options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
@@ -53,14 +67,8 @@ fn run() -> eframe::Result {
             .with_min_inner_size([960.0, 600.0]),
         ..Default::default()
     };
-    #[cfg(windows)]
-    if let eframe::egui_wgpu::WgpuSetup::CreateNew(setup) = &mut options.wgpu_options.wgpu_setup {
-        use eframe::egui_wgpu::wgpu::Backends;
-        setup.instance_descriptor.backends = Backends::from_env().unwrap_or(Backends::DX12);
-    }
-    #[cfg(not(windows))]
-    let _ = &mut options;
-    eframe::run_native(APP_ID, options, Box::new(|cc| Ok(Box::new(app::App::new(cc)))))
+    renderer::apply(renderer, &mut options);
+    options
 }
 
 #[cfg(target_arch = "wasm32")]

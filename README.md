@@ -95,6 +95,8 @@ To use the app without the installer:
 
 The app keeps your settings and the open session when you close the window. They come back when you start the app again.
 
+The app draws its window with Direct3D 12. Some virtual machines and Remote Desktop sessions cannot open the window with it. Then the app tries Direct3D 12 on the processor (WARP), and then Vulkan or OpenGL. `crash.log` notes each renderer that did not open (refer to [Report a problem](#report-a-problem)). To use only one renderer, set the variable `WGPU_BACKEND` to `dx12`, `vulkan` or `gl` before you start the app.
+
 ### The Mac app
 
 The Mac app operates with live cameras on macOS 11 (Big Sur) and newer, on Apple silicon and on Intel Macs. It is one universal app.
@@ -749,6 +751,12 @@ cargo run --release -p pack -- check
 | `--show` | Shows the browser window. |
 | `--timeout <S>` | Stops after this number of seconds. The default is 60. |
 
+The start check opens the window of the Windows app with each renderer, and draws a few frames with the Synthetic camera. The window opens outside the screen, with temporary settings. It passes when each renderer draws. To start it, use this command:
+
+```bash
+cargo test -p laser-level-webcam -- --ignored start_check --nocapture
+```
+
 ## Tips for good readings
 
 - Let all the parts become warm. The Wait step tells you when they are warm.
@@ -886,3 +894,5 @@ Attach the file to the bug report. Remove private text from it first, for exampl
 ## License
 
 This project has the MIT License. Refer to the `LICENSE` file.
+
+The programs contain Rust packages from other persons. Each package keeps its own licence. The Windows, Mac and Linux files contain `THIRD-PARTY-LICENSES.txt` with these licences. In the browser version, the licences are at the end of the `.html` file.

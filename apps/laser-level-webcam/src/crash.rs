@@ -64,6 +64,12 @@ pub fn stopped(stop: Stop, what: &str) {
     show(&message(stop, what, log_path(), written));
 }
 
+/// Writes a problem that the app got past, such as a renderer that could not open the window, to
+/// the log. No message.
+pub fn note(what: &str) {
+    let _ = append(log_path(), &entry("main", what, "", ""));
+}
+
 /// The text of a panic's payload.
 pub fn payload_text(payload: &(dyn Any + Send)) -> &str {
     payload.downcast_ref::<&str>().copied().or_else(|| payload.downcast_ref::<String>().map(String::as_str)).unwrap_or("no message")

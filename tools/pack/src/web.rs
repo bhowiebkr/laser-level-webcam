@@ -3,13 +3,14 @@
 //! trunk builds the app into a page, a JavaScript file and a WebAssembly file. A browser does not
 //! let a page that is opened from a folder load other files, so that page needs a web server. This
 //! puts the JavaScript and the WebAssembly (compressed, as base64) into the page itself. The file
-//! then starts with a double-click, from any folder, with no server.
+//! then starts with a double-click, from any folder, with no server. The licences of the
+//! packages in the WebAssembly are a comment at the end of the file.
 
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::icons;
+use crate::{icons, licenses};
 
 const GLUE_EXPORT: &str = "export { initSync, __wbg_init as default };";
 
@@ -103,6 +104,12 @@ pub fn build(root: &Path, run_trunk: bool) -> Result<PathBuf, String> {
         return Err("index.html has no </head> or </body>".into());
     };
     let page = format!("{}{favicon}{}{scripts}{}", &page[..head], &page[head..body], &page[body..]);
+    // The licences of the packages in the WebAssembly, as a comment at the end of the file.
+    let notices = licenses::text(root, &["wasm32-unknown-unknown".to_owned()])?;
+    if notices.contains("-->") || notices.contains("--!>") {
+        return Err("a licence text has \"-->\", which would end the HTML comment; check web.rs".into());
+    }
+    let page = format!("{page}<!--\n{notices}\n-->\n");
 
     let out = root.join("dist").join(format!("laser-level-webcam-{}-web.html", env!("CARGO_PKG_VERSION")));
     std::fs::create_dir_all(root.join("dist")).map_err(|e| format!("dist: {e}"))?;

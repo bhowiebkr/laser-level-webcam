@@ -18,6 +18,9 @@ problem: a request to remove a limit is a feature request, not a bug.
 
 - `cargo clippy` and `cargo test` on Windows, Linux and macOS, in GitHub Actions, for each push.
 - The Windows app with live USB cameras.
+- The Windows app opened its window and drew with each renderer: Direct3D 12, Direct3D 12 on
+  the processor (WARP), Vulkan and OpenGL. This was on one computer with an NVIDIA graphics
+  card. A virtual machine and a Remote Desktop session have not been tried.
 - The browser version in Chrome on Windows, with `browser-check` and `pack check`.
 - The `laser` tool on a Mac with Apple silicon and macOS 27, with the MacBook Pro camera and a
   Logitech C922 (reported in

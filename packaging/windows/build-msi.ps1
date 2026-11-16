@@ -14,6 +14,10 @@ $msi = "$root\dist\laser-level-webcam-$version-windows-x64.msi"
 
 cargo build --release --manifest-path "$root\Cargo.toml" -p laser-level-webcam -p laser
 if ($LASTEXITCODE) { exit $LASTEXITCODE }
+# The licences of the packages in the programs: target\THIRD-PARTY-LICENSES.txt
+cargo run --release --locked --manifest-path "$root\Cargo.toml" -p pack -- licenses --target x86_64-pc-windows-msvc `
+    --out "$root\target\THIRD-PARTY-LICENSES.txt"
+if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
 New-Item -ItemType Directory -Force "$root\dist" | Out-Null
 wix build "$PSScriptRoot\laser-level-webcam.wxs" -arch x64 -ext WixToolset.UI.wixext -ext WixToolset.Util.wixext `

@@ -23,6 +23,10 @@ rfd = "0.17"
 [build-dependencies]
 winresource = "0.1"
 
+# The start check opens its window on a test thread, which winit allows only when it is told.
+[target.'cfg(windows)'.dev-dependencies]
+winit = { version = "0.30", default-features = false }
+
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 js-sys = "0.3"
 wasm-bindgen = "0.2"
