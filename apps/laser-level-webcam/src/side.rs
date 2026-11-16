@@ -634,7 +634,7 @@ fn sensor_section(app: &mut App, ui: &mut egui::Ui, e: &Engine) {
         ui.label("Smaller modes").on_hover_text("How the camera makes a mode smaller than the sensor.");
         ui.horizontal(|ui| {
             ui.selectable_value(&mut s.scaling, ModeScaling::Scaled, "Scaled")
-                .on_hover_text("The whole sensor, scaled down: a frame pixel covers several sensor pixels.");
+                .on_hover_text("The whole sensor, scaled down: a frame pixel covers several sensor pixels. A mode of another shape than the sensor fills the frame and cuts off the rest.");
             ui.selectable_value(&mut s.scaling, ModeScaling::Cropped, "Cropped")
                 .on_hover_text("A window of the sensor: a frame pixel is a sensor pixel.");
         });

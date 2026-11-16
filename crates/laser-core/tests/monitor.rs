@@ -85,11 +85,48 @@ fn steady_drift_rate() {
 }
 
 #[test]
-fn calm_and_steady_is_ready_after_a_minute() {
+fn calm_and_steady_is_ready_in_a_few_minutes() {
     let (_, s) = status_after(&flat(0.3), 30.0, 6);
     assert!(matches!(s.readiness, Readiness::Collecting { .. }), "{s:?}");
-    let (_, s) = status_after(&flat(0.3), 90.0, 6);
+    let (_, s) = status_after(&flat(0.3), 150.0, 6);
     assert_eq!(s.readiness, Readiness::Ready, "{s:?}");
+}
+
+/// Statuses for a steady drift of `drift_per_run` over a 20 min run, with `bin_noise` on each
+/// one-second bin: one status every `every_s` from the first minute to 30 min.
+fn steady_drift_statuses(drift_per_run: f64, bin_noise: f64, seed: u64, every_s: f64) -> Vec<Readiness> {
+    let plan = RunPlan { run_s: 1200.0, tolerance: 0.5 };
+    let rate = drift_per_run / plan.run_s;
+    let mut m = Monitor::new(MonitorConfig::default());
+    let mut rng = Rng::new(seed);
+    let mut next = 60.0;
+    let mut out = Vec::new();
+    for k in 0..(1800.0 * FPS) as u64 {
+        let t = k as f64 / FPS;
+        m.push(t, rate * t + bin_noise * FPS.sqrt() * rng.normal());
+        if t >= next {
+            out.push(m.status(&plan).readiness);
+            next += every_s;
+        }
+    }
+    out
+}
+
+#[test]
+fn a_steady_drift_over_the_allowed_is_never_ready() {
+    for (drift, noise) in [(2.4, 0.4), (2.4, 0.2), (1.2, 0.4)] {
+        for seed in 1..=2 {
+            let seen = steady_drift_statuses(drift, noise, seed, 30.0);
+            assert!(!seen.contains(&Readiness::Ready), "{drift} per run, noise {noise}, seed {seed}: {seen:?}");
+            assert!(matches!(seen.last(), Some(Readiness::Drifting { .. })), "{seen:?}");
+        }
+    }
+}
+
+#[test]
+fn a_small_steady_drift_ends_ready() {
+    let seen = steady_drift_statuses(0.1, 0.2, 9, 60.0);
+    assert_eq!(seen.last(), Some(&Readiness::Ready), "{seen:?}");
 }
 
 #[test]

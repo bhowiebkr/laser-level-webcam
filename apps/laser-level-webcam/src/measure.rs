@@ -65,7 +65,7 @@ pub fn draw(app: &mut App, ui: &mut egui::Ui, e: &mut Engine) {
         let station = pick
             .filter(|p| p.run == e.run && p.visits == run.visits.len() && p.station < run.stations.len())
             .map_or_else(|| run.next_station(), |p| p.station);
-        let heights = run.heights(&e.session.scale, e.session.drift_correction);
+        let heights = run.heights(&e.run_scale(run), e.session.drift_correction);
         ui.add_space(6.0);
         sample_card(app, ui, e, run, station, &mut actions);
         ui.add_space(6.0);
@@ -343,7 +343,7 @@ fn sample_card(app: &mut App, ui: &mut egui::Ui, e: &Engine, run: &Run, station:
             ui.label(theme::dim(rule_text + ". Keep hands and breath away from the beam."))
                 .on_hover_text("When this sample stops. Warm air and touching the block move the beam, so keep still until it ends.");
             if let Some(r) = e.sample_so_far() {
-                let scale = &e.session.scale;
+                let scale = &e.run_scale(run);
                 let zero_px = run.visits.iter().rev().find(|v| v.station == run.zero).map(|v| v.reading.px);
                 theme::cards(ui, |ui| {
                     if let Some(z) = zero_px.filter(|_| s.station != run.zero) {
@@ -363,6 +363,9 @@ fn sample_card(app: &mut App, ui: &mut egui::Ui, e: &Engine, run: &Run, station:
         }
 
         let open = e.camera.state == CameraState::Open;
+        let grid_now = e.grid();
+        let conflict = run.grid_conflict(grid_now);
+        let can_take = open && conflict.is_none();
         ui.horizontal(|ui| {
             let st = &run.stations[station];
             let at = match run.layout {
@@ -376,9 +379,9 @@ fn sample_card(app: &mut App, ui: &mut egui::Ui, e: &Engine, run: &Run, station:
                 Layout::Grid => "Where the station is, across and deep, from the first station.",
             });
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let take = ui.add_enabled(open, theme::primary("Take sample")).on_hover_text("Space bar");
+                let take = ui.add_enabled(can_take, theme::primary("Take sample")).on_hover_text("Space bar");
                 let space = ui.input(|i| i.key_pressed(egui::Key::Space)) && ui.memory(|m| m.focused().is_none());
-                if open && (take.clicked() || space) {
+                if can_take && (take.clicked() || space) {
                     actions.push(Action::Take(station, None));
                 }
             });
@@ -396,6 +399,11 @@ fn sample_card(app: &mut App, ui: &mut egui::Ui, e: &Engine, run: &Run, station:
                 theme::chip(ui, "No camera", theme::ERROR)
                     .on_hover_text("No camera is open, so no sample can be taken. Pick one in the side panel.");
             }
+            if let Some(was) = conflict {
+                theme::chip(ui, "Camera mode or orientation changed", theme::ERROR).on_hover_text(format!(
+                    "This run was read at {was}. The camera now gives {grid_now}. A reading in pixels gives the same height only with the same frame size and line direction. Set the camera mode and orientation back, or start a new run."
+                ));
+            }
             match e.status.as_ref().map(|s| &s.readiness) {
                 Some(Readiness::Ready) | None => {}
                 Some(Readiness::Settling { in_s, .. }) => {
@@ -408,7 +416,7 @@ fn sample_card(app: &mut App, ui: &mut egui::Ui, e: &Engine, run: &Run, station:
                 }
                 Some(Readiness::Noisy { .. }) => {
                     theme::chip(ui, "Too noisy for the plan", theme::ACCENT).on_hover_text(
-                        "The beam's noise is more than the allowed drift, so the plan cannot be met. See Wait: allow more drift, or steady the set-up.",
+                        "The beam is too noisy to tell whether the drift stays inside the allowed drift. See Wait: allow more drift, or steady the set-up.",
                     );
                 }
                 Some(Readiness::Drifting { .. }) => {
@@ -418,7 +426,7 @@ fn sample_card(app: &mut App, ui: &mut egui::Ui, e: &Engine, run: &Run, station:
                 }
             }
             let rate = e.status.as_ref().and_then(|s| s.rate_per_min).map(|r| r / 60.0);
-            if let Some(rz) = run.rezero(&e.session.scale, now, rate, app.settings.plan.tolerance_um) {
+            if let Some(rz) = run.rezero(&e.run_scale(run), now, rate, app.settings.plan.tolerance_um) {
                 let text = format!(
                     "{} since the zero, about {} of drift",
                     clock(rz.since_s),
@@ -495,7 +503,8 @@ fn line_plot(
         ui.label(theme::dim("against the zero station, drift taken out; the bars are ±1 standard error"))
             .on_hover_text(&legend);
     });
-    let (ax, painter, resp) = Axes::allocate(ui, height, x, y);
+    let (mut ax, painter, resp) = Axes::allocate(ui, height, x, y);
+    ax.reserve_bottom_row(&painter); // for the station numbers
     let resp = resp.on_hover_text(&legend);
     ax.xband(
         &painter,
@@ -514,7 +523,7 @@ fn line_plot(
         let color = if i == station { theme::ACCENT } else { theme::TEXT_DIM };
         ax.label(
             &painter,
-            [s.x_mm, y[0]],
+            [s.x_mm, ax.y[0]],
             Align2::CENTER_BOTTOM,
             if i == run.zero { "0".to_owned() } else { format!("{}", i + 1) },
             color,

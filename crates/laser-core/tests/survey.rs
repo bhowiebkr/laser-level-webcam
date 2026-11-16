@@ -5,7 +5,9 @@ use laser_core::results::{Reference, Results};
 use laser_core::rng::Rng;
 use laser_core::scale::Scale;
 use laser_core::stats;
-use laser_core::survey::{DriftCorrection, Layout, LoadError, Run, Session, SurveyError};
+use laser_core::camera::Sensor;
+use laser_core::frame::LineAxis;
+use laser_core::survey::{DriftCorrection, Layout, LoadError, PixelGrid, Run, Session, SurveyError};
 use laser_core::synth::{SurveySim, WarmUp};
 use laser_core::units::Unit;
 
@@ -251,4 +253,41 @@ fn session_round_trip_and_checks() {
     assert_eq!(minimal.drift_correction, INTERP);
     let zero_scale = r#"{"format":1,"scale":{"um_per_px":0.0}}"#;
     assert_eq!(Session::from_json(zero_scale), Err(LoadError::Invalid(SurveyError::BadScale)));
+}
+
+/// A run is read on one pixel grid: a sample in another mode or along the other axis is refused,
+/// and a scale from the pixel pitch follows the run's own frame size.
+#[test]
+fn a_run_keeps_one_pixel_grid() {
+    let big = PixelGrid { width: 1920, height: 1080, axis: LineAxis::Vertical };
+    let small = PixelGrid { width: 1280, height: 720, ..big };
+    let turned = PixelGrid { axis: LineAxis::Horizontal, ..big };
+    let sim = SurveySim::flat(5);
+    let mut run = Run::line("grid", 5, 100.0);
+    // With no visits, any grid can be taken up.
+    run.use_grid(small).unwrap();
+    run.use_grid(big).unwrap();
+    sim.survey(&mut run, &[0, 1], 0.0, &mut Rng::new(3)).unwrap();
+    assert_eq!(run.grid_conflict(big), None);
+    assert_eq!(run.grid_conflict(small), Some(big));
+    assert_eq!(run.use_grid(turned), Err(SurveyError::OtherGrid { run: big, now: turned }));
+    assert_eq!(run.grid, Some(big));
+
+    let sensor = Sensor::default();
+    let now = Scale { invert: true, ..Scale::from_pixel_pitch(sensor.um_per_px(1280, 720)) };
+    let s = run.scale(&now, &sensor);
+    assert_eq!((s.um_per_px, s.invert), (3.0, true));
+    // A gauge-block scale is kept as it is.
+    let gauge = Scale { source: laser_core::scale::ScaleSource::GaugeBlock { step_um: 100.0 }, ..now };
+    assert_eq!(run.scale(&gauge, &sensor), gauge);
+
+    // Files from before the grid was kept still open, and the next sample sets it.
+    let mut old = Run::line("old", 3, 100.0);
+    sim.survey(&mut old, &[0], 0.0, &mut Rng::new(4)).unwrap();
+    let text = serde_json::to_string(&old).unwrap();
+    assert!(!text.contains("grid"), "{text}");
+    let mut back: Run = serde_json::from_str(&text).unwrap();
+    assert_eq!(back.grid_conflict(small), None);
+    back.use_grid(small).unwrap();
+    assert_eq!(back.grid_conflict(big), Some(small));
 }

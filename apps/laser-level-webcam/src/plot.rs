@@ -16,6 +16,8 @@ pub struct Axes {
     pub rect: Rect,
     pub x: [f64; 2],
     pub y: [f64; 2],
+    /// A row of labels along the bottom of the data area, px. The y labels keep out of it.
+    bottom_row: f32,
 }
 
 impl Axes {
@@ -34,7 +36,7 @@ impl Axes {
     }
 
     pub fn new(rect: Rect, x: [f64; 2], y: [f64; 2]) -> Self {
-        Self { rect, x: widen(x), y: widen(y) }
+        Self { rect, x: widen(x), y: widen(y), bottom_row: 0.0 }
     }
 
     pub fn sx(&self, x: f64) -> f32 {
@@ -47,6 +49,17 @@ impl Axes {
 
     pub fn pos(&self, x: f64, y: f64) -> Pos2 {
         pos2(self.sx(x), self.sy(y))
+    }
+
+    /// Makes room for a row of [`Axes::label`]s at `y[0]`: the y range grows down by the height
+    /// of a label, and the y tick labels keep out of that row, so no tick label sits beside one.
+    pub fn reserve_bottom_row(&mut self, painter: &Painter) {
+        let h = painter.layout_no_wrap("0".into(), FontId::proportional(11.0), theme::TEXT_DIM).size().y;
+        let px = self.rect.height();
+        if px > 2.0 * h {
+            self.y[0] -= (self.y[1] - self.y[0]) / f64::from(px - h) * f64::from(h);
+            self.bottom_row = h;
+        }
     }
 
     /// Data x of a screen x.
@@ -71,13 +84,12 @@ impl Axes {
         for y in ticks(self.y, (self.rect.height() / 40.0).max(2.0) as usize) {
             let sy = self.sy(y);
             painter.line_segment([pos2(self.rect.left(), sy), pos2(self.rect.right(), sy)], grid);
-            painter.text(
-                pos2(self.rect.left() - 6.0, sy),
-                Align2::RIGHT_CENTER,
-                y_label(y),
-                font.clone(),
-                theme::TEXT_DIM,
-            );
+            let galley = painter.layout_no_wrap(y_label(y), font.clone(), theme::TEXT_DIM);
+            let r = Align2::RIGHT_CENTER.anchor_size(pos2(self.rect.left() - 6.0, sy), galley.size());
+            if self.bottom_row > 0.0 && r.bottom() > self.rect.bottom() - self.bottom_row {
+                continue;
+            }
+            painter.galley(r.min, galley, theme::TEXT_DIM);
         }
     }
 

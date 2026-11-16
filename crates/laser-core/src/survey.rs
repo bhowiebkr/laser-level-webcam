@@ -15,9 +15,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::beam::FinderConfig;
 use crate::camera::{CameraSettings, Sensor};
-use crate::frame::Orientation;
+use crate::frame::{LineAxis, Orientation};
 use crate::reading::{Flags, Reading, SampleRule, Subsample};
-use crate::scale::Scale;
+use crate::scale::{Scale, ScaleSource};
 use crate::units::Unit;
 
 /// Version of the session file. A file from a newer version is refused.
@@ -174,6 +174,25 @@ pub struct Visit {
     pub subsamples: Vec<Subsample>,
 }
 
+/// The pixels a run's readings are on: the frame size and the way the line runs on the sensor.
+/// A reading in px means the same height only on the same grid.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PixelGrid {
+    pub width: u32,
+    pub height: u32,
+    pub axis: LineAxis,
+}
+
+impl fmt::Display for PixelGrid {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let axis = match self.axis {
+            LineAxis::Vertical => "the line top to bottom on the sensor",
+            LineAxis::Horizontal => "the line left to right on the sensor",
+        };
+        write!(f, "{}×{} with {axis}", self.width, self.height)
+    }
+}
+
 /// One line or one grid, measured against one zero station.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Run {
@@ -188,20 +207,49 @@ pub struct Run {
     /// In the order they were taken.
     #[serde(default)]
     pub visits: Vec<Visit>,
+    /// The pixel grid the visits were read on. None in files that predate it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub grid: Option<PixelGrid>,
 }
 
 impl Run {
     /// `count` stations `spacing_mm` apart from 0, the first one the zero.
     pub fn line(name: &str, count: usize, spacing_mm: f64) -> Self {
         let stations = (0..count).map(|i| Station::at(i as f64 * spacing_mm)).collect();
-        Self { name: name.to_owned(), layout: Layout::Line, stations, zero: 0, visits: Vec::new() }
+        Self { name: name.to_owned(), layout: Layout::Line, stations, zero: 0, visits: Vec::new(), grid: None }
     }
 
     /// `nx` by `ny` stations, row by row, the first one the zero.
     pub fn grid(name: &str, nx: usize, ny: usize, dx_mm: f64, dy_mm: f64) -> Self {
         let stations =
             (0..ny).flat_map(|j| (0..nx).map(move |i| Station::at_xy(i as f64 * dx_mm, j as f64 * dy_mm))).collect();
-        Self { name: name.to_owned(), layout: Layout::Grid, stations, zero: 0, visits: Vec::new() }
+        Self { name: name.to_owned(), layout: Layout::Grid, stations, zero: 0, visits: Vec::new(), grid: None }
+    }
+
+    /// The run's grid when frames on `grid` would not fit its visits: another frame size or
+    /// line axis would mix pixel sizes and directions in one run.
+    pub fn grid_conflict(&self, grid: PixelGrid) -> Option<PixelGrid> {
+        self.grid.filter(|g| *g != grid && !self.visits.is_empty())
+    }
+
+    /// Take readings on `grid` from now on. Refused while the run has visits on another grid.
+    pub fn use_grid(&mut self, grid: PixelGrid) -> Result<(), SurveyError> {
+        if let Some(run) = self.grid_conflict(grid) {
+            return Err(SurveyError::OtherGrid { run, now: grid });
+        }
+        self.grid = Some(grid);
+        Ok(())
+    }
+
+    /// The scale for this run's heights. A scale from the pixel pitch depends on the frame size,
+    /// so it comes from the grid of the run's visits when it has some; a gauge-block scale is kept.
+    pub fn scale(&self, scale: &Scale, sensor: &Sensor) -> Scale {
+        match (scale.source, self.grid) {
+            (ScaleSource::PixelPitch, Some(g)) if sensor.is_valid() && !self.visits.is_empty() => {
+                Scale { um_per_px: sensor.um_per_px(g.width, g.height), ..*scale }
+            }
+            _ => *scale,
+        }
     }
 
     fn check(&self) -> Result<(), SurveyError> {
@@ -547,6 +595,11 @@ pub enum SurveyError {
     BadSensor,
     /// The file is from a newer version.
     Format(u32),
+    /// The run's visits are on another pixel grid than the frames now.
+    OtherGrid {
+        run: PixelGrid,
+        now: PixelGrid,
+    },
 }
 
 impl fmt::Display for SurveyError {
@@ -562,6 +615,10 @@ impl fmt::Display for SurveyError {
             Self::BadScale => write!(f, "the scale must be a positive number"),
             Self::BadSensor => write!(f, "the sensor needs a positive pixel pitch and size"),
             Self::Format(v) => write!(f, "the session file is version {v}, newer than this program ({FORMAT_VERSION})"),
+            Self::OtherGrid { run, now } => write!(
+                f,
+                "this run was read at {run}, and the camera now gives {now}; set the camera mode and orientation back, or start a new run"
+            ),
         }
     }
 }

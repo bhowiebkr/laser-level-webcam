@@ -111,6 +111,10 @@ impl Warnings {
     pub fn any(&self) -> bool {
         self.clipped || self.tilted || self.near_edge || self.strips_dropped
     }
+
+    pub fn none(&self) -> bool {
+        !self.any()
+    }
 }
 
 /// A reading from one frame.

@@ -54,7 +54,7 @@ pub fn draw(app: &mut App, ui: &mut egui::Ui, e: &mut Engine) {
 /// estimate again.
 fn plan_row(app: &mut App, ui: &mut egui::Ui) -> bool {
     const RUN: &str = "How long your measurement will take: stations × time at each. Ready is when the drift expected over a run this long is inside the allowed drift. A longer run waits for a steadier set-up.";
-    const ALLOWED: &str = "How far the reading may drift over the planned run. Set it a few times smaller than the flatness you want to see. A smaller value waits longer, and noise above it reads as Too noisy to tell.";
+    const ALLOWED: &str = "How far the reading may drift over the planned run. Set it a few times smaller than the flatness you want to see. A smaller value waits longer, and too much noise for it reads as Too noisy to tell.";
     let unit = app.settings.unit;
     let p = &mut app.settings.plan;
     let mut restart = false;
@@ -89,14 +89,15 @@ fn banner(app: &mut App, ui: &mut egui::Ui, s: &Status) -> bool {
     let (title, detail, color) = match s.readiness {
         Readiness::Collecting { have_s, need_s } => (
             "Learning the drift".to_owned(),
-            format!("{} of the {} of readings the first estimate needs.", clock(have_s), clock(need_s)),
+            format!("{} of about {} of readings needed to tell the drift from the noise.", clock(have_s), clock(need_s)),
             theme::TEXT,
         ),
         Readiness::Noisy { noise } => (
             "Too noisy to tell".to_owned(),
             format!(
-                "The reading wanders {} from one second to the next, more than the allowed drift of {tol}. Steady the stand, shade the beam from air currents, or allow more drift.",
-                with_unit(unit, noise)
+                "The reading wanders {} from one second to the next. That is too much to tell a drift under {tol} over a {:.0} min run. Steady the stand, shade the beam from air currents, or allow more drift.",
+                with_unit(unit, noise),
+                plan.run_min
             ),
             theme::ERROR,
         ),
@@ -151,7 +152,7 @@ fn banner(app: &mut App, ui: &mut egui::Ui, s: &Status) -> bool {
             if let Readiness::Collecting { have_s, need_s } = s.readiness {
                 ui.add(egui::ProgressBar::new((have_s / need_s.max(1e-9)) as f32).desired_height(6.0))
                     .on_hover_text(format!(
-                        "Readings so far: {} of the {} the first drift estimate needs.",
+                        "Readings so far: {} of about {} that the drift estimate needs. A noisier beam needs more.",
                         clock(have_s),
                         clock(need_s)
                     ));

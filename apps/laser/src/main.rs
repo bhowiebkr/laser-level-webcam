@@ -399,7 +399,7 @@ fn main() -> Result<()> {
             let s = Session::from_json(&text).with_context(|| format!("opening {}", session.display()))?;
             let r = pick_run(&s, run.as_deref())?;
             let mode = drift.map_or(s.drift_correction, DriftCorrection::from);
-            let results = Results::compute(r, &s.scale, mode).with_context(|| format!("run {:?}", r.name))?;
+            let results = Results::compute(r, &r.scale(&s.scale, &s.sensor), mode).with_context(|| format!("run {:?}", r.name))?;
             if let Some(path) = csv {
                 let unit = unit.map_or(s.unit, Unit::from);
                 write_atomic(&path, results.csv(unit).as_bytes())?;

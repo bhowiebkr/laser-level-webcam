@@ -9,7 +9,6 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::frame::LineAxis;
 use crate::scale::Scale;
 
 /// How the frames arrive. Only NV12, YUYV and grey carry the luma plane as it is; MJPEG has to be
@@ -441,21 +440,36 @@ impl Sensor {
         self.pixel_pitch_um * f64::from(self.height_px) / 1000.0
     }
 
-    /// Size of one frame pixel across the line, µm, for frames `width` × `height`.
-    pub fn um_per_px(&self, width: u32, height: u32, axis: LineAxis) -> f64 {
-        let (frame, full) = match axis {
-            LineAxis::Vertical => (width, self.width_px),
-            LineAxis::Horizontal => (height, self.height_px),
-        };
+    /// Sensor pixels that one frame pixel covers along each side, for frames `width` × `height`.
+    /// A scaled mode of another shape than the sensor fills the frame and cuts off the rest,
+    /// as webcams do: the side that fits first sets the factor, on both axes.
+    pub fn sensor_px_per_frame_px(&self, width: u32, height: u32) -> f64 {
         match self.scaling {
-            ModeScaling::Cropped => self.pixel_pitch_um,
-            ModeScaling::Scaled => self.pixel_pitch_um * f64::from(full) / f64::from(frame.max(1)),
+            ModeScaling::Cropped => 1.0,
+            ModeScaling::Scaled => {
+                let across = f64::from(self.width_px) / f64::from(width.max(1));
+                let down = f64::from(self.height_px) / f64::from(height.max(1));
+                across.min(down)
+            }
         }
     }
 
+    /// Size of one frame pixel, µm, for frames `width` × `height`. It is the same on both axes.
+    pub fn um_per_px(&self, width: u32, height: u32) -> f64 {
+        self.pixel_pitch_um * self.sensor_px_per_frame_px(width, height)
+    }
+
+    /// Whether frames `width` × `height` have another shape than the sensor, so that a scaled
+    /// mode cuts off part of it.
+    pub fn crops_to(&self, width: u32, height: u32) -> bool {
+        let sensor = f64::from(self.width_px) / f64::from(self.height_px.max(1));
+        let frame = f64::from(width) / f64::from(height.max(1));
+        (sensor / frame - 1.0).abs() > 0.01
+    }
+
     /// The scale from the data sheet, for frames `width` × `height`.
-    pub fn scale(&self, width: u32, height: u32, axis: LineAxis) -> Scale {
-        Scale::from_pixel_pitch(self.um_per_px(width, height, axis))
+    pub fn scale(&self, width: u32, height: u32) -> Scale {
+        Scale::from_pixel_pitch(self.um_per_px(width, height))
     }
 
     pub fn is_valid(&self) -> bool {
@@ -600,12 +614,18 @@ mod tests {
     fn sensor_scale_follows_the_mode() {
         let s = Sensor::default();
         assert!((s.width_mm() - 5.76).abs() < 1e-12);
-        assert_eq!(s.um_per_px(1920, 1080, LineAxis::Vertical), 3.0);
-        assert_eq!(s.um_per_px(1280, 720, LineAxis::Vertical), 4.5);
-        assert_eq!(s.um_per_px(1280, 720, LineAxis::Horizontal), 4.5);
+        assert_eq!(s.um_per_px(1920, 1080), 3.0);
+        assert_eq!(s.um_per_px(1280, 720), 4.5);
+        assert!(!s.crops_to(1280, 720));
+        // A 4:3 mode of a 16:9 sensor fills the frame height and cuts off the sides.
+        assert_eq!(s.um_per_px(640, 480), 6.75);
+        assert!(s.crops_to(640, 480));
+        // A taller sensor in a wide mode fills the width.
+        let tall = Sensor { width_px: 2592, height_px: 1944, ..s.clone() };
+        assert_eq!(tall.um_per_px(1296, 729), 6.0);
         let cropped = Sensor { scaling: ModeScaling::Cropped, ..s };
-        assert_eq!(cropped.um_per_px(1280, 720, LineAxis::Vertical), 3.0);
-        assert_eq!(cropped.scale(640, 480, LineAxis::Vertical).um_per_px, 3.0);
+        assert_eq!(cropped.um_per_px(1280, 720), 3.0);
+        assert_eq!(cropped.scale(640, 480).um_per_px, 3.0);
     }
 
     #[test]

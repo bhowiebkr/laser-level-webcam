@@ -65,7 +65,7 @@ impl View {
 pub fn draw(app: &mut App, ui: &mut egui::Ui, e: &mut Engine) {
     let Some(run) = e.current_run() else { return };
     let unit = app.settings.unit;
-    let results = match Results::compute(run, &e.session.scale, e.session.drift_correction) {
+    let results = match Results::compute(run, &e.run_scale(run), e.session.drift_correction) {
         Ok(r) => r,
         Err(why) => {
             ui.add_space(20.0);

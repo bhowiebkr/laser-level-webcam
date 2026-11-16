@@ -231,7 +231,7 @@ pub fn sensor(ui: &mut egui::Ui, sensor: &Sensor, mode: Option<&VideoMode>, axis
         return;
     }
     let (fw, fh) = mode.map_or((sensor.width_px, sensor.height_px), |m| (m.width, m.height));
-    let um_per_px = sensor.um_per_px(fw, fh, axis);
+    let um_per_px = sensor.um_per_px(fw, fh);
     let (r, p) = canvas(
         ui,
         132.0,
@@ -245,13 +245,10 @@ pub fn sensor(ui: &mut egui::Ui, sensor: &Sensor, mode: Option<&VideoMode>, axis
     let k = (area.width() / w_mm as f32).min(area.height() / h_mm as f32);
     let chip = Rect::from_center_size(area.center(), vec2(w_mm as f32 * k, h_mm as f32 * k));
     p.rect_filled(chip, 2.0, theme::NODE);
-    let frame = match sensor.scaling {
-        ModeScaling::Scaled => chip,
-        ModeScaling::Cropped => {
-            let pitch = sensor.pixel_pitch_um as f32 / 1000.0 * k;
-            Rect::from_center_size(chip.center(), vec2(fw as f32 * pitch, fh as f32 * pitch)).intersect(chip)
-        }
-    };
+    // The part of the sensor the frame covers: a window of it, or all of it scaled down less
+    // what a frame of another shape cuts off.
+    let cover = sensor.sensor_px_per_frame_px(fw, fh) as f32 * sensor.pixel_pitch_um as f32 / 1000.0 * k;
+    let frame = Rect::from_center_size(chip.center(), vec2(fw as f32 * cover, fh as f32 * cover)).intersect(chip);
     p.rect_filled(frame, 1.0, theme::faded(theme::ACCENT, 50));
     p.rect_stroke(frame, 1.0, Stroke::new(1.0, theme::ACCENT), egui::StrokeKind::Inside);
     p.rect_stroke(chip, 2.0, Stroke::new(1.0, theme::LINE), egui::StrokeKind::Outside);
@@ -315,10 +312,21 @@ pub fn sensor(ui: &mut egui::Ui, sensor: &Sensor, mode: Option<&VideoMode>, axis
             format!("Full resolution: a frame px is a sensor px, {um_per_px:.3} µm.")
         }
         ModeScaling::Scaled => {
-            format!("A frame px (orange) covers {per:.2} sensor px (grey) across the line: {um_per_px:.3} µm.")
+            format!("A frame px (orange) is {per:.2} sensor px (grey) wide: {um_per_px:.3} µm.")
         }
     };
     ui.label(small(line, theme::TEXT_DIM));
+    if sensor.scaling == ModeScaling::Scaled && sensor.crops_to(fw, fh) {
+        let cut = if f64::from(sensor.width_px) * f64::from(fh) > f64::from(fw) * f64::from(sensor.height_px) {
+            "sides"
+        } else {
+            "top and bottom"
+        };
+        ui.label(small(
+            format!("This mode has another shape than the sensor. The app takes it that the camera fills the frame and cuts off the {cut} (orange box). Check the scale with a gauge block."),
+            theme::ACCENT,
+        ));
+    }
 }
 
 /// The frame as the live view shows it: turned so the line runs level and heights read up and
@@ -326,7 +334,7 @@ pub fn sensor(ui: &mut egui::Ui, sensor: &Sensor, mode: Option<&VideoMode>, axis
 pub fn orientation(ui: &mut egui::Ui, sensor: &Sensor, mode: Option<&VideoMode>, o: Orientation) {
     let (fw, fh) = mode.map_or((sensor.width_px, sensor.height_px), |m| (m.width, m.height));
     let (vw, vh) = o.view_size(f64::from(fw), f64::from(fh));
-    let um = if sensor.is_valid() { sensor.um_per_px(fw, fh, o.axis()) } else { 0.0 };
+    let um = if sensor.is_valid() { sensor.um_per_px(fw, fh) } else { 0.0 };
     let range_mm = vh * um / 1000.0;
     let (r, p) = canvas(
         ui,
@@ -385,11 +393,7 @@ pub fn orientation(ui: &mut egui::Ui, sensor: &Sensor, mode: Option<&VideoMode>,
     }
     ui.label(small(line + ".", theme::TEXT_DIM));
     if vw > vh * 1.05 && um > 0.0 {
-        let other = match o.axis() {
-            LineAxis::Vertical => LineAxis::Horizontal,
-            LineAxis::Horizontal => LineAxis::Vertical,
-        };
-        let turned_mm = vw * sensor.um_per_px(fw, fh, other) / 1000.0;
+        let turned_mm = vw * um / 1000.0;
         ui.label(small(
             format!("The sensor's short side reads the heights. Turn the camera 90° on the block, then turn the view, to read over {turned_mm:.2} mm."),
             theme::ACCENT,

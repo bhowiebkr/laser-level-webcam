@@ -154,7 +154,7 @@ impl<'a> Luma<'a> {
         if stride < width {
             return Err(FrameError::Stride { width, stride });
         }
-        let need = stride * (height - 1) + width;
+        let need = bytes_needed(stride, height, width);
         if data.len() < need {
             return Err(FrameError::Short { need, got: data.len() });
         }
@@ -241,7 +241,7 @@ impl LumaImage {
 
     /// The Y bytes of packed YUYV (Y0 U Y1 V), rows `stride` bytes apart.
     pub fn from_yuyv(width: usize, height: usize, stride: usize, data: &[u8]) -> Result<Self, FrameError> {
-        Self::check(width, height, stride, 2 * width, data)?;
+        Self::check(width, height, stride, width.saturating_mul(2), data)?;
         let mut out = Vec::with_capacity(width * height);
         for y in 0..height {
             let row = &data[y * stride..y * stride + 2 * width];
@@ -253,7 +253,7 @@ impl LumaImage {
     /// Luma of RGBA pixels with the BT.601 weights a webcam uses for its Y plane, rows `stride`
     /// bytes apart. A browser camera gives RGBA.
     pub fn from_rgba(width: usize, height: usize, stride: usize, data: &[u8]) -> Result<Self, FrameError> {
-        Self::check(width, height, stride, 4 * width, data)?;
+        Self::check(width, height, stride, width.saturating_mul(4), data)?;
         let mut out = Vec::with_capacity(width * height);
         for y in 0..height {
             let row = &data[y * stride..y * stride + 4 * width];
@@ -273,12 +273,18 @@ impl LumaImage {
         if stride < row_bytes {
             return Err(FrameError::Stride { width: row_bytes, stride });
         }
-        let need = stride * (height - 1) + row_bytes;
+        let need = bytes_needed(stride, height, row_bytes);
         if data.len() < need {
             return Err(FrameError::Short { need, got: data.len() });
         }
         Ok(())
     }
+}
+
+/// Bytes from the first pixel to the end of the last row. A size from a bad frame header that
+/// does not fit in `usize` gives `usize::MAX`, which no buffer has, so it is refused.
+fn bytes_needed(stride: usize, height: usize, row_bytes: usize) -> usize {
+    stride.saturating_mul(height.saturating_sub(1)).saturating_add(row_bytes)
 }
 
 #[cfg(test)]
@@ -292,6 +298,11 @@ mod tests {
         assert_eq!(Luma::new(4, 2, 3, &data).unwrap_err(), FrameError::Stride { width: 4, stride: 3 });
         let f = Luma::new(4, 2, 6, &data).unwrap();
         assert_eq!(f.row(1).len(), 4);
+        // A size from a bad header that overflows is refused, not wrapped.
+        let huge = usize::MAX / 2;
+        assert_eq!(Luma::new(4, 3, huge, &data).unwrap_err(), FrameError::Short { need: usize::MAX, got: 10 });
+        assert!(LumaImage::from_yuyv(huge, 3, usize::MAX, &data).is_err());
+        assert!(LumaImage::from_rgba(huge, 3, usize::MAX, &data).is_err());
     }
 
     #[test]

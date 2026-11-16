@@ -166,6 +166,7 @@ The differences from the Windows and Linux apps are:
 - In Chrome on Windows, the exposure value is log₂ seconds, the same as in the Windows app.
 - **Save…** and **Save session…** download the file. **Open session…** asks for a file.
 - The browser keeps your settings, the open session and your [saved sensors](#sensor). If you clear the site data of the browser, the app starts with the default settings and no saved sensors. Use **Export…** in the Sensor section to keep a copy of the sensors.
+- A browser keeps about 5 MB for a page. A long session can be larger. If the browser does not keep the session, a red chip **"Browser did not keep the session"** shows at the top. If you close or reload the page, the session goes back to the last save that worked. To keep the session, click **Session**, then **Save session…**.
 
 ### Build from the source code
 
@@ -440,11 +441,11 @@ This section sets the real size of the camera chip. The app uses it to change pi
 | Name | The name of the sensor. The app saves the sensor under this name. |
 | Pixel pitch | The distance between the centres of the sensor pixels, from the data sheet. The default is 3.00 µm. |
 | Full size | The active pixels at the full resolution of the sensor. The default is 1920 × 1080. |
-| Smaller modes | How the camera makes a mode that is smaller than the sensor. **Scaled**: the full sensor, scaled down, so one frame pixel covers some sensor pixels. **Cropped**: a window of the sensor, so one frame pixel is one sensor pixel. To find the method of your camera, select a smaller mode. If the picture shows the same scene but smaller, the camera scales. If the picture shows the middle of the scene, larger, the camera crops. |
+| Smaller modes | How the camera makes a mode that is smaller than the sensor. **Scaled**: the full sensor, scaled down, so one frame pixel covers some sensor pixels. **Cropped**: a window of the sensor, so one frame pixel is one sensor pixel. To find the method of your camera, select a smaller mode. If the picture shows the same scene but smaller, the camera scales. If the picture shows the middle of the scene, larger, the camera crops. With **Scaled** and a mode of a different shape, the app thinks that the camera fills the frame and cuts off the sides, or the top and bottom. The orange box shows the part that stays. Check the scale with a gauge block. |
 
 The line below the settings gives the size of the sensor in mm and the µm for each frame px. **The diagram:**
 
-- On the left is the sensor, to scale. The current frame is orange, and the laser line is red. The arrow shows the direction of the height readings.
+- On the left is the sensor, to scale. The part of the sensor that the current frame covers is orange, and the laser line is red. The arrow shows the direction of the height readings.
 - On the right is a close view of the pixels: frame px in orange on sensor px in grey, with a 5 µm scale bar.
 
 The line below the diagram gives the number of sensor px in one frame px.
@@ -504,11 +505,11 @@ The camera sensor, the laser and the stand become warmer after you start them. T
 
 | State | Meaning |
 | --- | --- |
-| Learning the drift | The app collects the readings for the first estimate. The bar shows the progress. |
-| Too noisy to tell | From one second to the next, the reading changes more than the allowed drift. Make the stand more stable, put a shield around the beam to stop air movement, or increase the allowed drift. |
+| Learning the drift | The app collects readings until it can tell the drift from the noise. The bar shows the progress. A noisy beam needs more time. |
+| Too noisy to tell | From one second to the next, the reading changes too much to tell a drift that is less than the allowed drift. Make the stand more stable, put a shield around the beam to stop air movement, or increase the allowed drift. |
 | Settling: ready in about … | The drift becomes slower. The banner gives the earliest and the latest time when the drift during the run will be less than the allowed drift. |
 | Drifting | The reading moves at the rate shown, and it does not become slower yet. When a set-up becomes warm, the drift becomes slower. If the drift does not stop, a part is loose, or there is a heat source near the set-up. |
-| Ready to measure | The expected drift during a run of the planned length is less than the allowed drift. |
+| Ready to measure | The expected drift during a run of the planned length is less than the allowed drift. The app adds a margin for the error of the estimate. |
 
 **Measure anyway** opens the Measure step before the set-up is ready. When the set-up is ready, the button changes to **Measure**.
 
@@ -568,6 +569,7 @@ Put the block on each station in sequence and take a sample. The app measures th
 
   A longer sample removes more noise.
 - **A chip** that shows the drift state from the Wait step: "Still settling", "Drift not known yet", "Too noisy for the plan" or "Still drifting".
+- **"Camera mode or orientation changed"**, in red. A run keeps the frame size and the line direction of its first sample, because a height in pixels is correct only on the same frame. **Take sample** is not available until you set the camera mode and the orientation back. Or click **New run**. If they change during a sample, the app does not keep that sample.
 - **The time since the last zero visit**, and the expected drift since then.
 - **"Measure the zero again"**, which shows when that drift is more than the allowed drift.
 - **Problems** with the last sample, in red. For example: "no frame of the sample had a beam".
@@ -867,6 +869,14 @@ Use the tool from left to right. The tips in [Tips for good readings](#tips-for-
 1. Read the known limits in [STATUS.md](STATUS.md#known-limits). A request to remove a limit is a feature request.
 2. Search the [issues](https://github.com/bhowiebkr/laser-level-webcam/issues?q=is%3Aissue), open and closed.
 3. Open a **Bug report** or a **Feature request** on the [issues](https://github.com/bhowiebkr/laser-level-webcam/issues/new/choose) page.
+
+If the app stops because of an error, it writes the details to `crash.log`. On Windows, a message shows the error and the path of the file. The file is in the folder of the app's settings:
+
+- Windows: `%APPDATA%\laser-level-webcam\data\crash.log`
+- macOS: `~/Library/Application Support/laser-level-webcam/crash.log`
+- Linux: `~/.local/share/laser-level-webcam/crash.log`
+
+Attach the file to the bug report. Remove private text from it first, for example your user name in a path.
 
 `laser report` writes the report for you, with the build, the system and the cameras filled in. It checks the report for private text and searches for the same problem before it files the issue. [CONTRIBUTING.md](CONTRIBUTING.md#file-an-issue-from-an-agent) tells how to use it, also from an AI agent. Report a security problem privately, as [SECURITY.md](SECURITY.md) tells.
 

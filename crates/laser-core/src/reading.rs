@@ -35,7 +35,8 @@ pub enum FrameResult {
     Fix {
         px: f64,
         uncertainty_px: f64,
-        #[serde(default)]
+        /// Left out of the file when no warning is on: about half the size of a stored frame.
+        #[serde(default, skip_serializing_if = "Warnings::none")]
         warnings: Warnings,
     },
     NoBeam {

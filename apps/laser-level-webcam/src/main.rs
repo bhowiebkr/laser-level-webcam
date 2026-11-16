@@ -4,6 +4,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
+#[cfg(not(target_arch = "wasm32"))]
+mod crash;
 mod driver;
 mod engine;
 mod files;
@@ -26,6 +28,22 @@ pub const APP_ID: &str = "laser-level-webcam";
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result {
+    crash::install();
+    match std::panic::catch_unwind(run) {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(e)) => {
+            crash::stopped(crash::Stop::Start, &e.to_string());
+            Err(e)
+        }
+        Err(payload) => {
+            crash::stopped(crash::Stop::App, crash::payload_text(payload.as_ref()));
+            std::panic::resume_unwind(payload)
+        }
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn run() -> eframe::Result {
     let icon = eframe::icon_data::from_png_bytes(include_bytes!("../../../assets/icon.png")).expect("the app icon is a PNG");
     let mut options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()

@@ -95,16 +95,20 @@ pub struct App {
     sensor_inbox: Inbox,
     /// What happened to the saved sensors last.
     pub sensor_msg: Option<String>,
+    /// The size of the session, in bytes, and why the browser did not keep it at the last save.
+    browser_refused: Option<(usize, String)>,
 }
 
 impl App {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         theme::apply(&cc.egui_ctx);
         let settings: AppSettings = cc.storage.and_then(|s| eframe::get_value(s, KEY)).unwrap_or_default();
-        let session = cc
-            .storage
-            .and_then(|s| eframe::get_value::<String>(s, SESSION_KEY))
-            .and_then(|text| Session::from_json(&text).ok());
+        let old = || cc.storage.and_then(|s| eframe::get_value::<String>(s, SESSION_KEY));
+        #[cfg(target_arch = "wasm32")]
+        let text = browser_session::load().or_else(old);
+        #[cfg(not(target_arch = "wasm32"))]
+        let text = old();
+        let session = text.and_then(|text| Session::from_json(&text).ok());
         let mut app = Self::with(&cc.egui_ctx, settings, session);
         let loaded = sensors::load();
         app.sensors = loaded.library;
@@ -142,6 +146,7 @@ impl App {
             sensor_action: None,
             sensor_inbox: Inbox::default(),
             sensor_msg: None,
+            browser_refused: None,
         }
     }
 
@@ -408,6 +413,14 @@ impl App {
                 ui.label(RichText::new(msg).small().color(theme::TEXT_DIM))
                     .on_hover_text("What the last open or save did.");
             }
+            if let Some((bytes, why)) = &self.browser_refused {
+                theme::chip(ui, "Browser did not keep the session", theme::ERROR).on_hover_text(format!(
+                    "The session is {:.1} MB. Browsers keep about 5 MB for a page, and this browser refused it ({why}). \
+If you close or reload the page, the session goes back to the last save that worked. \
+To keep it, click Session, then Save session….",
+                    *bytes as f64 / 1e6
+                ));
+            }
             ui.add_space(16.0);
             for (k, screen) in Screen::ALL.into_iter().enumerate() {
                 let on = self.screen == screen;
@@ -466,9 +479,57 @@ impl eframe::App for App {
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, KEY, &self.settings);
-        let session = self.session_to_save();
-        eframe::set_value(storage, SESSION_KEY, &session.to_json_compact());
+        let session = self.session_to_save().to_json_compact();
+        #[cfg(target_arch = "wasm32")]
+        {
+            self.browser_refused = browser_session::store(storage, &session).err().map(|why| (session.len(), why));
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        eframe::set_value(storage, SESSION_KEY, &session);
         eframe::set_value(storage, SENSOR_CAMERA_KEY, &self.sensor_camera);
+    }
+}
+
+/// In the browser the app keeps the session itself, as plain JSON under its own key: eframe only
+/// logs a write that the browser refuses, and its RON escapes every quote of the JSON.
+#[cfg(target_arch = "wasm32")]
+mod browser_session {
+    use crate::settings::SESSION_KEY;
+
+    const KEY: &str = "laser-level-webcam.session";
+
+    fn storage() -> Option<web_sys::Storage> {
+        web_sys::window()?.local_storage().ok()?
+    }
+
+    pub fn load() -> Option<String> {
+        storage()?.get_item(KEY).ok()?
+    }
+
+    /// Writes the session. The copy that eframe kept before this version goes once this one is
+    /// written; if the browser refuses this one, it goes to make space, and comes back if the
+    /// browser still refuses.
+    pub fn store(eframe_storage: &mut dyn eframe::Storage, text: &str) -> Result<(), String> {
+        let s = storage().ok_or("it gives no storage to the page")?;
+        let first = s.set_item(KEY, text);
+        let old = eframe_storage.get_string(SESSION_KEY);
+        if first.is_ok() {
+            if old.is_some() {
+                eframe_storage.remove_string(SESSION_KEY);
+            }
+            return Ok(());
+        }
+        if let Some(old) = old {
+            eframe_storage.remove_string(SESSION_KEY);
+            if s.set_item(KEY, text).is_ok() {
+                return Ok(());
+            }
+            eframe_storage.set_string(SESSION_KEY, old);
+        }
+        first.map_err(|e| {
+            let field = |k: &str| js_sys::Reflect::get(&e, &k.into()).ok().and_then(|v| v.as_string());
+            field("name").or_else(|| field("message")).unwrap_or_else(|| "no reason given".into())
+        })
     }
 }
 

@@ -43,6 +43,11 @@ problem: a request to remove a limit is a feature request, not a bug.
   camera.
 - The browser version gets colour frames that the browser has processed, not the YUYV or
   MJPEG data. The camera controls are the ones that the browser gives.
+- The browser version keeps the session in the storage of the browser, which holds about 5 MB
+  for a page. A browser can refuse a long session. Then the red chip **"Browser did not keep the
+  session"** shows, and **Save session…** keeps the session in a file.
+- A run keeps the camera mode and the line direction of its first sample. To measure with
+  another mode or direction, click **New run**.
 - The Linux app is for 64-bit x86 only, with glibc 2.35 or newer. The Mac app needs macOS 11 or
   newer.
 - The Windows, Mac and Linux files have no code signature. Windows and macOS show a warning the

@@ -10,7 +10,9 @@
 //! - **Allan deviation**: how long to average a reading.
 //! - **Readiness** against the planned run: ready when the drift over the run is below the
 //!   tolerance and the beam is calm. The fit gives the time to wait with its range; the fit is
-//!   used only while it agrees with the measured drift rate.
+//!   used only while it agrees with the measured drift rate. With no fit to use, the rate comes
+//!   from up to a run's worth of readings, and it must be two standard errors inside the
+//!   allowed rate for Ready, or outside it for Drifting. Between the two, more readings decide.
 
 use serde::{Deserialize, Serialize};
 
@@ -78,9 +80,10 @@ pub struct Step {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum Readiness {
-    /// Not enough data since the start or the last step.
+    /// Not enough data since the start or the last step, or not yet enough to tell the drift
+    /// from the noise. `need_s` is then an estimate.
     Collecting { have_s: f64, need_s: f64 },
-    /// The reading moves more from bin to bin than the tolerance.
+    /// The reading moves too much from bin to bin to tell a drift inside the tolerance.
     Noisy { noise: f64 },
     /// Still settling. Ready in about `in_s`, between `earliest_in_s` and `latest_in_s`.
     Settling { in_s: f64, earliest_in_s: f64, latest_in_s: Option<f64> },
@@ -222,7 +225,7 @@ impl Monitor {
         }
         let win = &self.bins[n - 2 * w..];
         let first = jump(win, w)?;
-        let se = 1.2533 * self.bin_noise()? * (2.0 / w as f64).sqrt();
+        let se = step_se(self.bin_noise()?, w);
         if first.size.abs() <= self.cfg.step_sigmas * se.max(1e-12) {
             return None;
         }
@@ -265,9 +268,7 @@ impl Monitor {
         };
 
         let readiness = match rate {
-            Some((r, rs)) if since >= self.cfg.min_fit_s => {
-                readiness(plan, t_now, noise, r, rs, rate_mid, settle.as_ref())
-            }
+            Some(rate) if since >= self.cfg.min_fit_s => self.readiness(plan, noise, rate, rate_mid, settle.as_ref()),
             _ => Readiness::Collecting { have_s: since, need_s: self.cfg.min_fit_s },
         };
         Status {
@@ -283,6 +284,85 @@ impl Monitor {
             readiness,
         }
     }
+
+    fn readiness(
+        &self,
+        plan: &RunPlan,
+        noise: Option<f64>,
+        (rate, rate_sigma): (f64, f64),
+        rate_mid: f64,
+        settle: Option<&SettleFit>,
+    ) -> Readiness {
+        let t_now = self.last_s;
+        if let Some(n) = noise.filter(|&n| n > plan.tolerance) {
+            return Readiness::Noisy { noise: n };
+        }
+        if let Some(fit) = settle.filter(|f| f.tau_high_s.is_some()) {
+            let model = fit.rate_at(rate_mid);
+            if (model - rate).abs() <= (3.0 * rate_sigma).max(0.25 * model.abs()) {
+                let r = fit.ready_at(plan.run_s, plan.tolerance);
+                if r.best_s > t_now {
+                    return Readiness::Settling {
+                        in_s: r.best_s - t_now,
+                        earliest_in_s: (r.earliest_s - t_now).max(0.0),
+                        latest_in_s: r.latest_s.map(|l| (l - t_now).max(0.0)),
+                    };
+                }
+                // The fit says ready. On noisy readings any fit agrees with the rate, so trust it
+                // only when the rate was precise enough to check it at the scale of the
+                // tolerance. Otherwise the rate test below decides.
+                if 2.0 * rate_sigma * plan.run_s <= plan.tolerance {
+                    return Readiness::Ready;
+                }
+            }
+        }
+
+        // No settle curve: a straight drift, or none. Measure the rate over up to a run's worth of
+        // readings, and decide only when it is two standard errors clear of the allowed rate.
+        let limit = plan.tolerance / plan.run_s.max(1e-9);
+        let span = self.cfg.rate_window_s.max(plan.run_s).min(self.cfg.max_bins as f64 * self.cfg.bin_s);
+        let (r, rs) = long_rate(&self.bins, t_now, span).unwrap_or((rate, rate_sigma));
+        let gap = r.abs() - limit;
+        if gap <= -2.0 * rs {
+            return Readiness::Ready;
+        }
+        if gap > 2.0 * rs {
+            return Readiness::Drifting { rate_per_min: r * 60.0 };
+        }
+        // Not sure yet. On white noise the error falls as the span to the power 1.5, so more
+        // readings settle it, unless even a full span is not enough.
+        let have = (t_now - self.epoch_s).clamp(0.0, span);
+        let sigma_at_span = rs * (have / span).powf(1.5);
+        if gap.abs() > 2.0 * sigma_at_span {
+            let need = have * (2.0 * rs / gap.abs()).powf(2.0 / 3.0);
+            return Readiness::Collecting { have_s: have, need_s: need.clamp(have, span) };
+        }
+        match noise {
+            Some(n) if 2.0 * sigma_at_span >= 0.5 * limit => Readiness::Noisy { noise: n },
+            _ => Readiness::Drifting { rate_per_min: r * 60.0 },
+        }
+    }
+}
+
+/// Drift rate for the Ready test, from the bins in the last `span_s`. The bins go into at most 240
+/// groups first, since the Theil–Sen slope takes all pairs.
+fn long_rate(bins: &[Bin], t_now: f64, span_s: f64) -> Option<(f64, f64)> {
+    let bins = &bins[bins.partition_point(|b| b.t_s < t_now - span_s)..];
+    let groups: Vec<Bin> = bins
+        .chunks(bins.len().div_ceil(240).max(1))
+        .map(|c| {
+            let n = c.len() as f64;
+            Bin {
+                t_s: c.iter().map(|b| b.t_s).sum::<f64>() / n,
+                mean: c.iter().map(|b| b.mean).sum::<f64>() / n,
+                count: c.iter().map(|b| b.count).sum(),
+            }
+        })
+        .collect();
+    if groups.len() < 6 {
+        return None;
+    }
+    robust_rate(&groups.iter().collect::<Vec<_>>())
 }
 
 /// Theil–Sen slope per s and its standard error.
@@ -297,39 +377,6 @@ fn robust_rate(bins: &[&Bin]) -> Option<(f64, f64)> {
     let sxx: f64 = t.iter().map(|ti| (ti - mt).powi(2)).sum();
     let sigma = stats::mad_sigma(&resid)? * stats::correlation_inflation(&resid).sqrt() / sxx.sqrt();
     Some((slope, sigma))
-}
-
-fn readiness(
-    plan: &RunPlan,
-    t_now: f64,
-    noise: Option<f64>,
-    rate: f64,
-    rate_sigma: f64,
-    rate_mid: f64,
-    settle: Option<&SettleFit>,
-) -> Readiness {
-    if let Some(n) = noise.filter(|&n| n > plan.tolerance) {
-        return Readiness::Noisy { noise: n };
-    }
-    if let Some(fit) = settle.filter(|f| f.tau_high_s.is_some()) {
-        let model = fit.rate_at(rate_mid);
-        if (model - rate).abs() <= (3.0 * rate_sigma).max(0.25 * model.abs()) {
-            let r = fit.ready_at(plan.run_s, plan.tolerance);
-            if r.best_s <= t_now {
-                return Readiness::Ready;
-            }
-            return Readiness::Settling {
-                in_s: r.best_s - t_now,
-                earliest_in_s: (r.earliest_s - t_now).max(0.0),
-                latest_in_s: r.latest_s.map(|l| (l - t_now).max(0.0)),
-            };
-        }
-    }
-    if rate.abs() * plan.run_s <= plan.tolerance {
-        Readiness::Ready
-    } else {
-        Readiness::Drifting { rate_per_min: rate * 60.0 }
-    }
 }
 
 struct Jump {
@@ -353,4 +400,39 @@ fn jump(bins: &[Bin], split: usize) -> Option<Jump> {
     let detrended: Vec<f64> = bins.iter().map(|b| b.mean - slope * (b.t_s - t0)).collect();
     let size = stats::median(&detrended[split..])? - stats::median(&detrended[..split])?;
     Some(Jump { size, detrended })
+}
+
+/// Standard error of `jump`'s size on noise alone, for `w` bins a side of noise `sigma` each.
+/// The two medians add (π/2)σ²/w each. The slope, from pairs inside each side, is off by about
+/// σ/sqrt(0.88·Sxx), Sxx = w(w²−1)/6 bins², and that error moves the size by the w bins between
+/// the centres of the two sides. Theil–Sen keeps about 0.88 of the least-squares efficiency here;
+/// a test checks the whole on simulated noise.
+fn step_se(sigma: f64, w: usize) -> f64 {
+    let w = w as f64;
+    sigma * (std::f64::consts::PI / w + 6.0 * w / (0.88 * (w * w - 1.0))).sqrt()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::rng::Rng;
+
+    /// On pure noise, the size of a jump spreads by its standard error, so `step_sigmas` means
+    /// what it says.
+    #[test]
+    fn step_error_matches_pure_noise() {
+        for w in [8, 15, 30] {
+            let mut rng = Rng::new(0x5eed + w as u64);
+            let runs = 4000;
+            let mut sum_z2 = 0.0;
+            for _ in 0..runs {
+                let bins: Vec<Bin> =
+                    (0..2 * w).map(|k| Bin { t_s: k as f64, mean: rng.normal(), count: 30 }).collect();
+                let z = jump(&bins, w).unwrap().size / step_se(1.0, w);
+                sum_z2 += z * z;
+            }
+            let rms = (sum_z2 / runs as f64).sqrt();
+            assert!((rms - 1.0).abs() < 0.06, "w {w}: the jump spreads {rms:.3} standard errors");
+        }
+    }
 }

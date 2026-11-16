@@ -17,7 +17,7 @@ use laser_core::monitor::{Monitor, MonitorConfig, RunPlan, Status};
 use laser_core::reading::{Reading, SampleRule, Sampler};
 use laser_core::rng::Rng;
 use laser_core::scale::{Scale, ScaleSource};
-use laser_core::survey::{Run, Session};
+use laser_core::survey::{PixelGrid, Run, Session, SurveyError};
 use laser_core::synth::Surface;
 
 /// Longest side of the preview image, px.
@@ -221,6 +221,8 @@ pub struct Sampling {
     /// The visit it replaces.
     pub replace: Option<usize>,
     pub started_s: f64,
+    /// The pixel grid of its frames.
+    pub grid: PixelGrid,
 }
 
 /// What the synthetic camera measures: a surface a little out of flat, and the block on it. The
@@ -303,14 +305,25 @@ impl Engine {
         self.live.last.map(|(t, _)| self.base_s + t)
     }
 
-    /// µm per px across the line in the current mode.
+    /// µm per px in the current mode.
     pub fn um_per_px(&self) -> f64 {
+        let g = self.grid();
+        self.sensor.um_per_px(g.width, g.height)
+    }
+
+    /// The pixel grid the frames are on now: their size and the way the line runs.
+    pub fn grid(&self) -> PixelGrid {
         let (w, h) = self
             .live
             .size
             .or(self.camera.mode.map(|m| (m.width as usize, m.height as usize)))
             .unwrap_or((self.sensor.width_px as usize, self.sensor.height_px as usize));
-        self.sensor.um_per_px(w as u32, h as u32, self.finder.axis)
+        PixelGrid { width: w as u32, height: h as u32, axis: self.finder.axis }
+    }
+
+    /// The scale for `run`'s heights: from its own frame size when the scale is the sensor's.
+    pub fn run_scale(&self, run: &Run) -> Scale {
+        run.scale(&self.session.scale, &self.sensor)
     }
 
     /// The scale the session's heights use: the sensor's, unless a gauge block set it.
@@ -405,6 +418,12 @@ impl Engine {
             self.status = Some(self.monitor.status(&self.plan));
             self.status_t = t;
         }
+        if self.sampling.as_ref().is_some_and(|s| s.grid != self.grid()) {
+            // Frames of two sizes or line directions do not average to one reading.
+            self.sampling = None;
+            self.survey_error =
+                Some("the camera mode or orientation changed during the sample, so it was thrown away; take it again".to_owned());
+        }
         if let Some(s) = &mut self.sampling
             && t >= s.started_s
         {
@@ -418,6 +437,11 @@ impl Engine {
 
     /// Start a sample at `station`, replacing visit `replace` when given.
     pub fn take_sample(&mut self, station: usize, replace: Option<usize>) {
+        let now = self.grid();
+        if let Some(run) = self.current_run().and_then(|r| r.grid_conflict(now)) {
+            self.survey_error = Some(SurveyError::OtherGrid { run, now }.to_string());
+            return;
+        }
         let mut t = self.frame_time().unwrap_or_else(|| self.now());
         self.place_block(station);
         if let Some(b) = &self.bench {
@@ -425,7 +449,7 @@ impl Engine {
             t = t.max(b.moved_s + BLOCK_SETTLE_S);
         }
         self.survey_error = None;
-        self.sampling = Some(Sampling { sampler: Sampler::new(t), station, replace, started_s: t });
+        self.sampling = Some(Sampling { sampler: Sampler::new(t), station, replace, started_s: t, grid: now });
     }
 
     /// The sample so far.
@@ -437,11 +461,12 @@ impl Engine {
     pub fn finish_sample(&mut self) {
         let Some(s) = self.sampling.take() else { return };
         let subs = s.sampler.finish();
+        let grid = self.grid();
         let Some(run) = self.session.runs.get_mut(self.run) else { return };
-        let result = match s.replace {
+        let result = run.use_grid(grid).and_then(|()| match s.replace {
             Some(visit) => run.replace(visit, subs),
             None => run.record(s.station, subs).map(|_| ()),
-        };
+        });
         if let Err(e) = result {
             self.survey_error = Some(e.to_string());
         }
@@ -471,7 +496,7 @@ impl Engine {
         }
         let surface = &bench.surface;
         let um = surface.seen_um(run, station) + surface.placement_um * bench.rng.normal();
-        let scale = &self.session.scale;
+        let scale = &run.scale(&self.session.scale, &self.sensor);
         let sign = if scale.invert { -1.0 } else { 1.0 };
         bench.block.place(sign * um / scale.um_per_px);
         bench.at = Some((self.run, station));
@@ -589,5 +614,54 @@ mod tests {
             (lo, hi) = (lo.min(h.height_um), hi.max(h.height_um));
         }
         assert!(hi - lo > 3.0, "the surface should show: {lo}..{hi} µm");
+    }
+
+    /// A run keeps the frame size and line direction of its first sample: a sample on another one
+    /// is refused, and a change in the middle of a sample throws the sample away.
+    #[test]
+    fn a_run_refuses_another_mode_or_axis() {
+        use laser_core::frame::LineAxis;
+        let small = Synthetic::open(None).modes()[3];
+        let mut cam = Synthetic::open(Some(small));
+        cam.paced = false;
+        let mut engine = Engine::new(Session::new(Scale::from_pixel_pitch(3.0)));
+        let (device, modes, mode, controls) = (cam.device().clone(), cam.modes().to_vec(), cam.mode(), cam.controls());
+        engine.opened(device, modes, mode, controls, Vec::new());
+        engine.simulate(Block::default());
+        engine.sample_rule = SampleRule { min_s: 1.0, max_s: 1.0, target_um: None };
+        let feed = |engine: &mut Engine, cam: &mut Synthetic| {
+            while engine.sampling.is_some() {
+                let frame = cam.next_frame().unwrap();
+                engine.absorb(process(&frame, &engine.finder, false));
+            }
+        };
+        engine.take_sample(0, None);
+        feed(&mut engine, &mut cam);
+        let first = engine.grid();
+        assert_eq!(engine.current_run().unwrap().grid, Some(first), "{:?}", engine.survey_error);
+        assert_eq!((first.width, first.height), (small.width, small.height));
+
+        let along = engine.finder.axis;
+        engine.finder.axis = if along == LineAxis::Vertical { LineAxis::Horizontal } else { LineAxis::Vertical };
+        engine.take_sample(1, None);
+        assert!(engine.sampling.is_none());
+        assert!(engine.survey_error.as_deref().unwrap().contains("this run was read at"), "{:?}", engine.survey_error);
+
+        engine.finder.axis = along;
+        engine.survey_error = None;
+        engine.take_sample(1, None);
+        assert!(engine.sampling.is_some(), "{:?}", engine.survey_error);
+        engine.finder.axis = if along == LineAxis::Vertical { LineAxis::Horizontal } else { LineAxis::Vertical };
+        let frame = cam.next_frame().unwrap();
+        engine.absorb(process(&frame, &engine.finder, false));
+        assert!(engine.sampling.is_none());
+        assert!(engine.survey_error.as_deref().unwrap().contains("changed during the sample"), "{:?}", engine.survey_error);
+        assert_eq!(engine.current_run().unwrap().visits.len(), 1);
+
+        engine.finder.axis = along;
+        engine.survey_error = None;
+        engine.take_sample(1, None);
+        feed(&mut engine, &mut cam);
+        assert_eq!(engine.current_run().unwrap().visits.len(), 2, "{:?}", engine.survey_error);
     }
 }
