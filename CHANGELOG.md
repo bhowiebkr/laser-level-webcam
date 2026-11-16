@@ -3,7 +3,7 @@
 What changed in each version. The [releases](https://github.com/bhowiebkr/laser-level-webcam/releases)
 have the files. The [README](README.md#getting-started) tells how to install them.
 
-## Not released yet
+## 2.0.0 (2026-11-16)
 
 - Graphs: the y labels fit, a value that rounds to zero has no minus sign, the unit shows once
   and the Wait clock does not repeat a time.
@@ -29,6 +29,8 @@ have the files. The [README](README.md#getting-started) tells how to install the
 - **Allowed drift** and the sample target show and take the selected unit.
 - The README, CONTRIBUTING.md and AGENTS.md point to the
   [wiki](https://github.com/bhowiebkr/laser-level-webcam/wiki) for set-ups, cameras and results.
+  Only collaborators edit the wiki. Other persons post a set-up in
+  [Show and tell](https://github.com/bhowiebkr/laser-level-webcam/discussions/categories/show-and-tell).
 - Windows: when Direct3D 12 cannot open the window, the app tries Direct3D 12 on the processor
   (WARP), then Vulkan or OpenGL. `crash.log` notes each renderer that did not open. The
   `WGPU_BACKEND` variable sets one renderer.

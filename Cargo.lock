@@ -535,7 +535,7 @@ dependencies = [
 
 [[package]]
 name = "browser-check"
-version = "2.0.0-alpha.3"
+version = "2.0.0"
 dependencies = [
  "js-sys",
  "laser-camera",
@@ -1848,7 +1848,7 @@ dependencies = [
 
 [[package]]
 name = "laser"
-version = "2.0.0-alpha.3"
+version = "2.0.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -1861,7 +1861,7 @@ dependencies = [
 
 [[package]]
 name = "laser-camera"
-version = "2.0.0-alpha.3"
+version = "2.0.0"
 dependencies = [
  "block2 0.6.2",
  "dispatch2",
@@ -1883,7 +1883,7 @@ dependencies = [
 
 [[package]]
 name = "laser-core"
-version = "2.0.0-alpha.3"
+version = "2.0.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -1891,7 +1891,7 @@ dependencies = [
 
 [[package]]
 name = "laser-level-webcam"
-version = "2.0.0-alpha.3"
+version = "2.0.0"
 dependencies = [
  "eframe",
  "js-sys",
@@ -2603,7 +2603,7 @@ dependencies = [
 
 [[package]]
 name = "pack"
-version = "2.0.0-alpha.3"
+version = "2.0.0"
 dependencies = [
  "flate2",
  "png",
