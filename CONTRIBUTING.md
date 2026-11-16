@@ -5,9 +5,12 @@ agents. The same rules apply to both. [AGENTS.md](AGENTS.md) holds the working r
 read.
 
 Set-ups, cameras, results and feedback go on the
-[wiki](https://github.com/bhowiebkr/laser-level-webcam/wiki). All persons with a GitHub account
-can edit it. [Add to the wiki](https://github.com/bhowiebkr/laser-level-webcam/wiki/Add-to-the-Wiki)
-tells how. A set-up that did not operate correctly also helps other persons.
+[wiki](https://github.com/bhowiebkr/laser-level-webcam/wiki). Only the collaborators of the
+repository can edit it. Other persons post a set-up, a camera or a result in
+[Show and tell](https://github.com/bhowiebkr/laser-level-webcam/discussions/categories/show-and-tell),
+and a collaborator adds it to the wiki.
+[Add to the wiki](https://github.com/bhowiebkr/laser-level-webcam/wiki/Add-to-the-Wiki) tells how.
+A set-up that did not operate correctly also helps other persons.
 
 ## Before you report
 

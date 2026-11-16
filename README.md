@@ -3,7 +3,7 @@
 
 <img src="images/step-1-set-up.webp" alt="The Set up step of the app: camera settings on the left, the live view and the beam profile on the right" width="900">
 
-For questions and comments, use the GitHub Discussions tab. Progress reports are also there. Set-ups, cameras and results of other persons are on the [wiki](https://github.com/bhowiebkr/laser-level-webcam/wiki). Add your set-up there.
+For questions and comments, use the GitHub Discussions tab. Progress reports are also there. Set-ups, cameras and results of other persons are on the [wiki](https://github.com/bhowiebkr/laser-level-webcam/wiki). To add your set-up, post it in [Show and tell](https://github.com/bhowiebkr/laser-level-webcam/discussions/categories/show-and-tell).
 
 </div>
 
