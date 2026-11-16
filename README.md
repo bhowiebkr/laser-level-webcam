@@ -3,7 +3,7 @@
 
 <img src="images/step-1-set-up.webp" alt="The Set up step of the app: camera settings on the left, the live view and the beam profile on the right" width="900">
 
-For questions and comments, use the GitHub Discussions tab. Progress reports are also there.
+For questions and comments, use the GitHub Discussions tab. Progress reports are also there. Set-ups, cameras and results of other persons are on the [wiki](https://github.com/bhowiebkr/laser-level-webcam/wiki). Add your set-up there.
 
 </div>
 
@@ -33,6 +33,7 @@ Until now, the difference between repeated measurements is 0.5 µm to 2 µm.
 - [Tests](#tests)
 - [Tips for good readings](#tips-for-good-readings)
 - [The Python version (1.x)](#the-python-version-1x)
+- [The wiki](https://github.com/bhowiebkr/laser-level-webcam/wiki): set-ups, cameras, sensors, lasers and results of the persons who use the tool
 
 ---
 
@@ -59,7 +60,7 @@ This tool comes from the original [Java tool](https://github.com/betzuka/laserle
 
 You must have:
 
-- A webcam with its lens removed.
+- A webcam with its lens removed. The wiki shows [the cameras that other persons use](https://github.com/bhowiebkr/laser-level-webcam/wiki/Cameras) and [how to remove the lens](https://github.com/bhowiebkr/laser-level-webcam/wiki/Remove-the-Lens).
 - A block with two feet. You put the camera on this block.
 - A laser level that makes a line, for example a self-levelling line laser.
 
@@ -488,7 +489,7 @@ This section sets how the app calculates the centre of the beam in each frame. W
 | Warning limits: Clipped pixels | 0–1 % (0.05 %) | The maximum percentage of the beam pixels that can clip before the app shows a warning. |
 | Warning limits: Tilt | 1–100 mm/m (20 mm/m) | If the tilt of the line across the sensor is more than this value, the app shows a warning. |
 | Warning limits: Beam width | 5–100 % (60 %) | If the beam is wider than this percentage of the frame, the frame gives no reading. |
-| Use part of the frame | off | The app searches only an area of the frame. To make the area, drag on the live view. To use the full frame, double-click the view. **x**, **y**, **w** and **h** set the area accurately. |
+| Use part of the frame | off | The app searches only an area of the frame. It starts with the middle half along the line. To make another area, drag on the live view. To use the full frame, double-click the view. **x**, **y**, **w** and **h** set the area accurately, in the pixels of the camera before the view is turned. |
 
 **The two diagrams:**
 
@@ -610,7 +611,7 @@ Put the block on each station in sequence and take a sample. The app measures th
 - the name and the position of each station (along, and across on a surface).
 - the zero station.
 - **Remove**, which deletes the station and its visits.
-- **Add a station**.
+- **Add a station**. On a line, it goes after the last station. On a surface, it fills the last row, then starts a new row.
 
 ### 4 Results
 
@@ -683,6 +684,7 @@ This step shows the straightness (a line) or the flatness (a surface) of the run
 
 The options of the `camera` command are:
 
+- `--list` shows only the names of the cameras.
 - `--usb` shows what the camera sends, from its USB descriptors. This option also operates while a different program uses the camera. It is not available on macOS.
 - `--set id=value` sets a control first.
 - `--lock` locks the camera for measuring.
@@ -755,6 +757,7 @@ cargo run --release -p pack -- check
 - Do not stand during a sample. The sensor senses the movement of your leg muscles. Sit and do not move.
 - A self-levelling laser level moves with all vibration. Look for sources of vibration: persons, computers and electronic equipment with fans, HVAC systems, and other equipment.
 - Dust on the sensor causes dropped strips. Remove the dust with a blower, or remove that part of the frame from the search.
+- The [FAQ](https://github.com/bhowiebkr/laser-level-webcam/wiki/FAQ) on the wiki has more tips from the persons who use the tool.
 
 ---
 

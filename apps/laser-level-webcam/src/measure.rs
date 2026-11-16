@@ -162,12 +162,7 @@ fn apply(e: &mut Engine, a: Action, ui: &egui::Ui, pick_id: egui::Id) {
                     Ok(())
                 }
                 Action::AddStation => {
-                    let last = run.stations.last().cloned().unwrap_or_default();
-                    let step = match run.stations.len() {
-                        0 | 1 => 100.0,
-                        n => run.stations[n - 1].x_mm - run.stations[n - 2].x_mm,
-                    };
-                    run.add_station(Station { x_mm: last.x_mm + step, y_mm: last.y_mm, label: String::new() });
+                    run.add_station(run.new_station());
                     Ok(())
                 }
                 Action::RemoveStation(s) => run.remove_station(s).map(|_| ()),
@@ -503,7 +498,7 @@ fn line_plot(
         ui.label(theme::dim("against the zero station, drift taken out; the bars are ±1 standard error"))
             .on_hover_text(&legend);
     });
-    let (mut ax, painter, resp) = Axes::allocate(ui, height, x, y);
+    let (mut ax, painter, resp) = Axes::allocate(ui, height, x, y, plot::height_text(unit));
     ax.reserve_bottom_row(&painter); // for the station numbers
     let resp = resp.on_hover_text(&legend);
     ax.xband(
@@ -512,12 +507,7 @@ fn line_plot(
         run.stations[station].x_mm + (x[1] - x[0]) * 0.01,
         theme::faded(theme::ACCENT, 50),
     );
-    let step = (y[1] - y[0]) / 5.0;
-    ax.grid(
-        &painter,
-        |v| format!("{v:.0} mm"),
-        |v| format!("{} {}", plot::tick_text(v, step), if v == 0.0 { unit.label() } else { "" }),
-    );
+    ax.grid(&painter, plot::mm_text);
     ax.hline(&painter, 0.0, Stroke::new(1.0, theme::faded(theme::TEXT, 60)));
     for (i, s) in run.stations.iter().enumerate() {
         let color = if i == station { theme::ACCENT } else { theme::TEXT_DIM };
@@ -580,9 +570,9 @@ fn grid_plot(
         ui.label(theme::heading("Stations")).on_hover_text(&legend);
         ui.label(theme::dim("seen from above; heights against the zero station, drift taken out")).on_hover_text(&legend);
     });
-    let (ax, painter, resp) = Axes::allocate(ui, height, x, y);
+    let (ax, painter, resp) = Axes::allocate(ui, height, x, y, plot::mm_text);
     let resp = resp.on_hover_text(&legend);
-    ax.grid(&painter, |v| format!("{v:.0} mm"), |v| format!("{v:.0} mm"));
+    ax.grid(&painter, plot::mm_text);
     for (i, s) in run.stations.iter().enumerate() {
         let p = ax.pos(s.x_mm, s.y_mm);
         let visited = per_station.get(i).copied().flatten();
@@ -862,7 +852,10 @@ fn stations_editor(ui: &mut egui::Ui, run: &Run, busy: bool, actions: &mut Vec<A
                 });
                 if ui
                     .button("Add a station")
-                    .on_hover_text("Add a station after the last one, as far on as the last two are apart.")
+                    .on_hover_text(
+                        "Add a station after the last one, as far on as the last two are apart. On a grid, it fills the \
+                         last row in the columns of the first row, then starts a new row.",
+                    )
                     .clicked()
                 {
                     actions.push(Action::AddStation);

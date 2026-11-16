@@ -52,6 +52,26 @@ fn warm_up_gives_a_ready_time_then_ready() {
     assert_eq!(s.readiness, Readiness::Ready, "{s:?}");
 }
 
+/// A slow warm-up watched for an hour and more: the settle fit takes the bins in runs of 4 to 7
+/// and still finds the time constant and the ready time.
+#[test]
+fn a_long_wait_fits_on_averaged_bins() {
+    let w = WarmUp { start: 30.0, settled: 0.0, tau_s: 1800.0, steps: vec![], jitter: 0.3 };
+    let truth = w.true_ready_s(600.0, 0.5);
+    let (_, s) = status_after(&w, 3600.0, 8);
+    let fit = s.settle.clone().unwrap();
+    assert!(fit.points <= 900, "{fit:?}");
+    assert!(fit.tau_low_s <= 1800.0 && fit.tau_high_s.unwrap() >= 1800.0, "{fit:?}");
+    let Readiness::Settling { in_s, .. } = s.readiness else {
+        panic!("expected settling: {s:?}");
+    };
+    let left = truth - s.t_s;
+    assert!((in_s - left).abs() < 300.0, "{s:?}, truth in {left}");
+
+    let (_, s) = status_after(&w, 6000.0, 9);
+    assert_eq!(s.readiness, Readiness::Ready, "{s:?}");
+}
+
 #[test]
 fn a_bump_is_a_step_and_restarts_the_estimate() {
     let w = WarmUp { steps: vec![(200.0, 3.0)], ..flat(0.3) };

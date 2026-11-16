@@ -5,7 +5,6 @@
 
 use eframe::egui::{self, Align2, RichText, Stroke};
 use laser_core::monitor::{Readiness, Status};
-use laser_core::units::Unit;
 
 use crate::app::{App, Screen};
 use crate::engine::{Engine, TRACE_S};
@@ -248,12 +247,6 @@ fn tiles(app: &App, ui: &mut egui::Ui, e: &Engine, s: &Status) {
     });
 }
 
-/// Decimals for tick labels across a span.
-fn tick_label(unit: Unit, span: f64) -> impl Fn(f64) -> String {
-    let step = span / 5.0;
-    move |v| format!("{} {}", plot::tick_text(v, step), if v == 0.0 { unit.label() } else { "" })
-}
-
 fn history(app: &App, ui: &mut egui::Ui, e: &Engine, s: &Status, height: f32) {
     let unit = app.settings.unit;
     let run_s = app.settings.plan.run_min * 60.0;
@@ -288,7 +281,7 @@ fn history(app: &App, ui: &mut egui::Ui, e: &Engine, s: &Status, height: f32) {
         ys.push(y_of(f.value_at(f.t0_s.max(t0))));
     }
     let y = plot::span(ys, 0.08);
-    let (ax, painter, resp) = Axes::allocate(ui, height, x, y);
+    let (mut ax, painter, resp) = Axes::allocate(ui, height, x, y, plot::height_text(unit));
 
     let mut ready_past = false;
     match s.readiness {
@@ -314,7 +307,8 @@ fn history(app: &App, ui: &mut egui::Ui, e: &Engine, s: &Status, height: f32) {
         }
         _ => {}
     }
-    ax.grid(&painter, clock, tick_label(unit, y[1] - y[0]));
+    ax.x_min_step = 1.0;
+    ax.grid(&painter, |t, _| clock(t));
     if s.since_s > t0 {
         ax.vline(&painter, s.since_s, Stroke::new(1.0, theme::TEXT_DIM));
         ax.label(&painter, [s.since_s, y[0]], Align2::LEFT_BOTTOM, " estimate from here", theme::TEXT_DIM);
@@ -398,8 +392,8 @@ fn trace(app: &App, ui: &mut egui::Ui, e: &Engine, height: f32) {
     let now = e.trace.back().map_or(0.0, |p| p[0]);
     let pts: Vec<[f64; 2]> = e.trace.iter().map(|p| [p[0] - now, unit.from_um(p[1] - mean)]).collect();
     let y = plot::span(pts.iter().map(|p| p[1]), 0.1);
-    let (ax, painter, resp) = Axes::allocate(ui, height, [-TRACE_S, 0.0], y);
+    let (ax, painter, resp) = Axes::allocate(ui, height, [-TRACE_S, 0.0], y, plot::height_text(unit));
     resp.on_hover_text(TRACE);
-    ax.grid(&painter, |t| format!("{t:.0} s"), tick_label(unit, y[1] - y[0]));
+    ax.grid(&painter, |t, step| format!("{} s", plot::tick_text(t, step)));
     ax.line(&painter, pts, Stroke::new(1.0, theme::BLUE));
 }

@@ -1,5 +1,6 @@
 //! A simulated camera: a laser line on a lensless sensor, drifting as the set-up warms up, with
-//! controls that act the way a webcam's do. Auto exposure meters the dark frame and clips the
+//! controls that act the way a webcam's do. It opens with the exposure held at 1/64 s, so the
+//! beam is not clipped. Auto exposure, when it is switched on, meters the dark frame and clips the
 //! beam; auto white balance makes a red beam's brightness wander; gain raises the noise;
 //! sharpening rings beside the beam; room-light flicker rolls bands through the frame unless the
 //! exposure is a whole number of flicker periods.
@@ -253,7 +254,9 @@ fn default_controls() -> Vec<ControlInfo> {
         unit,
     };
     vec![
-        c(ControlId::Exposure, -11, -3, 1, -6, Some(true), ControlUnit::Log2Seconds),
+        // Held at 1/64 s, so the demo opens with a beam that is not clipped. Auto is there to show
+        // why Lock for measuring holds it.
+        c(ControlId::Exposure, -11, -3, 1, -6, Some(false), ControlUnit::Log2Seconds),
         c(ControlId::Gain, 0, 100, 1, 0, None, ControlUnit::Raw),
         c(ControlId::WhiteBalance, 2800, 6500, 10, 4600, Some(true), ControlUnit::Kelvin),
         c(ControlId::PowerLineFrequency, 0, 2, 1, 0, None, ControlUnit::PowerLineMenu),
@@ -333,6 +336,12 @@ mod tests {
     fn auto_exposure_clips_and_locking_fixes_it() {
         let mut cam = Synthetic::open(None);
         let cfg = FinderConfig::default();
+        // It opens with the exposure held, so the first frame is not clipped.
+        let f = cam.next_frame().unwrap();
+        let fix = find(&f.luma().unwrap(), &cfg).unwrap();
+        assert!(!fix.warnings.clipped, "the Synthetic camera should open unclipped: {fix:?}");
+
+        cam.set_control(ControlSetting { id: ControlId::Exposure, mode: ControlMode::Auto }).unwrap();
         let f = cam.next_frame().unwrap();
         let fix = find(&f.luma().unwrap(), &cfg).unwrap();
         assert!(fix.warnings.clipped, "auto exposure should clip the beam: {fix:?}");
@@ -344,7 +353,7 @@ mod tests {
         assert!(!fix.warnings.clipped, "{fix:?}");
         let truth = cam.scene.drift.mean_at(f.t_s);
         assert!((fix.position_px - truth).abs() < 0.5, "{} vs {truth}", fix.position_px);
-        assert_eq!(f.seq, 1);
+        assert_eq!(f.seq, 2);
     }
 
     #[test]

@@ -116,25 +116,33 @@ pub fn cards<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
     ui.allocate_ui_with_layout(size, layout, add).inner
 }
 
-/// A vertical scroll area over the space left. In tests it notes its view, so the layout check can
-/// tell words scrolled out of sight from words lost past the edge of a panel.
+/// A vertical scroll area over the space left. In tests it notes its clip and its box, so the
+/// layout check can tell words scrolled out of sight from words lost past the edge of a panel, and
+/// words in two scroll areas side by side from words in one row.
 pub fn scroll<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
-    egui::ScrollArea::vertical()
-        .auto_shrink(false)
-        .show(ui, |ui| {
-            #[cfg(test)]
-            {
-                let view = ui.clip_rect();
-                ui.data_mut(|d| d.get_temp_mut_or_default::<Vec<egui::Rect>>(scroll_views()).push(view));
-            }
-            add(ui)
-        })
-        .inner
+    let out = egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
+        #[cfg(test)]
+        {
+            let view = ui.clip_rect();
+            ui.data_mut(|d| d.get_temp_mut_or_default::<Vec<egui::Rect>>(scroll_views()).push(view));
+        }
+        add(ui)
+    });
+    #[cfg(test)]
+    ui.data_mut(|d| d.get_temp_mut_or_default::<Vec<egui::Rect>>(scroll_boxes()).push(out.inner_rect));
+    out.inner
 }
 
+/// The clips of the scroll areas drawn. A vertical scroll area clips only up and down.
 #[cfg(test)]
 pub fn scroll_views() -> egui::Id {
     egui::Id::unique("scroll views")
+}
+
+/// The boxes of the scroll areas drawn, left to right as well as up and down.
+#[cfg(test)]
+pub fn scroll_boxes() -> egui::Id {
+    egui::Id::unique("scroll boxes")
 }
 
 /// A small coloured label in an outline.

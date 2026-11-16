@@ -572,13 +572,16 @@ fn camera_chip(ui: &mut egui::Ui, e: &Engine) {
         CameraState::Closed => ("No camera".to_owned(), theme::TEXT_DIM),
         CameraState::Opening(n) => (format!("Opening {n}"), theme::ACCENT),
         CameraState::Open => (name.to_owned(), theme::OK),
-        CameraState::Failed(why) => (format!("Camera: {why}"), theme::ERROR),
+        // The reason can be long; the Camera section shows it in full.
+        CameraState::Failed(_) => ("Camera did not open".to_owned(), theme::ERROR),
     };
     let help = match &e.camera.state {
-        CameraState::Closed => "No camera is open. Pick one in the Camera section of the side panel.",
-        CameraState::Opening(_) => "The camera is opening. Some cameras take a few seconds.",
-        CameraState::Open => "The camera that is open. Pick another in the Camera section of the side panel.",
-        CameraState::Failed(_) => "The camera did not open. Click Try again in the Camera section, or pick another camera.",
+        CameraState::Closed => "No camera is open. Pick one in the Camera section of the side panel.".to_owned(),
+        CameraState::Opening(_) => "The camera is opening. Some cameras take a few seconds.".to_owned(),
+        CameraState::Open => "The camera that is open. Pick another in the Camera section of the side panel.".to_owned(),
+        CameraState::Failed(why) => {
+            format!("{why}\n\nClick Try again in the Camera section, or pick another camera.")
+        }
     };
     theme::chip(ui, text, color).on_hover_text(help);
 }

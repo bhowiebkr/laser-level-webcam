@@ -17,7 +17,7 @@ const SIZES: [[f32; 2]; 6] =
     [[960.0, 600.0], [1100.0, 700.0], [1280.0, 800.0], [1920.0, 1080.0], [2560.0, 1440.0], [3840.0, 2160.0]];
 
 /// Plot labels that sit on the data and so move with it.
-const FOLLOWS_DATA: [&str; 2] = ["ready", "where it settles"];
+const FOLLOWS_DATA: [&str; 3] = ["ready", "where it settles", "beam"];
 
 #[derive(Clone, Debug)]
 struct Text {
@@ -66,10 +66,19 @@ fn texts(shapes: &[ClippedShape]) -> Vec<Text> {
     out
 }
 
-/// One frame: its words, and the views of its scroll areas.
+/// One frame: its words, and the clips and boxes of its scroll areas.
 struct Frame {
     texts: Vec<Text>,
     views: Vec<Rect>,
+    boxes: Vec<Rect>,
+}
+
+impl Frame {
+    /// The smallest scroll area that holds the middle of a text, if any.
+    fn scroll_box(&self, t: &Text) -> Option<Rect> {
+        let inside = self.boxes.iter().filter(|b| b.contains(t.rect.center()));
+        inside.min_by(|a, b| a.area().total_cmp(&b.area())).copied()
+    }
 }
 
 fn draw(app: &mut App, ctx: &egui::Context, size: [f32; 2]) -> Frame {
@@ -77,11 +86,15 @@ fn draw(app: &mut App, ctx: &egui::Context, size: [f32; 2]) -> Frame {
         screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), vec2(size[0], size[1]))),
         ..Default::default()
     };
-    ctx.data_mut(|d| d.remove::<Vec<Rect>>(theme::scroll_views()));
+    let (views, boxes) = (theme::scroll_views(), theme::scroll_boxes());
+    ctx.data_mut(|d| {
+        d.remove::<Vec<Rect>>(views);
+        d.remove::<Vec<Rect>>(boxes);
+    });
     let mut out = ctx.run_ui(input, |ui| app.draw(ui));
     out.textures_delta.clear();
-    let views = ctx.data(|d| d.get_temp::<Vec<Rect>>(theme::scroll_views())).unwrap_or_default();
-    Frame { texts: texts(&out.shapes), views }
+    let [views, boxes] = [views, boxes].map(|id| ctx.data(|d| d.get_temp::<Vec<Rect>>(id)).unwrap_or_default());
+    Frame { texts: texts(&out.shapes), views, boxes }
 }
 
 /// Frames for `seconds` of camera time, from a camera that is not paced.
@@ -171,7 +184,9 @@ fn problems(frame: &Frame, screen: Rect) -> Vec<String> {
             if let Some(both) = hit {
                 found.push(format!("{:?} over {:?} at {:.0},{:.0}", a.s, b.s, both.left(), both.top()));
             }
-            if let Some(off) = off_baseline(a, b) {
+            // Two scroll areas side by side share a clip, but their rows are not one row.
+            let one_area = frame.scroll_box(a) == frame.scroll_box(b);
+            if let Some(off) = off_baseline(a, b).filter(|_| one_area) {
                 found.push(format!("{:?} and {:?} share a line but sit {off:.1} apart", a.s, b.s));
             }
         }

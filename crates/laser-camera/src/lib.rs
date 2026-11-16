@@ -198,7 +198,7 @@ pub fn open(settings: &CameraSettings) -> Result<(Box<dyn FrameSource>, Vec<Appl
         }
         Backend::Browser => return Err(CameraError::Os(format!("{} opens only through web::open", device.name))),
     };
-    let applied = apply(source.as_mut(), &settings.controls);
+    let applied = apply_saved(source.as_mut(), &settings.controls);
     Ok((source, applied))
 }
 
@@ -269,6 +269,17 @@ pub fn apply(source: &mut dyn FrameSource, settings: &[ControlSetting]) -> Vec<A
     settings.iter().map(|&setting| Applied { setting, result: source.set_control(setting) }).collect()
 }
 
+/// [`apply`] the saved settings that this camera has a control for. The saved settings can come
+/// from another camera, and a control that this camera does not have is not a refusal.
+pub fn apply_saved(source: &mut dyn FrameSource, settings: &[ControlSetting]) -> Vec<Applied> {
+    if settings.is_empty() {
+        return Vec::new();
+    }
+    let have: Vec<ControlId> = source.controls().iter().map(|c| c.id).collect();
+    let wanted: Vec<ControlSetting> = settings.iter().filter(|s| have.contains(&s.id)).copied().collect();
+    apply(source, &wanted)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -289,5 +300,19 @@ mod tests {
         assert!(f.luma().is_ok());
         let unknown = CameraSettings { device: Some("no such camera".into()), ..CameraSettings::default() };
         assert!(matches!(open(&unknown), Err(CameraError::NotFound(_))));
+    }
+
+    #[test]
+    fn a_saved_control_that_the_camera_does_not_have_is_left_out() {
+        // The Synthetic camera has no zoom; the saved settings came from another camera.
+        let zoom = ControlSetting { id: ControlId::Zoom, mode: ControlMode::Manual(1) };
+        let mut settings = CameraSettings { device: Some(synthetic::NAME.into()), ..CameraSettings::default() };
+        let (mut cam, _) = open(&settings).unwrap();
+        settings.controls = for_measuring(&cam.controls(), Mains::Hz50);
+        let kept = settings.controls.len();
+        settings.controls.push(zoom);
+        let (_, applied) = open(&settings).unwrap();
+        assert_eq!(applied.len(), kept);
+        assert!(applied.iter().all(Applied::held), "{applied:?}");
     }
 }

@@ -5,7 +5,7 @@ use eframe::egui::{self, RichText};
 use laser_core::camera::{
     self, ControlId, ControlInfo, ControlMode, ControlSetting, ControlUnit, Mains, ModeScaling, PixelFormat, VideoMode,
 };
-use laser_core::frame::Roi;
+use laser_core::frame::{LineAxis, Orientation, Roi};
 
 use crate::app::{App, SensorAction};
 use crate::driver::Request;
@@ -660,6 +660,7 @@ fn orientation_section(app: &mut App, ui: &mut egui::Ui, e: &Engine) {
 }
 
 fn finder_section(app: &mut App, ui: &mut egui::Ui, e: &Engine) {
+    let orientation = app.settings.orientation;
     let f = &mut app.settings.finder;
     const STRIPS: &str = "The frame is cut into strips along the line. Each strip gives a centre; a strip that disagrees (dust, a reflection) is dropped and the line's tilt comes from the rest.";
     const WINDOW: &str = "Half width of the window the centre is worked out in, in beam sigmas. Wider uses more of the beam and more of the noise.";
@@ -737,24 +738,93 @@ fn finder_section(app: &mut App, ui: &mut egui::Ui, e: &Engine) {
         .on_hover_text("Drag on the live view to draw it; double-click the view for the whole frame.")
         .changed()
     {
-        f.roi = on.then_some(Roi { x: size.0 / 4, y: 0, width: size.0 / 2, height: size.1 });
+        f.roi = on.then(|| default_roi(size, orientation.axis()));
     }
     if let Some(r) = &mut f.roi {
-        const X: &str = "Left edge of the searched part, in pixels from the left edge of the frame.";
-        const Y: &str = "Top edge of the searched part, in pixels from the top edge of the frame.";
-        const W: &str = "Width of the searched part, in pixels.";
-        const H: &str = "Height of the searched part, in pixels.";
+        let [x, y, w, h] = roi_help(orientation);
         ui.horizontal(|ui| {
-            ui.label("x").on_hover_text(X);
-            ui.add(egui::DragValue::new(&mut r.x).range(0..=size.0.saturating_sub(16))).on_hover_text(X);
-            ui.label("y").on_hover_text(Y);
-            ui.add(egui::DragValue::new(&mut r.y).range(0..=size.1.saturating_sub(16))).on_hover_text(Y);
+            ui.label("x").on_hover_text(&x);
+            ui.add(egui::DragValue::new(&mut r.x).range(0..=size.0.saturating_sub(16))).on_hover_text(&x);
+            ui.label("y").on_hover_text(&y);
+            ui.add(egui::DragValue::new(&mut r.y).range(0..=size.1.saturating_sub(16))).on_hover_text(&y);
         });
         ui.horizontal(|ui| {
-            ui.label("w").on_hover_text(W);
-            ui.add(egui::DragValue::new(&mut r.width).range(16..=size.0)).on_hover_text(W);
-            ui.label("h").on_hover_text(H);
-            ui.add(egui::DragValue::new(&mut r.height).range(16..=size.1)).on_hover_text(H);
+            ui.label("w").on_hover_text(&w);
+            ui.add(egui::DragValue::new(&mut r.width).range(16..=size.0)).on_hover_text(&w);
+            ui.label("h").on_hover_text(&h);
+            ui.add(egui::DragValue::new(&mut r.height).range(16..=size.1)).on_hover_text(&h);
         });
+    }
+}
+
+/// The part of the frame that **Use part of the frame** starts with: the middle half along the
+/// line, and the whole frame across it, so the beam stays inside as it moves.
+fn default_roi((width, height): (usize, usize), axis: LineAxis) -> Roi {
+    match axis {
+        LineAxis::Vertical => Roi { x: 0, y: height / 4, width, height: height / 2 },
+        LineAxis::Horizontal => Roi { x: width / 4, y: 0, width: width / 2, height },
+    }
+}
+
+/// The tooltips of the x, y, w and h fields. They are in the camera's pixels, before the view is
+/// turned or mirrored, so they say where the camera's edges are in the view.
+fn roi_help(o: Orientation) -> [String; 4] {
+    // The view's sides clockwise from the top. The image is mirrored first, then turned.
+    const SIDES: [&str; 4] = ["top", "right", "bottom", "left"];
+    let side = |camera: usize| {
+        let mirrored = if o.mirrored { (4 - camera) % 4 } else { camera };
+        SIDES[(mirrored + usize::from(o.quarter_turns)) % 4]
+    };
+    let edge = |what: &str, camera: usize| {
+        let name = SIDES[camera];
+        let seen = side(camera);
+        if seen == name {
+            format!("{what} edge of the searched part, in pixels from the {name} edge of the frame.")
+        } else {
+            format!(
+                "{what} edge of the searched part, in camera pixels from the camera's {name} edge. With this \
+                 orientation, that edge is at the {seen} of the view."
+            )
+        }
+    };
+    // A quarter turn puts the camera's width up and down in the view.
+    let length = |what: &str, turned_way: &str| {
+        if o.axis() == LineAxis::Vertical {
+            format!("{what} of the searched part, in camera pixels. The view is turned a quarter, so it runs {turned_way} in it.")
+        } else {
+            format!("{what} of the searched part, in pixels.")
+        }
+    };
+    [edge("Left", 3), edge("Top", 0), length("Width", "up and down"), length("Height", "left to right")]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_default_region_takes_the_middle_half_along_the_line() {
+        // The default orientation turns the camera a quarter: the line runs top to bottom.
+        let axis = Orientation::default().axis();
+        assert_eq!(default_roi((1920, 1080), axis), Roi { x: 0, y: 270, width: 1920, height: 540 });
+        assert_eq!(default_roi((1920, 1080), LineAxis::Horizontal), Roi { x: 480, y: 0, width: 960, height: 1080 });
+    }
+
+    #[test]
+    fn region_tooltips_say_where_the_camera_edges_are_in_the_view() {
+        let plain = roi_help(Orientation { quarter_turns: 0, mirrored: false });
+        assert!(plain[0].contains("from the left edge of the frame"), "{}", plain[0]);
+        assert_eq!(plain[2], "Width of the searched part, in pixels.");
+        // A quarter turn clockwise puts the camera's left edge at the top and its top at the right.
+        let turned = roi_help(Orientation::default());
+        assert!(turned[0].ends_with("at the top of the view."), "{}", turned[0]);
+        assert!(turned[1].ends_with("at the right of the view."), "{}", turned[1]);
+        assert!(turned[2].contains("up and down"), "{}", turned[2]);
+        // Mirrored first: the left edge goes right, then the turn takes it to the bottom.
+        let both = roi_help(Orientation { quarter_turns: 1, mirrored: true });
+        assert!(both[0].ends_with("at the bottom of the view."), "{}", both[0]);
+        let mirrored = roi_help(Orientation { quarter_turns: 0, mirrored: true });
+        assert!(mirrored[0].ends_with("at the right of the view."), "{}", mirrored[0]);
+        assert!(mirrored[1].contains("from the top edge of the frame"), "{}", mirrored[1]);
     }
 }

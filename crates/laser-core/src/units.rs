@@ -60,7 +60,16 @@ impl Unit {
 
     /// A height in µm as text in this unit, without the label.
     pub fn format(self, um: f64) -> String {
-        format!("{:.*}", self.decimals(), self.from_um(um))
+        fixed(self.from_um(um), self.decimals())
+    }
+}
+
+/// `v` with `decimals` decimals. A value that rounds to zero has no minus sign.
+pub fn fixed(v: f64, decimals: usize) -> String {
+    let text = format!("{v:.decimals$}");
+    match text.strip_prefix('-') {
+        Some(rest) if rest.bytes().all(|b| b == b'0' || b == b'.') => rest.to_owned(),
+        _ => text,
     }
 }
 
@@ -75,6 +84,9 @@ mod tests {
         }
         assert_eq!(Unit::Inch.format(25.4), "0.001000");
         assert_eq!(Unit::Mm.format(-1.5), "-0.00150");
+        assert_eq!(Unit::Mm.format(-0.004), "0.00000");
+        assert_eq!(fixed(-0.0, 0), "0");
+        assert_eq!(fixed(-0.05, 1), "-0.1");
         assert_eq!(Unit::Um.format(4.56789), "4.57");
     }
 }

@@ -275,6 +275,42 @@ impl Run {
         self.stations.len() - 1
     }
 
+    /// Where **Add a station** puts the next station. A line goes on by its last spacing (100 mm
+    /// with fewer than two stations). A grid fills its last row up to the width of the first
+    /// row, in the first row's columns, then starts a new row one row spacing on.
+    pub fn new_station(&self) -> Station {
+        let st = &self.stations;
+        let Some(last) = st.last() else { return Station::default() };
+        let line_step = match st.len() {
+            1 => 100.0,
+            n => st[n - 1].x_mm - st[n - 2].x_mm,
+        };
+        if self.layout == Layout::Line {
+            return Station::at_xy(last.x_mm + line_step, last.y_mm);
+        }
+        // Rows in the order they were laid out: a new row starts where y changes.
+        let mut rows: Vec<&[Station]> = Vec::new();
+        let mut start = 0;
+        for i in 1..=st.len() {
+            if i == st.len() || st[i].y_mm != st[start].y_mm {
+                rows.push(&st[start..i]);
+                start = i;
+            }
+        }
+        let first = rows[0];
+        let row = rows[rows.len() - 1];
+        if row.len() < first.len() {
+            return Station::at_xy(first[row.len()].x_mm, last.y_mm);
+        }
+        if rows.len() == 1 {
+            // One row and nothing to fill: a second row as far off as the columns are apart.
+            let dy = if row.len() > 1 { (row[1].x_mm - row[0].x_mm).abs() } else { 100.0 };
+            return Station::at_xy(first[0].x_mm, last.y_mm + dy);
+        }
+        let dy = last.y_mm - rows[rows.len() - 2][0].y_mm;
+        Station::at_xy(first[0].x_mm, last.y_mm + dy)
+    }
+
     /// Remove a station and its visits. The zero station cannot be removed; choose another first.
     pub fn remove_station(&mut self, i: usize) -> Result<Vec<Visit>, SurveyError> {
         self.station_ok(i)?;
@@ -588,8 +624,10 @@ pub enum SurveyError {
         have: usize,
         need: usize,
     },
-    /// The stations do not span a line (all at one position) or a plane (all on one line).
+    /// The measured stations are all at one position, so no line fits them.
     Degenerate,
+    /// A grid whose measured stations are all on one line, so no plane fits them.
+    OneLine,
     BadScale,
     /// The sensor has no size or no pixel pitch.
     BadSensor,
@@ -611,7 +649,10 @@ impl fmt::Display for SurveyError {
             Self::NoZero => write!(f, "measure the zero station first"),
             Self::ZeroStation => write!(f, "the zero station cannot be removed; choose another zero first"),
             Self::TooFewStations { have, need } => write!(f, "{have} stations measured, {need} needed"),
-            Self::Degenerate => write!(f, "the stations do not span a line or a plane"),
+            Self::Degenerate => write!(f, "the measured stations are all at one position"),
+            Self::OneLine => {
+                write!(f, "the measured stations are all on one line; a flatness also needs a station in another row")
+            }
             Self::BadScale => write!(f, "the scale must be a positive number"),
             Self::BadSensor => write!(f, "the sensor needs a positive pixel pitch and size"),
             Self::Format(v) => write!(f, "the session file is version {v}, newer than this program ({FORMAT_VERSION})"),

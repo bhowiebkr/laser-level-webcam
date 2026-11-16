@@ -260,8 +260,7 @@ impl Monitor {
         let allan_best = allan::best_averaging(&allan::allan_deviation(&allan_x, self.cfg.bin_s));
 
         let settle = if since >= self.cfg.min_fit_s {
-            let t: Vec<f64> = self.bins.iter().map(|b| b.t_s).collect();
-            let x: Vec<f64> = self.bins.iter().map(|b| b.mean).collect();
+            let (t, x) = thinned(&self.bins, FIT_POINTS);
             settle::fit(&t, &x, self.epoch_s)
         } else {
             None
@@ -344,6 +343,26 @@ impl Monitor {
     }
 }
 
+/// Most points the settle fit takes. Its time grows with its points, about 1 ms for each 1,000, and
+/// it runs once a second while the engine is locked. Past this, the bins go in runs that are
+/// averaged first: 15 minutes of 1 s bins go in as they are, 4 hours in runs of 16.
+const FIT_POINTS: usize = 900;
+
+/// Times and readings of at most `most` points: the bins, or the means of runs of them. The runs
+/// are counted from the newest bin, so a short run, if any, is the oldest.
+fn thinned(bins: &[Bin], most: usize) -> (Vec<f64>, Vec<f64>) {
+    let k = bins.len().div_ceil(most.max(1)).max(1);
+    let mut points: Vec<(f64, f64)> = bins
+        .rchunks(k)
+        .map(|run| {
+            let n = run.len() as f64;
+            (run.iter().map(|b| b.t_s).sum::<f64>() / n, run.iter().map(|b| b.mean).sum::<f64>() / n)
+        })
+        .collect();
+    points.reverse();
+    points.into_iter().unzip()
+}
+
 /// Drift rate for the Ready test, from the bins in the last `span_s`. The bins go into at most 240
 /// groups first, since the Theil–Sen slope takes all pairs.
 fn long_rate(bins: &[Bin], t_now: f64, span_s: f64) -> Option<(f64, f64)> {
@@ -417,6 +436,21 @@ mod tests {
     use super::*;
     use crate::rng::Rng;
 
+    #[test]
+    fn the_fit_takes_short_waits_whole_and_long_ones_in_runs() {
+        let bins =
+            |n: usize| -> Vec<Bin> { (0..n).map(|k| Bin { t_s: k as f64, mean: 2.0 * k as f64, count: 30 }).collect() };
+        let (t, x) = thinned(&bins(900), FIT_POINTS);
+        assert_eq!((t.len(), t[899], x[899]), (900, 899.0, 1798.0));
+        // Runs of 2 from the newest bin: the oldest bin is alone.
+        let (t, _) = thinned(&bins(901), FIT_POINTS);
+        assert_eq!((t.len(), t[0], t[1], t[450]), (451, 0.0, 1.5, 899.5));
+        // 4 hours: runs of 16.
+        let (t, x) = thinned(&bins(14_400), FIT_POINTS);
+        assert_eq!((t.len(), t[899], x[899]), (900, 14_391.5, 28_783.0));
+        assert!(thinned(&[], FIT_POINTS).0.is_empty());
+    }
+
     /// On pure noise, the size of a jump spreads by its standard error, so `step_sigmas` means
     /// what it says.
     #[test]
@@ -426,8 +460,7 @@ mod tests {
             let runs = 4000;
             let mut sum_z2 = 0.0;
             for _ in 0..runs {
-                let bins: Vec<Bin> =
-                    (0..2 * w).map(|k| Bin { t_s: k as f64, mean: rng.normal(), count: 30 }).collect();
+                let bins: Vec<Bin> = (0..2 * w).map(|k| Bin { t_s: k as f64, mean: rng.normal(), count: 30 }).collect();
                 let z = jump(&bins, w).unwrap().size / step_se(1.0, w);
                 sum_z2 += z * z;
             }

@@ -71,7 +71,10 @@ pub fn draw(app: &mut App, ui: &mut egui::Ui, e: &mut Engine) {
             ui.add_space(20.0);
             ui.vertical_centered(|ui| {
                 ui.label(theme::heading(format!("No results for {} yet", run.name)))
-                    .on_hover_text("Results need the zero station and at least one other station measured.");
+                    .on_hover_text(
+                        "Results need the zero station and two other stations measured. A grid needs three, \
+                         not all in one row.",
+                    );
                 ui.label(theme::dim(format!("{why}."))).on_hover_text("What is missing before results can be worked out.");
                 ui.add_space(8.0);
                 if ui.add(theme::primary("Measure")).on_hover_text("Go to Measure to take the readings this run still needs.").clicked() {
@@ -137,7 +140,7 @@ fn summary(ui: &mut egui::Ui, unit: Unit, name: &str, r: &Results) {
         ui.horizontal(|ui| {
             ui.label(RichText::new(format!("{what} of {name}")).size(16.0).color(theme::TEXT_DIM))
                 .on_hover_text(pv_help.as_str());
-            ui.label(RichText::new(with_unit(unit, r.pv_um)).size(26.0).strong().color(LASER))
+            ui.label(RichText::new(with_unit(unit, r.pv_um)).size(26.0).strong().color(theme::TEXT))
                 .on_hover_text(pv_help.as_str());
             ui.label(theme::dim("peak to valley"))
                 .on_hover_text("Peak to valley: highest point minus lowest point. It is the usual number for straightness and flatness.");
@@ -196,11 +199,6 @@ fn summary(ui: &mut egui::Ui, unit: Unit, name: &str, r: &Results) {
     });
 }
 
-fn y_label(unit: Unit, span: f64) -> impl Fn(f64) -> String {
-    let step = span / 5.0;
-    move |v| format!("{} {}", plot::tick_text(v, step), if v == 0.0 { unit.label() } else { "" })
-}
-
 fn line_plot(ui: &mut egui::Ui, unit: Unit, r: &Results, view: View, height: f32) {
     let mut pts: Vec<&Point> = r.points.iter().collect();
     pts.sort_by(|a, b| a.x_mm.total_cmp(&b.x_mm));
@@ -216,7 +214,7 @@ fn line_plot(ui: &mut egui::Ui, unit: Unit, r: &Results, view: View, height: f32
         ys.push(unit.from_um(r.reference.at(x[1], 0.0)));
     }
     let y = plot::span(ys, 0.1);
-    let (ax, painter, resp) = Axes::allocate(ui, height, x, y);
+    let (ax, painter, resp) = Axes::allocate(ui, height, x, y, plot::height_text(unit));
     let shape = match view {
         View::Scrape => "Red bars: how much to take off each station.".to_owned(),
         View::Shim => "Blue bars: how much shim to put under each station.".to_owned(),
@@ -227,7 +225,7 @@ fn line_plot(ui: &mut egui::Ui, unit: Unit, r: &Results, view: View, height: f32
         "{shape}\nAcross: distance along the line, mm. Up: height, {}.\nWhite bars: ±1 standard error, how sure each station's height is. Orange dots: stations with warnings.\nMove the mouse over the plot to read the nearest station at the top right.",
         unit.label()
     ));
-    ax.grid(&painter, |v| format!("{v:.0} mm"), y_label(unit, y[1] - y[0]));
+    ax.grid(&painter, plot::mm_text);
     ax.hline(&painter, 0.0, Stroke::new(1.0, theme::faded(theme::TEXT, 70)));
     let bars = matches!(view, View::Shim | View::Scrape);
     if view == View::Measured {
@@ -308,8 +306,8 @@ fn heat_map(ui: &mut egui::Ui, unit: Unit, r: &Results, view: View, height: f32)
     let dy = min_gap(r.points.iter().map(|p| p.y_mm), 100.0);
     let x = plot::span(r.points.iter().flat_map(|p| [p.x_mm - dx / 2.0, p.x_mm + dx / 2.0]), 0.02);
     let y = plot::span(r.points.iter().flat_map(|p| [p.y_mm - dy / 2.0, p.y_mm + dy / 2.0]), 0.02);
-    let (ax, painter, resp) = Axes::allocate(ui, height, x, y);
-    ax.grid(&painter, |v| format!("{v:.0} mm"), |v| format!("{v:.0} mm"));
+    let (ax, painter, resp) = Axes::allocate(ui, height, x, y, plot::mm_text);
+    ax.grid(&painter, plot::mm_text);
     let max = r.points.iter().map(|p| view.value(p).abs()).fold(0.0, f64::max).max(1e-9);
     let signed = matches!(view, View::Flattened | View::Measured);
     let colours = match view {
@@ -455,8 +453,8 @@ fn table(ui: &mut egui::Ui, unit: Unit, r: &Results) {
         ui.end_row();
         for p in &r.points {
             ui.label(if p.label.is_empty() { format!("{}", p.station + 1) } else { p.label.clone() });
-            ui.label(format!("{:.0} mm", p.x_mm));
-            ui.label(if grid { format!("{:.0} mm", p.y_mm) } else { String::new() });
+            ui.label(plot::mm_text(p.x_mm, 1.0));
+            ui.label(if grid { plot::mm_text(p.y_mm, 1.0) } else { String::new() });
             for v in [p.measured_um, p.flattened_um, p.above_min_um, p.below_max_um, p.uncertainty_um] {
                 ui.label(unit.format(v));
             }

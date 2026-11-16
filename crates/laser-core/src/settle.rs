@@ -51,6 +51,8 @@ pub struct SettleFit {
     pub tau_high_s: Option<f64>,
     /// Residual root mean square.
     pub rms: f64,
+    /// Points the fit used. The monitor gives it the bins, or the means of runs of bins on a long
+    /// wait.
     pub points: usize,
     #[serde(skip)]
     accepted: Vec<Candidate>,

@@ -208,24 +208,25 @@ pub fn offered_modes(
 }
 
 /// What to tell the user about a browser error (`name` such as `NotReadableError`, with the
-/// browser's message) while doing `what`.
+/// browser's message) while doing `what`. An empty `what` (opening the camera, which the
+/// failed state already says) gives no lead-in.
 pub fn error(what: &str, name: &str, message: &str) -> CameraError {
     let text = match name {
         "NotAllowedError" => {
-            format!("{what}: the camera was not allowed. Allow it in the browser, or pick the synthetic camera")
+            "the camera was not allowed. Allow it in the browser, or pick the Synthetic camera".to_owned()
         }
-        "NotFoundError" => format!("{what}: the browser found no camera ({message})"),
-        "OverconstrainedError" => format!("{what}: the camera does not take it ({message})"),
+        "NotFoundError" => format!("the browser found no camera ({message})"),
+        "OverconstrainedError" => format!("the camera does not take it ({message})"),
         // The browser says this for a camera another program holds, and for one that does not
         // start at all.
         "NotReadableError" | "AbortError" => format!(
-            "{what}: the camera did not start ({message}). Close any other program that uses it, or \
+            "the camera did not start ({message}). Close any other program that uses it, or \
              disconnect it and connect it again"
         ),
-        _ if message.is_empty() => format!("{what}: {name}"),
-        _ => format!("{what}: {message}"),
+        _ if message.is_empty() => name.to_owned(),
+        _ => message.to_owned(),
     };
-    CameraError::Os(text)
+    CameraError::Os(if what.is_empty() { text } else { format!("{what}: {text}") })
 }
 
 #[cfg(test)]
@@ -411,14 +412,14 @@ mod tests {
 
     #[test]
     fn errors_say_what_happened() {
-        let text = |name: &str, message: &str| error("opening", name, message).to_string();
+        let text = |name: &str, message: &str| error("", name, message).to_string();
         assert!(text("NotAllowedError", "").contains("not allowed"));
         let not_read = text("NotReadableError", "Could not start video source");
         assert!(not_read.contains("did not start (Could not start video source)"), "{not_read}");
         assert!(!not_read.contains("no camera called"));
         let over = error("setting a control", "OverconstrainedError", "exposureTime setting out of range").to_string();
         assert_eq!(over, "setting a control: the camera does not take it (exposureTime setting out of range)");
-        assert_eq!(text("TypeError", "bad"), "opening: bad");
-        assert_eq!(text("SomeError", ""), "opening: SomeError");
+        assert_eq!(text("TypeError", "bad"), "bad");
+        assert_eq!(text("SomeError", ""), "SomeError");
     }
 }

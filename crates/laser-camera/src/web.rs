@@ -43,7 +43,7 @@ fn js_err(what: &str, e: &JsValue) -> CameraError {
     let name = err_name(e);
     let message = Reflect::get(e, &"message".into()).ok().and_then(|v| v.as_string()).unwrap_or_default();
     if name.is_empty() && message.is_empty() {
-        return CameraError::Os(format!("{what}: {e:?}"));
+        return CameraError::Os(if what.is_empty() { format!("{e:?}") } else { format!("{what}: {e:?}") });
     }
     browser::error(what, &name, &message)
 }
@@ -150,19 +150,19 @@ async fn get_stream(
         let all = Object::new();
         set(&all, "video", &video_c);
         set(&all, "audio", false);
-        let promise = media.get_user_media_with_constraints(all.unchecked_ref()).map_err(|e| js_err("opening", &e))?;
+        let promise = media.get_user_media_with_constraints(all.unchecked_ref()).map_err(|e| js_err("", &e))?;
         match JsFuture::from(promise).await {
             Ok(stream) => return Ok((stream.unchecked_into(), video_c)),
             // Refused, or no such camera: asking for less does not help.
             Err(e) if !browser::ask_less_after(&err_name(&e)) => {
-                return Err(js_err("opening", &e));
+                return Err(js_err("", &e));
             }
             Err(e) => failed = e,
         }
         // Give the camera a moment to let go of the try that failed.
         sleep(300).await;
     }
-    Err(js_err("opening", &failed))
+    Err(js_err("", &failed))
 }
 
 /// Ask for the camera the settings name (the one the browser picks if they name none or
@@ -270,7 +270,7 @@ pub async fn open(
     // The camera undoes itself from now on.
     std::mem::forget(undo);
     cam.watch_frames(Rc::new(repaint));
-    let applied = crate::apply(&mut cam, &settings.controls);
+    let applied = crate::apply_saved(&mut cam, &settings.controls);
     Ok((cam, applied))
 }
 
@@ -429,7 +429,9 @@ impl FrameSource for WebCamera {
     fn set_control(&mut self, setting: ControlSetting) -> Result<ControlInfo, CameraError> {
         let mut info = read_control(&self.track, setting.id).ok_or(CameraError::NoControl(setting.id))?;
         match setting.mode {
-            ControlMode::Auto if info.auto.is_none() => return Err(CameraError::NoControl(setting.id)),
+            ControlMode::Auto if info.auto.is_none() => {
+                return Err(CameraError::Os(format!("the camera has no automatic {}", setting.id.label().to_lowercase())));
+            }
             ControlMode::Auto => info.auto = Some(true),
             ControlMode::Manual(v) => {
                 info.value = info.snap(v);

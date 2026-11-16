@@ -2,28 +2,46 @@
 
 use eframe::egui::{self, Align2, Color32, FontId, Painter, Pos2, Rect, Sense, Shape, Stroke, pos2, vec2};
 
+use laser_core::units::{Unit, fixed};
+
 use crate::theme;
 
-/// Room left for the y labels, px.
+/// The least room for the y labels, px. A wider label gets more room.
 const LEFT: f32 = 58.0;
 const BOTTOM: f32 = 20.0;
 const TOP: f32 = 8.0;
 const RIGHT: f32 = 12.0;
 
+/// The text of a tick: its value, and the step between ticks.
+type TickText<'a> = Box<dyn Fn(f64, f64) -> String + 'a>;
+
 /// A graph area mapping data to screen.
-pub struct Axes {
+pub struct Axes<'a> {
     /// Where the data go, inside the labels.
     pub rect: Rect,
     pub x: [f64; 2],
     pub y: [f64; 2],
+    /// The x ticks are at least this far apart, in data units. 1 for a clock, so that no two
+    /// labels show the same second.
+    pub x_min_step: f64,
     /// A row of labels along the bottom of the data area, px. The y labels keep out of it.
     bottom_row: f32,
+    /// The left edge of the well.
+    left: f32,
+    y_text: TickText<'a>,
 }
 
-impl Axes {
+impl<'a> Axes<'a> {
     /// Lay out a graph of `height` across the available width, in a well, and return it with
-    /// its painter clipped to the data area.
-    pub fn allocate(ui: &mut egui::Ui, height: f32, x: [f64; 2], y: [f64; 2]) -> (Axes, Painter, egui::Response) {
+    /// its painter clipped to the data area. `y_text` gives the y tick labels; the room on the
+    /// left is as wide as the widest one.
+    pub fn allocate(
+        ui: &mut egui::Ui,
+        height: f32,
+        x: [f64; 2],
+        y: [f64; 2],
+        y_text: impl Fn(f64, f64) -> String + 'a,
+    ) -> (Axes<'a>, Painter, egui::Response) {
         let (response, painter) = ui.allocate_painter(vec2(ui.available_width(), height), Sense::hover());
         let outer = response.rect;
         painter.rect_filled(outer, 6.0, theme::CANVAS);
@@ -32,11 +50,35 @@ impl Axes {
             pos2(outer.left() + LEFT, outer.top() + TOP),
             pos2(outer.right() - RIGHT, outer.bottom() - BOTTOM),
         );
-        (Axes::new(rect, x, y), painter, response)
+        let mut ax = Axes {
+            rect,
+            x: widen(x),
+            y: widen(y),
+            x_min_step: 0.0,
+            bottom_row: 0.0,
+            left: outer.left(),
+            y_text: Box::new(y_text),
+        };
+        ax.fit_left(&painter);
+        (ax, painter, response)
     }
 
-    pub fn new(rect: Rect, x: [f64; 2], y: [f64; 2]) -> Self {
-        Self { rect, x: widen(x), y: widen(y), bottom_row: 0.0 }
+    /// The y ticks and the step between them.
+    fn y_ticks(&self) -> (Vec<f64>, f64) {
+        let step = tick_step(self.y, (self.rect.height() / 40.0).max(2.0) as usize);
+        (ticks_by(self.y, step), step)
+    }
+
+    /// Moves the left edge of the data area so that the widest y label fits, but keeps at
+    /// least half of the well for the data.
+    fn fit_left(&mut self, painter: &Painter) {
+        let (ticks, step) = self.y_ticks();
+        let widest = ticks
+            .iter()
+            .map(|&v| painter.layout_no_wrap((self.y_text)(v, step), font(), theme::TEXT_DIM).size().x)
+            .fold(0.0, f32::max);
+        let half = (self.rect.right() + RIGHT - self.left) / 2.0;
+        self.rect.min.x = self.left + (widest + 10.0).clamp(LEFT, half.max(LEFT));
     }
 
     pub fn sx(&self, x: f64) -> f32 {
@@ -54,11 +96,12 @@ impl Axes {
     /// Makes room for a row of [`Axes::label`]s at `y[0]`: the y range grows down by the height
     /// of a label, and the y tick labels keep out of that row, so no tick label sits beside one.
     pub fn reserve_bottom_row(&mut self, painter: &Painter) {
-        let h = painter.layout_no_wrap("0".into(), FontId::proportional(11.0), theme::TEXT_DIM).size().y;
+        let h = painter.layout_no_wrap("0".into(), font(), theme::TEXT_DIM).size().y;
         let px = self.rect.height();
         if px > 2.0 * h {
             self.y[0] -= (self.y[1] - self.y[0]) / f64::from(px - h) * f64::from(h);
             self.bottom_row = h;
+            self.fit_left(painter);
         }
     }
 
@@ -67,24 +110,25 @@ impl Axes {
         self.x[0] + f64::from((sx - self.rect.left()) / self.rect.width()) * (self.x[1] - self.x[0])
     }
 
-    /// Grid lines and tick labels.
-    pub fn grid(&self, painter: &Painter, x_label: impl Fn(f64) -> String, y_label: impl Fn(f64) -> String) {
-        let font = FontId::proportional(11.0);
+    /// Grid lines and tick labels. `x_text` gives the x labels, from the value and the step.
+    pub fn grid(&self, painter: &Painter, x_text: impl Fn(f64, f64) -> String) {
         let grid = Stroke::new(1.0, theme::faded(theme::LINE, 160));
-        for x in ticks(self.x, (self.rect.width() / 90.0).max(2.0) as usize) {
+        let x_step = tick_step(self.x, (self.rect.width() / 90.0).max(2.0) as usize).max(self.x_min_step);
+        for x in ticks_by(self.x, x_step) {
             let sx = self.sx(x);
             painter.line_segment([pos2(sx, self.rect.top()), pos2(sx, self.rect.bottom())], grid);
             // The end labels are nudged in so they do not run past the canvas.
-            let galley = painter.layout_no_wrap(x_label(x), font.clone(), theme::TEXT_DIM);
+            let galley = painter.layout_no_wrap(x_text(x, x_step), font(), theme::TEXT_DIM);
             let half = galley.size().x / 2.0;
-            let lo = self.rect.left() - LEFT + 2.0 + half;
+            let lo = self.left + 2.0 + half;
             let cx = sx.min(self.rect.right() + RIGHT - 2.0 - half).max(lo);
             painter.galley(pos2(cx - half, self.rect.bottom() + 3.0), galley, theme::TEXT_DIM);
         }
-        for y in ticks(self.y, (self.rect.height() / 40.0).max(2.0) as usize) {
+        let (y_ticks, y_step) = self.y_ticks();
+        for y in y_ticks {
             let sy = self.sy(y);
             painter.line_segment([pos2(self.rect.left(), sy), pos2(self.rect.right(), sy)], grid);
-            let galley = painter.layout_no_wrap(y_label(y), font.clone(), theme::TEXT_DIM);
+            let galley = painter.layout_no_wrap((self.y_text)(y, y_step), font(), theme::TEXT_DIM);
             let r = Align2::RIGHT_CENTER.anchor_size(pos2(self.rect.left() - 6.0, sy), galley.size());
             if self.bottom_row > 0.0 && r.bottom() > self.rect.bottom() - self.bottom_row {
                 continue;
@@ -140,12 +184,16 @@ impl Axes {
         if !self.rect.expand(1.0).contains(p) {
             return;
         }
-        let galley = painter.layout_no_wrap(text.to_string(), FontId::proportional(11.0), color);
+        let galley = painter.layout_no_wrap(text.to_string(), font(), color);
         let r = align.anchor_size(p, galley.size());
         let dx = (self.rect.left() - r.left()).max(0.0) + (self.rect.right() - r.right()).min(0.0);
         let dy = (self.rect.top() - r.top()).max(0.0) + (self.rect.bottom() - r.bottom()).min(0.0);
         painter.galley(r.min + vec2(dx, dy), galley, color);
     }
+}
+
+fn font() -> FontId {
+    FontId::proportional(11.0)
 }
 
 /// A range with some width, so a flat series still draws.
@@ -177,32 +225,57 @@ pub fn span(values: impl IntoIterator<Item = f64>, pad: f64) -> [f64; 2] {
 
 /// Round numbers (1, 2 or 5 times a power of ten) across `r`, about `target` of them.
 pub fn ticks(r: [f64; 2], target: usize) -> Vec<f64> {
-    let (lo, hi) = (r[0], r[1]);
-    let raw = (hi - lo) / target.max(1) as f64;
+    ticks_by(r, tick_step(r, target))
+}
+
+/// The round step (1, 2 or 5 times a power of ten) that puts about `target` ticks across `r`.
+/// 0 for an empty range.
+pub fn tick_step(r: [f64; 2], target: usize) -> f64 {
+    let span = r[1] - r[0];
+    let raw = span / target.max(1) as f64;
     if !(raw.is_finite() && raw > 0.0) {
-        return Vec::new();
+        return 0.0;
     }
     let exp = raw.log10().floor() as i32;
     // The step that gives the count nearest the target.
-    let (m, exp) = [(1.0, exp), (2.0, exp), (5.0, exp), (1.0, exp + 1)]
+    [1.0, 2.0, 5.0, 10.0]
         .into_iter()
-        .min_by(|a, b| {
-            let off = |(m, e): (f64, i32)| ((hi - lo) / (m * 10f64.powi(e)) - target as f64).abs();
-            off(*a).total_cmp(&off(*b))
-        })
-        .unwrap_or((1.0, exp));
-    let step = m * 10f64.powi(exp);
+        .map(|m| round_step(m, exp))
+        .min_by(|a, b| (span / a - target as f64).abs().total_cmp(&(span / b - target as f64).abs()))
+        .unwrap_or(raw)
+}
+
+/// `m`·10^`exp`, with `m` and 10^−exp exact, so 0.2 comes out as 0.2.
+fn round_step(m: f64, exp: i32) -> f64 {
+    if exp < 0 { m / 10f64.powi(-exp) } else { m * 10f64.powi(exp) }
+}
+
+/// The multiples of `step` across `r`.
+fn ticks_by(r: [f64; 2], step: f64) -> Vec<f64> {
+    if !(step.is_finite() && step > 0.0) {
+        return Vec::new();
+    }
     // k·m / 10^−exp rather than k·step, so 0.6 comes out as 0.6.
-    let at = |k: i64| if exp < 0 { k as f64 * m / 10f64.powi(-exp) } else { k as f64 * step };
-    let first = (lo / step).ceil() as i64;
-    let last = (hi / step).floor() as i64;
-    (first..=last).map(at).collect()
+    let exp = step.log10().floor() as i32;
+    let m = (step / round_step(1.0, exp)).round();
+    let (first, last) = ((r[0] / step).ceil() as i64, (r[1] / step).floor() as i64);
+    (first..=last).map(|k| round_step(k as f64 * m, exp)).collect()
 }
 
 /// A number with as many decimals as the tick step needs.
-pub fn tick_text(v: f64, step_hint: f64) -> String {
-    let decimals = if step_hint >= 1.0 { 0 } else { (-step_hint.log10()).ceil() as usize };
-    format!("{v:.decimals$}")
+pub fn tick_text(v: f64, step: f64) -> String {
+    let decimals = if step >= 1.0 { 0 } else { (-step.log10() - 1e-6).ceil() as usize };
+    fixed(v, decimals)
+}
+
+/// Tick text in mm.
+pub fn mm_text(v: f64, step: f64) -> String {
+    format!("{} mm", tick_text(v, step))
+}
+
+/// Tick text for a height in `unit`. The zero tick also shows the unit.
+pub fn height_text(unit: Unit) -> impl Fn(f64, f64) -> String {
+    move |v, step| if v == 0.0 { format!("{} {}", tick_text(v, step), unit.label()) } else { tick_text(v, step) }
 }
 
 /// Seconds as m:ss or h:mm:ss.
@@ -223,6 +296,23 @@ mod tests {
         assert_eq!(ticks([0.0, 10.0], 5), vec![0.0, 2.0, 4.0, 6.0, 8.0, 10.0]);
         assert_eq!(ticks([0.13, 0.61], 4), vec![0.2, 0.3, 0.4, 0.5, 0.6]);
         assert!(ticks([1.0, 1.0], 4).is_empty());
+        assert_eq!(ticks([-0.00031, 0.00012], 4), vec![-0.0003, -0.0002, -0.0001, 0.0, 0.0001]);
+    }
+
+    #[test]
+    fn tick_labels_have_the_decimals_of_the_step_and_no_minus_zero() {
+        let step = tick_step([-0.00031, 0.00012], 4);
+        assert_eq!(step, 0.0001);
+        assert_eq!(tick_text(0.0, step), "0.0000");
+        assert_eq!(tick_text(-0.00001, step), "0.0000");
+        assert_eq!(tick_text(0.6, 0.2), "0.6");
+        assert_eq!(height_text(Unit::Mm)(0.0, step), "0.0000 mm");
+        assert_eq!(mm_text(250.0, 50.0), "250 mm");
+        // A short clock axis: steps of 0.5 s would give "1:02 1:02 1:03".
+        let r = [61.8, 63.9];
+        assert_eq!(tick_step(r, 4), 0.5);
+        let labels: Vec<String> = ticks_by(r, tick_step(r, 4).max(1.0)).into_iter().map(clock).collect();
+        assert_eq!(labels, ["1:02", "1:03"]);
     }
 
     #[test]

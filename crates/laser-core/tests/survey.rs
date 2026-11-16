@@ -1,12 +1,12 @@
 //! The measurement model against simulated surveys of surfaces with known shape.
 
+use laser_core::camera::Sensor;
+use laser_core::frame::LineAxis;
 use laser_core::reading::{FrameResult, Subsample};
 use laser_core::results::{Reference, Results};
 use laser_core::rng::Rng;
 use laser_core::scale::Scale;
 use laser_core::stats;
-use laser_core::camera::Sensor;
-use laser_core::frame::LineAxis;
 use laser_core::survey::{DriftCorrection, Layout, LoadError, PixelGrid, Run, Session, SurveyError};
 use laser_core::synth::{SurveySim, WarmUp};
 use laser_core::units::Unit;
@@ -169,6 +169,46 @@ fn grid_plane_with_a_bump() {
     assert_eq!(json["points"][12]["station"], 12);
     assert!((json["pv_um"].as_f64().unwrap() - r.pv_um).abs() < 1e-9);
     assert_eq!(json["reference"]["kind"], "plane");
+}
+
+/// A grid measured along its first row only says that it needs another row, not that something
+/// is wrong. One station in the second row is enough.
+#[test]
+fn a_grid_with_one_measured_row_asks_for_another_row() {
+    let mut run = Run::grid("plate", 4, 3, 100.0, 100.0);
+    let sim = SurveySim::flat(12);
+    let t = sim.survey(&mut run, &[0, 1, 2, 3, 0], 0.0, &mut Rng::new(9)).unwrap();
+    let why = Results::compute(&run, &sim.scale, INTERP).unwrap_err();
+    assert_eq!(why, SurveyError::OneLine);
+    assert!(why.to_string().contains("another row"), "{why}");
+    sim.survey(&mut run, &[5, 0], t, &mut Rng::new(10)).unwrap();
+    assert!(Results::compute(&run, &sim.scale, INTERP).is_ok());
+}
+
+/// **Add a station** goes on along a line, and fills a grid row by row in its columns.
+#[test]
+fn add_station_keeps_the_layout() {
+    let at = |run: &Run| {
+        let s = run.new_station();
+        (s.x_mm, s.y_mm)
+    };
+    let mut line = Run::line("line", 3, 50.0);
+    assert_eq!(at(&line), (150.0, 0.0));
+    line.stations.truncate(1);
+    assert_eq!(at(&line), (100.0, 0.0));
+
+    let mut grid = Run::grid("plate", 3, 2, 10.0, 20.0);
+    let mut added = Vec::new();
+    for _ in 0..4 {
+        added.push(at(&grid));
+        grid.add_station(grid.new_station());
+    }
+    assert_eq!(added, [(0.0, 40.0), (10.0, 40.0), (20.0, 40.0), (0.0, 60.0)]);
+
+    // One row: the next row is as far off as the columns are apart.
+    let row = Run::grid("row", 3, 1, 10.0, 20.0);
+    assert_eq!(at(&row), (0.0, 10.0));
+    assert_eq!(at(&Run::grid("empty", 0, 0, 10.0, 20.0)), (0.0, 0.0));
 }
 
 /// Bugs 7 and 8: delete and replace with no valid selection change nothing; results always come

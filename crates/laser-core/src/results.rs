@@ -103,6 +103,9 @@ impl Results {
                 Reference::Line { offset_um: a, slope_um_per_m: b * 1000.0, x_mean_mm: xm }
             }
             Layout::Grid => {
+                if on_one_line(st.iter().map(|s| (s.x_mm - xm, s.y_mm - ym))) {
+                    return Err(SurveyError::OneLine);
+                }
                 let rows: Vec<[f64; 3]> = st.iter().map(|s| [1.0, s.x_mm - xm, s.y_mm - ym]).collect();
                 let f = stats::weighted_lsq(&rows, &h, &vec![1.0; st.len()]).ok_or(SurveyError::Degenerate)?;
                 Reference::Plane {
@@ -212,4 +215,18 @@ impl Results {
 
 fn csv_field(s: &str) -> String {
     if s.contains([',', '"', '\n', '\r']) { format!("\"{}\"", s.replace('"', "\"\"")) } else { s.to_owned() }
+}
+
+/// True when the centred points (x, y) lie on one line, so no plane fits them: the smaller
+/// spread of the points is a millionth of the larger one or less.
+fn on_one_line(points: impl Iterator<Item = (f64, f64)>) -> bool {
+    let (mut sxx, mut syy, mut sxy) = (0.0, 0.0, 0.0);
+    for (x, y) in points {
+        sxx += x * x;
+        syy += y * y;
+        sxy += x * y;
+    }
+    // The product of the two spreads against the square of their sum.
+    let det = sxx * syy - sxy * sxy;
+    det <= 1e-12 * (sxx + syy) * (sxx + syy)
 }

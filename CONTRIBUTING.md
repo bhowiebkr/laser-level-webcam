@@ -4,12 +4,19 @@ Bug reports, feature requests and pull requests are welcome, from people and fro
 agents. The same rules apply to both. [AGENTS.md](AGENTS.md) holds the working rules that agents
 read.
 
+Set-ups, cameras, results and feedback go on the
+[wiki](https://github.com/bhowiebkr/laser-level-webcam/wiki). All persons with a GitHub account
+can edit it. [Add to the wiki](https://github.com/bhowiebkr/laser-level-webcam/wiki/Add-to-the-Wiki)
+tells how. A set-up that did not operate correctly also helps other persons.
+
 ## Before you report
 
 1. Read the known limits in [STATUS.md](STATUS.md#known-limits). A request to remove a limit is a
    feature request.
 2. Search the open and closed issues.
-3. Report a security problem privately, as [SECURITY.md](SECURITY.md) tells.
+3. Look at [Cameras](https://github.com/bhowiebkr/laser-level-webcam/wiki/Cameras) on the wiki.
+   It shows the cameras that other persons tested.
+4. Report a security problem privately, as [SECURITY.md](SECURITY.md) tells.
 
 A report with gaps is better than no report. Write `NOT_ENOUGH_INFO` and the reason for each
 thing that you do not know.

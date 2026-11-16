@@ -131,7 +131,7 @@ fn readouts(app: &App, ui: &mut egui::Ui, e: &Engine) {
             stat(
                 ui,
                 "Tilt",
-                format!("{:.1} mm/m", fix.tilt * 1000.0),
+                format!("{} mm/m", laser_core::units::fixed(fix.tilt * 1000.0, 1)),
                 if fix.warnings.tilted { theme::ACCENT } else { theme::TEXT },
                 "How far the line is from square to the sensor. Turn the camera to square it.",
             );
@@ -222,7 +222,7 @@ fn live_view(app: &mut App, ui: &mut egui::Ui, e: &Engine, size: egui::Vec2) -> 
         let msg = match &e.camera.state {
             CameraState::Closed => "No camera open".to_owned(),
             CameraState::Opening(n) => format!("Opening {n}…"),
-            CameraState::Failed(why) => why.clone(),
+            CameraState::Failed(_) => "The camera did not open. The Camera section says why.".to_owned(),
             CameraState::Open => "Waiting for a frame…".to_owned(),
         };
         painter.text(outer.center(), Align2::CENTER_CENTER, msg, FontId::proportional(15.0), theme::TEXT_DIM);
@@ -518,7 +518,7 @@ fn profile(app: &mut App, ui: &mut egui::Ui, e: &Engine, height: f32) {
     let top = ins.profile[i0..i1].iter().copied().fold(0.0, f64::max);
     let clip = f64::from(app.settings.finder.clip_level);
     let y = [0.0, if top > clip * 0.8 { 262.0 } else { (top * 1.12).max(16.0) }];
-    let (ax, painter, resp) = Axes::allocate(ui, height, x, y);
+    let (ax, painter, resp) = Axes::allocate(ui, height, x, y, crate::plot::tick_text);
 
     if let Some(z) = zones {
         let blue = theme::faded(theme::BLUE, 40);
@@ -531,7 +531,7 @@ fn profile(app: &mut App, ui: &mut egui::Ui, e: &Engine, height: f32) {
             theme::faded(theme::ACCENT, 45),
         );
     }
-    ax.grid(&painter, |v| format!("{v:.0}"), |v| format!("{v:.0}"));
+    ax.grid(&painter, crate::plot::tick_text);
     if y[1] >= clip {
         ax.dashed(&painter, [x[0], clip], [x[1], clip], Stroke::new(1.0, theme::ERROR));
         ax.label(&painter, [x[0], clip], Align2::LEFT_BOTTOM, " clip", theme::ERROR);
